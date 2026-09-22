@@ -1240,10 +1240,15 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
         <div className="min-w-0"><h1 className="truncate text-sm font-semibold text-foreground">{document.name}</h1><p className="text-[10px] text-foreground">Version {document.current_version}</p></div>
         <div className="flex items-center gap-2">
-          {editing ? <><Button variant="secondary" size="sm" onClick={() => { setEditState(structuredClone(savedState)); setProperties(savedState.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' }); setEditing(false); setActiveKind(null); }}><X />Cancel</Button><Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button></> : <Button variant="secondary" size="sm" onClick={() => setEditing(true)}><Pencil />Edit</Button>}
-          <Button variant="secondary" size="sm" onClick={() => void downloadPdf()}><Download />Download</Button>
-          <Button variant="secondary" size="sm" onClick={() => blobUrl && window.open(blobUrl, '_blank', 'noopener,noreferrer')}><ExternalLink />Edit in window</Button>
-          <Button variant="destructive" size="sm" disabled={deleting} onClick={() => setConfirmDelete(true)}><Trash2 />Delete</Button>
+          {editing ? <>
+            <Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button>
+            <Button variant="secondary" size="sm" onClick={() => { setEditState(structuredClone(savedState)); setProperties(savedState.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' }); setEditing(false); setActiveKind(null); }}><X />Cancel</Button>
+            <Button variant="secondary" size="sm" onClick={() => blobUrl && window.open(blobUrl, '_blank', 'noopener,noreferrer')}><ExternalLink />Edit in window</Button>
+          </> : <>
+            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}><Pencil />Edit</Button>
+            <Button variant="secondary" size="sm" onClick={() => void downloadPdf()}><Download />Download</Button>
+            <Button variant="destructive" size="sm" disabled={deleting} onClick={() => setConfirmDelete(true)}><Trash2 />Delete</Button>
+          </>}
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
