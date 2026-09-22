@@ -347,23 +347,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const currentSourcePage = visiblePages[Math.max(0, page - 1)] ?? 1;
   const pageAnnotations = editState.annotations.filter((annotation) => annotation.page === currentSourcePage);
 
-  useEffect(() => {
-    if (!pdf) return;
-    let cancelled = false;
-    void pdf.getPage(currentSourcePage).then(async (target) => {
-      const operators = await target.getOperatorList();
-      const found: { name: string; width: number; height: number }[] = [];
-      operators.fnArray.forEach((fn, index) => {
-        if (fn !== pdfjs.OPS.paintImageXObject && fn !== pdfjs.OPS.paintInlineImageXObject) return;
-        const name = String(operators.argsArray[index]?.[0] ?? `image-${found.length + 1}`);
-        const object = (target as unknown as { objs?: { has: (key: string) => boolean; get: (key: string) => { width?: number; height?: number } } }).objs;
-        const details = object?.has?.(name) ? object.get(name) : undefined;
-        found.push({ name, width: details?.width ?? 0, height: details?.height ?? 0 });
-      });
-      if (!cancelled) setPageImages(found);
-    }).catch(() => setPageImages([]));
-    return () => { cancelled = true; };
-  }, [pdf, currentSourcePage]);
+  // document-wide image scan replaces the old per-page detection
+
 
   useEffect(() => {
     if (!pdf) return;
