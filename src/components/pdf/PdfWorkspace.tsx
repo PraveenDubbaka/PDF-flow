@@ -1,3 +1,4 @@
+import { useParams, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle,
@@ -8,6 +9,10 @@ import {
 import * as pdfjs from 'pdfjs-dist';
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -19,7 +24,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { LukaIcon } from '@/components/LukaIcon';
 import { cn } from '@/lib/utils';
 import {
-  emptyPdfEditState, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfDocumentProperties,
+  emptyPdfEditState, deletePdfDocument, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfDocumentProperties,
   PdfDocumentRecord, PdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
 import { trialBalanceAccounts } from '@/data/trialBalanceAccounts';
@@ -312,6 +317,8 @@ function multiply(a: number[], b: number[]) {
 }
 
 export function PdfWorkspace({ documentId }: { documentId: string }) {
+  const navigate = useNavigate();
+  const { engagementId } = useParams<{ engagementId: string }>();
   const [document, setDocument] = useState<PdfDocumentRecord | null>(null);
   const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(null);
   const [sourceBytes, setSourceBytes] = useState<Uint8Array | null>(null);
@@ -336,6 +343,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [searching, setSearching] = useState(false);
   const [searchHighlight, setSearchHighlight] = useState<{ id: string; page: number; x: number; y: number; width: number; height: number } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.3);
   const [watermarkRotation, setWatermarkRotation] = useState(45);
@@ -846,6 +855,21 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     } finally { setSaving(false); }
   };
 
+  const handleDeleteDocument = async () => {
+    if (!document || deleting) return;
+    setDeleting(true);
+    try {
+      await deletePdfDocument(document);
+      toast.success('PDF deleted.');
+      if (engagementId) navigate(`/engagements/${engagementId}`);
+      else navigate(-1);
+    } catch (reason) {
+      console.error('PDF delete failed:', reason);
+      toast.error(reason instanceof Error ? reason.message : 'Unable to delete this PDF.');
+      setDeleting(false);
+    }
+  };
+
   const downloadPdf = async () => {
     const bytes = editing ? await createSavedBytes() : sourceBytes;
     if (!bytes || !document) return;
@@ -1221,6 +1245,11 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <Button variant="secondary" size="sm" onClick={() => blobUrl && window.open(blobUrl, '_blank', 'noopener,noreferrer')}><ExternalLink />Edit in window</Button>
         </div>
       </div>
+      <div className="flex h-9 shrink-0 items-center justify-end border-b border-border px-4">
+        <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={deleting} onClick={() => setConfirmDelete(true)}>
+          <Trash2 />Delete PDF
+        </Button>
+      </div>
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-36 shrink-0 border-r border-border bg-muted/30 lg:block"><ScrollArea className="h-full p-2">{visiblePages.map((sourcePage, index) => <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} label={index + 1} rotation={editState.rotations[String(sourcePage)] ?? 0} active={page === index + 1} onClick={() => setPage(index + 1)} />)}</ScrollArea></aside>
         <section className="flex min-w-0 flex-1 flex-col">
@@ -1235,6 +1264,22 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full flex-1"><div className="p-3">{panelContent}</div></ScrollArea>}
         </aside>}
       </div>
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this PDF?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes “{document.name}” and all of its saved versions from the engagement. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={deleting} onClick={(event) => { event.preventDefault(); void handleDeleteDocument(); }}>
+              {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog open={!!pendingAnnotation} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

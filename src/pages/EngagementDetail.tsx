@@ -2672,7 +2672,7 @@ export default function EngagementDetail() {
  );
  })()
  )}
- {checklist && <>
+ {checklist && !pdfDocumentId && <>
  {(() => {
  const isLetter = checklist?.sections?.length > 0 && checklist.sections[0]?.questions?.length > 0 && checklist.sections[0].questions[0]?.answerType === 'none' && !checklist.objective;
  if (isLetter) {
