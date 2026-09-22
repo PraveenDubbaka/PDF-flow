@@ -401,14 +401,6 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             />
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="secondary" size="sm" onClick={() => movePages(-1)}><ArrowUp className="h-4 w-4" />Move up</Button>
-          <Button variant="secondary" size="sm" onClick={() => movePages(1)}><ArrowDown className="h-4 w-4" />Move down</Button>
-          <Button variant="secondary" size="sm" onClick={() => rotatePages(-1)}><RotateCcw className="h-4 w-4" />Rotate left</Button>
-          <Button variant="secondary" size="sm" onClick={() => rotatePages(1)}><RotateCw className="h-4 w-4" />Rotate right</Button>
-          <Button variant="secondary" size="sm" onClick={duplicatePages}><Copy className="h-4 w-4" />Duplicate</Button>
-          <Button variant="secondary" size="sm" onClick={deletePages}><Trash2 className="h-4 w-4" />Delete</Button>
-        </div>
       </div>
     );
     if (activePanel === 'search') return (
