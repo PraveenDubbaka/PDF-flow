@@ -1019,7 +1019,45 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         <div className="space-y-2">{editState.annotations.filter((item) => !['comment', 'link', 'trial-balance', 'image', 'calculation'].includes(item.kind)).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => setSelectedAnnotationId(item.id)} onRename={(label) => updateAnnotation(item.id, { label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>
       </div>
     );
-    if (activePanel === 'links' || activePanel === 'trial-balance' || activePanel === 'comments') {
+    if (activePanel === 'comments') {
+      const comments = editState.annotations.filter((item) => item.kind === 'comment');
+      const open = comments.filter((item) => !item.resolved);
+      return (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-foreground">COMMENTS</p>
+          <p className="text-xs text-foreground">Click anywhere on the page to drop a sticky note, then type your comment and tag teammates with @.</p>
+          <Button variant={activeKind === 'comment' ? 'default' : 'secondary'} className="w-full" onClick={() => setActiveKind(activeKind === 'comment' ? null : 'comment')}>
+            {activeKind === 'comment' ? 'Click the page… click again to cancel' : 'Add comment'}
+          </Button>
+          {comments.length > 0 && <p className="text-[11px] text-muted-foreground">{open.length} open · {comments.length - open.length} resolved</p>}
+          {comments.map((item) => {
+            const text = item.value ?? item.label ?? '';
+            return (
+              <div
+                key={item.id}
+                onClick={() => { setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }}
+                className={cn('cursor-pointer rounded-[8px] border bg-background p-2.5', selectedAnnotationId === item.id ? 'border-primary' : 'border-border')}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-warning-foreground" style={{ backgroundColor: item.color }}>{initialsOf(item.author ?? currentMentionUser.name)}</span>
+                  <span className="flex-1 truncate text-xs font-semibold text-foreground">{item.author ?? currentMentionUser.name}</span>
+                  <span className="text-[10px] text-muted-foreground">p.{item.page}</span>
+                  <button type="button" aria-label="Change colour" onClick={(event) => { event.stopPropagation(); const next = COLORS[(COLORS.indexOf(item.color) + 1) % COLORS.length]; updateAnnotation(item.id, { color: next }); }} className="h-4 w-4 shrink-0 rounded-[4px] border border-border" style={{ backgroundColor: item.color }} />
+                  <Button variant="ghost" size="icon-sm" aria-label="Delete comment" onClick={(event) => { event.stopPropagation(); deleteAnnotation(item.id); }}><Trash2 /></Button>
+                </div>
+                <div className="mt-1.5 text-xs text-foreground">{text ? <MentionText text={text} /> : <span className="text-muted-foreground">Empty note — click to write it.</span>}</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                  {item.resolved && <span className="rounded-full bg-muted px-2 py-0.5 font-semibold text-foreground">Resolved</span>}
+                  {!!item.replies?.length && <span className="inline-flex items-center gap-1"><MessageSquare className="h-3 w-3" />{item.replies.length} {item.replies.length === 1 ? 'reply' : 'replies'}</span>}
+                  {(item.mentions ?? []).map((name) => <span key={name} className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">@{name}</span>)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+    if (activePanel === 'links' || activePanel === 'trial-balance') {
       const kind: PdfAnnotationKind = activePanel === 'links' ? 'link' : activePanel === 'trial-balance' ? 'trial-balance' : 'comment';
       const heading = activePanel === 'links' ? 'HYPERLINKS' : activePanel === 'trial-balance' ? 'TRIAL BALANCE' : 'COMMENTS';
       const hint = activePanel === 'comments' ? 'Click anywhere on the page to drop a sticky note.' : activePanel === 'trial-balance' ? 'Click anywhere on the page to drop a link, then pick a trial balance account.' : 'Click anywhere on the page to drop a link, then attach a web address.';
