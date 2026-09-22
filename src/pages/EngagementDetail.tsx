@@ -102,6 +102,7 @@ import { AuditASMImportBanner } from "@/components/AuditASMImportBanner";
 import { Audit506ImportBanner } from "@/components/Audit506ImportBanner";
 import { Audit525ImportBanner } from "@/components/Audit525ImportBanner";
 import { useSecondaryPanel } from "@/hooks/useSecondaryPanel";
+import { getPdfDocument } from "@/lib/pdfDocuments";
 import {
  generateClientAcceptanceContinuanceChecklist,
  generateIndependenceChecklist,
@@ -1001,13 +1002,22 @@ export default function EngagementDetail() {
  const navigate = useNavigate();
  const [searchParams] = useSearchParams();
  const { isCollapsed: isPanelCollapsed, toggle: togglePanel } = useSecondaryPanel();
- const [checklist, setChecklist] = useState<Checklist | null>(null);
- const [isLoading, setIsLoading] = useState(true);
+  const [checklist, setChecklist] = useState<Checklist | null>(null);
+  const [pdfDocName, setPdfDocName] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
  const [isCompactMode, setIsCompactMode] = useState(false);
  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
  const [objectiveExpanded, setObjectiveExpanded] = useState(false);
  const [isLetterEditing, setIsLetterEditing] = useState(false);
- const letterSaveRef = useRef<(() => void) | null>(null);
+  const letterSaveRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setPdfDocName(null);
+    if (pdfDocumentId) {
+      getPdfDocument(pdfDocumentId).then((doc) => { if (!cancelled) setPdfDocName(doc.name); }).catch(() => { /* name stays generic */ });
+    }
+    return () => { cancelled = true; };
+  }, [pdfDocumentId]);
  const letterPageRef = useRef<LetterSectionPageHandle>(null);
  const [customLetterExists, setCustomLetterExists] = useState(false);
  const [customLetterIsEditing, setCustomLetterIsEditing] = useState(false);
@@ -2362,15 +2372,17 @@ export default function EngagementDetail() {
    <path fill="currentColor" d="M20.25 7c0-.69-.56-1.25-1.25-1.25H9.75v12.5H19c.69 0 1.25-.56 1.25-1.25zM3.75 17c0 .69.56 1.25 1.25 1.25h3.25V5.75H5c-.69 0-1.25.56-1.25 1.25zm18 0A2.75 2.75 0 0 1 19 19.75H5A2.75 2.75 0 0 1 2.25 17V7A2.75 2.75 0 0 1 5 4.25h14A2.75 2.75 0 0 1 21.75 7z" />
  </svg>
  </button>
- <h1 className="font-semibold text-foreground truncate text-lg">
- {checklist?.title
- || (checklistKey && CUSTOM_WORKSHEET_TITLES[checklistKey])
- || (checklistKey?.startsWith('notes-') && `Notes — ${searchParams.get('t') || CUSTOM_WORKSHEET_TITLES[checklistKey.slice('notes-'.length)] || checklistKey.slice('notes-'.length)}`)
- || (checklistKey?.startsWith('node-note-') && (searchParams.get('t') || checklistKey.slice('node-note-'.length)))
- || (checklistKey?.startsWith('custom-') && (() => { const s = readJsonFromLocalStorage<CustomSection[]>(`engagement-custom-sections-${engagementId}`, []).find(s => s.id === checklistKey); return s?.name; })())
- || (checklistKey && FS_PAGE_KEYS.has(checklistKey) && FS_SCREEN_NAMES[FS_PAGE_TYPE_MAP[checklistKey]])
- || 'Client acceptance and continuance'}
- </h1>
+  <h1 className="font-semibold text-foreground truncate text-lg">
+  {pdfDocumentId
+  ? (pdfDocName || 'PDF')
+  : (checklist?.title
+  || (checklistKey && CUSTOM_WORKSHEET_TITLES[checklistKey])
+  || (checklistKey?.startsWith('notes-') && `Notes — ${searchParams.get('t') || CUSTOM_WORKSHEET_TITLES[checklistKey.slice('notes-'.length)] || checklistKey.slice('notes-'.length)}`)
+  || (checklistKey?.startsWith('node-note-') && (searchParams.get('t') || checklistKey.slice('node-note-'.length)))
+  || (checklistKey?.startsWith('custom-') && (() => { const s = readJsonFromLocalStorage<CustomSection[]>(`engagement-custom-sections-${engagementId}`, []).find(s => s.id === checklistKey); return s?.name; })())
+  || (checklistKey && FS_PAGE_KEYS.has(checklistKey) && FS_SCREEN_NAMES[FS_PAGE_TYPE_MAP[checklistKey]])
+  || 'Client acceptance and continuance')}
+  </h1>
  </div>
  <div className="flex items-center gap-1">
  <div className="relative">
