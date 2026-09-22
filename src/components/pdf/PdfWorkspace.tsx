@@ -1236,6 +1236,29 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     );
   }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
+  const historyEntries = useMemo(() => {
+    const fallbackDate = document?.updated_at ?? document?.created_at ?? new Date().toISOString();
+    const entries = editState.annotations.map((item) => ({
+      id: item.id,
+      page: item.page,
+      author: item.author ?? currentMentionUser.name,
+      createdAt: item.createdAt ?? fallbackDate,
+      kind: item.kind,
+      title: item.label || item.value || `${item.kind.replace('-', ' ')} added`,
+      color: item.color,
+      x: item.x, y: item.y, width: item.width, height: item.height,
+    }));
+    return entries.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }, [document, editState.annotations]);
+
+  const goToHistoryEntry = useCallback((entry: { id: string; page: number; x: number; y: number; width: number; height: number }) => {
+    const position = visiblePages.indexOf(entry.page);
+    setPage(Math.max(1, position + 1));
+    setSelectedAnnotationId(entry.id);
+    setSearchHighlight({ id: `${entry.id}-${Date.now()}`, page: entry.page, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
+    setHistoryOpen(false);
+  }, [visiblePages]);
+
   if (loading) return <div className="flex h-full items-center justify-center gap-3 text-foreground"><Loader2 className="h-5 w-5 animate-spin text-primary" />Opening PDF…</div>;
   if (error || !pdf || !document) return <div className="flex h-full flex-col items-center justify-center gap-3"><FileText className="h-10 w-10 text-muted-foreground" /><p className="text-sm font-semibold text-foreground">Unable to open PDF</p><p className="max-w-md text-center text-xs text-foreground">{error}</p></div>;
 
