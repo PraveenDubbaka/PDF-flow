@@ -23,6 +23,8 @@ import { toast } from 'sonner';
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
 type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'trial-balance' | 'comments' | 'redact' | 'security' | 'details' | 'ocr' | 'calculations' | 'luka';
+type TextItemLike = { str: string; width: number; height: number; transform: number[] };
+type SearchMatch = { id: string; page: number; snippet: string; x: number; y: number; width: number; height: number };
 const TOOLS: { id: ToolId; label: string; icon: React.ElementType }[] = [
   { id: 'pages', label: 'Pages', icon: BookOpen },
   { id: 'search', label: 'Search', icon: Search },
