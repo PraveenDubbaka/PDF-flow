@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle,
-  Copy, Download, ExternalLink, FileText, Highlighter, Image, Link2, Loader2, LockKeyhole,
+  Copy, Download, ExternalLink, FileText, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
   MessageSquare, MousePointer2, Pen, Pencil, Plus, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Sparkles, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
@@ -21,6 +21,7 @@ import {
   emptyPdfEditState, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfDocumentProperties,
   PdfDocumentRecord, PdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
+import { trialBalanceAccounts } from '@/data/trialBalanceAccounts';
 import { toast } from 'sonner';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
@@ -117,7 +118,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
     if (!activeKind) { onSelect(null); return; }
     if (activeKind === 'freehand') return;
     const { x, y } = relative(event);
-    const isPoint = activeKind === 'comment' || activeKind === 'link';
+    const isPoint = activeKind === 'comment' || activeKind === 'link' || activeKind === 'trial-balance';
     onAdd({
       id: crypto.randomUUID(), kind: activeKind, page: pageNumber, x, y,
       width: isPoint ? 4 : 18, height: isPoint ? 4 : 5,
@@ -191,7 +192,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             activeKind ? 'pointer-events-none' : 'cursor-pointer',
             selectedId === annotation.id && 'ring-2 ring-primary ring-offset-1',
             annotation.kind === 'comment' && 'flex items-center justify-center rounded-sm border-none bg-warning text-warning-foreground',
-            annotation.kind === 'link' && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
+            (annotation.kind === 'link' || annotation.kind === 'trial-balance') && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
             annotation.kind === 'underline' && 'border-x-0 border-t-0',
             annotation.kind === 'strikeout' && 'border-x-0 border-b-0 top-auto',
             annotation.kind === 'highlight' && 'border-none opacity-40',
@@ -200,8 +201,8 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           )}
           style={{
             left: `${annotation.x}%`, top: `${annotation.y}%`,
-            width: annotation.kind === 'link' ? 'auto' : `${annotation.width}%`,
-            height: annotation.kind === 'link' ? 'auto' : `${annotation.height}%`,
+            width: annotation.kind === 'link' || annotation.kind === 'trial-balance' ? 'auto' : `${annotation.width}%`,
+            height: annotation.kind === 'link' || annotation.kind === 'trial-balance' ? 'auto' : `${annotation.height}%`,
             borderColor: annotation.color,
             backgroundColor: annotation.kind === 'highlight' ? annotation.color : undefined,
           }}
@@ -212,6 +213,12 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             <>
               <Link2 className="h-3 w-3 shrink-0" style={{ color: annotation.color }} />
               <span className="truncate text-[10px] font-medium underline" style={{ color: annotation.color }}>{annotation.value ?? annotation.label}</span>
+            </>
+          )}
+          {annotation.kind === 'trial-balance' && (
+            <>
+              <Landmark className="h-3 w-3 shrink-0" style={{ color: annotation.color }} />
+              <span className="truncate text-[10px] font-medium" style={{ color: annotation.color }}>{annotation.label ?? annotation.value}</span>
             </>
           )}
           {annotation.kind === 'image' && annotation.value && <img src={annotation.value} alt={annotation.label ?? 'Inserted image'} className="h-full w-full object-contain" />}
@@ -400,6 +407,18 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       return;
     }
     setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+  }, []);
+
+  const confirmTrialBalanceAccount = useCallback((label: string) => {
+    setPendingAnnotation((pending) => {
+      if (pending) {
+        const annotation: PdfAnnotation = { ...pending, value: label, label };
+        setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+        setSelectedAnnotationId(annotation.id);
+      }
+      return null;
+    });
+    setPendingValue('');
   }, []);
 
   const confirmPendingAnnotation = useCallback(() => {
@@ -965,7 +984,9 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (activePanel === 'links' || activePanel === 'trial-balance' || activePanel === 'comments') {
       const kind: PdfAnnotationKind = activePanel === 'links' ? 'link' : activePanel === 'trial-balance' ? 'trial-balance' : 'comment';
       const heading = activePanel === 'links' ? 'HYPERLINKS' : activePanel === 'trial-balance' ? 'TRIAL BALANCE' : 'COMMENTS';
-      return <div className="space-y-3"><p className="text-xs font-semibold text-foreground">{heading}</p><p className="text-xs text-foreground">Click the page to place a {activePanel === 'comments' ? 'sticky note' : 'linked region'}.</p><Button variant={activeKind === kind ? 'default' : 'secondary'} className="w-full" onClick={() => setActiveKind(kind)}>Add {activePanel === 'comments' ? 'comment' : 'link'}</Button>{editState.annotations.filter((item) => item.kind === kind).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => setSelectedAnnotationId(item.id)} onRename={(label) => updateAnnotation(item.id, { label, value: kind === 'comment' ? item.value : label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>;
+      const hint = activePanel === 'comments' ? 'Click anywhere on the page to drop a sticky note.' : activePanel === 'trial-balance' ? 'Click anywhere on the page to drop a link, then pick a trial balance account.' : 'Click anywhere on the page to drop a link, then attach a web address.';
+      const cta = activePanel === 'comments' ? 'Add comment' : activePanel === 'trial-balance' ? 'Add trial balance link' : 'Add link';
+      return <div className="space-y-3"><p className="text-xs font-semibold text-foreground">{heading}</p><p className="text-xs text-foreground">{hint}</p><Button variant={activeKind === kind ? 'default' : 'secondary'} className="w-full" onClick={() => setActiveKind(activeKind === kind ? null : kind)}>{activeKind === kind ? 'Click the page… click again to cancel' : cta}</Button>{editState.annotations.filter((item) => item.kind === kind).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => { setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }} onRename={(label) => updateAnnotation(item.id, { label, value: kind === 'comment' ? item.value : label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>;
     }
     if (activePanel === 'redact') return (
       <div className="space-y-4">
@@ -1068,9 +1089,53 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              {pendingAnnotation?.kind === 'link' ? 'Link to web URL' : pendingAnnotation?.kind === 'trial-balance' ? 'Trial balance account' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
+              {pendingAnnotation?.kind === 'link' ? 'Link to web URL' : pendingAnnotation?.kind === 'trial-balance' ? 'Link to Trial Balance' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
             </DialogTitle>
           </DialogHeader>
+          {pendingAnnotation?.kind === 'trial-balance' ? (
+            <div className="space-y-2">
+              <Input
+                autoFocus
+                value={pendingValue}
+                placeholder="Search account no. or description"
+                onChange={(event) => setPendingValue(event.target.value)}
+              />
+              <div className="max-h-72 overflow-auto rounded-[8px] border border-border">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-muted">
+                    <tr className="text-left text-foreground">
+                      <th className="px-2 py-1.5 font-semibold">Acc No.</th>
+                      <th className="px-2 py-1.5 font-semibold">Description</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trialBalanceAccounts
+                      .filter((account) => {
+                        const query = pendingValue.trim().toLowerCase();
+                        if (!query) return true;
+                        return account.accNo.toLowerCase().includes(query) || account.description.toLowerCase().includes(query);
+                      })
+                      .map((account) => (
+                        <tr
+                          key={account.accNo + account.description}
+                          className="cursor-pointer border-t border-border hover:bg-muted/60"
+                          onClick={() => confirmTrialBalanceAccount(`${account.accNo} ${account.description}`)}
+                        >
+                          <td className="px-2 py-1.5 text-foreground">{account.accNo}</td>
+                          <td className="px-2 py-1.5 text-foreground">{account.description}</td>
+                          <td className="px-2 py-1.5 text-right text-foreground">{account.balance.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => { setPendingAnnotation(null); setPendingValue(''); }}>Cancel</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+          <>
           <Input
             autoFocus
             value={pendingValue}
@@ -1084,6 +1149,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               {pendingAnnotation?.kind === 'link' ? 'Add link' : 'Add'}
             </Button>
           </DialogFooter>
+          </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
@@ -1094,7 +1161,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
 const KIND_ICONS: Record<string, React.ElementType> = {
   highlight: Highlighter, underline: Underline, strikeout: Strikethrough, freehand: Pen,
   text: TextCursorInput, rectangle: Square, circle: Circle, arrow: ArrowRight,
-  comment: MessageSquare, link: Link2, 'trial-balance': BookOpen, redaction: Square,
+  comment: MessageSquare, link: Link2, 'trial-balance': Landmark, redaction: Square,
   image: Image, calculation: Calculator,
 };
 
