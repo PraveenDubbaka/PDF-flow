@@ -903,16 +903,26 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     );
     if (activePanel === 'images') return (
       <div className="space-y-3">
-        <p className="text-xs font-semibold text-foreground">IMAGES ON THIS PAGE</p>
-        <p className="text-xs text-foreground">{pageImages.length ? `${pageImages.length} embedded image${pageImages.length === 1 ? '' : 's'} detected.` : 'No embedded images detected on this page.'}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-foreground">IMAGES IN DOCUMENT</p>
+          <Button variant="ghost" size="sm" onClick={() => void scanDocumentImages()} disabled={scanningImages}>{scanningImages ? <Loader2 className="animate-spin" /> : <RotateCw />}Rescan</Button>
+        </div>
+        <p className="text-xs text-foreground">{scanningImages ? 'Scanning all pages…' : docImages.length ? `${docImages.length} image${docImages.length === 1 ? '' : 's'} found across ${new Set(docImages.map((item) => item.page)).size} page${new Set(docImages.map((item) => item.page)).size === 1 ? '' : 's'}.` : 'No images detected in this document.'}</p>
         <div className="space-y-2">
-          {pageImages.map((item, index) => (
-            <div key={`${item.name}-${index}`} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-2 py-2">
-              <span className="flex-1 truncate text-xs text-foreground">Image {index + 1}{item.width ? ` · ${item.width}×${item.height}` : ''}</span>
+          {docImages.map((item) => (
+            <div key={item.id} className="flex items-center gap-2 rounded-[8px] border border-border bg-background p-2">
+              <button type="button" onClick={() => goToImage(item)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                {item.thumb ? <img src={item.thumb} alt={`Image ${item.index} on page ${item.page}`} className="h-10 w-12 shrink-0 rounded-[6px] border border-border object-cover" /> : <div className="h-10 w-12 shrink-0 rounded-[6px] border border-border bg-muted" />}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-foreground">Page {item.page} · Image {item.index}</span>
+                  <span className="block truncate text-[11px] text-foreground">{item.pixelWidth}×{item.pixelHeight} pt</span>
+                </span>
+              </button>
               <Button variant="secondary" size="sm" onClick={() => { setReplaceTargetId(null); imageInputRef.current?.click(); }}>Replace</Button>
             </div>
           ))}
         </div>
+
         <div className="border-t border-border pt-3 space-y-2">
           <p className="text-xs font-semibold text-foreground">PLACED IMAGES</p>
           {editState.annotations.filter((item) => item.kind === 'image' && item.page === currentSourcePage).map((item) => (
