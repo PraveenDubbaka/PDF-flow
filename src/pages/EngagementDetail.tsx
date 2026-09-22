@@ -2467,8 +2467,9 @@ export default function EngagementDetail() {
  </DropdownMenu>
  </div>
  </div>
- {/* Action buttons row */}
- <div className="flex items-center justify-between gap-2 px-4 py-1.5 border-t border-border/50">
+  {/* Action buttons row (hidden in PDF workspace — it has its own toolbar) */}
+  {!pdfDocumentId && (
+  <div className="flex items-center justify-between gap-2 px-4 py-1.5 border-t border-border/50">
  {/* Time tracker pill */}
  {ttEnabled && (
  <div className="flex items-center gap-2 shrink-0">
@@ -2744,9 +2745,11 @@ export default function EngagementDetail() {
  />
  )}
  </>}
- </div>
- </div>
- </div>
+  </div>
+  </div>
+  )}
+  </div>
+
 
  {/* Content Area */}
  <div className="flex-1 overflow-auto bg-card" id={checklistKey && WORKSHEET_KEYS.has(checklistKey) ? 'worksheet-export-content' : undefined}>
