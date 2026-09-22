@@ -291,26 +291,103 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     URL.revokeObjectURL(url);
   };
 
-  const deleteCurrentPage = () => {
-    if (visiblePages.length === 1) return toast.error('A PDF must keep at least one page.');
-    setEditState((current) => ({ ...current, pageOrder: current.pageOrder.filter((_, index) => index !== page - 1) }));
-    setPage((current) => Math.min(current, visiblePages.length - 1));
+  const targetPositions = () => (selectedPages.length ? [...selectedPages].sort((a, b) => a - b) : [page - 1]);
+
+  const togglePageSelection = (index: number) =>
+    setSelectedPages((current) => (current.includes(index) ? current.filter((value) => value !== index) : [...current, index]));
+
+  const deletePages = () => {
+    const targets = targetPositions();
+    if (targets.length >= visiblePages.length) return toast.error('A PDF must keep at least one page.');
+    setEditState((current) => ({ ...current, pageOrder: current.pageOrder.filter((_, index) => !targets.includes(index)) }));
+    setSelectedPages([]);
+    setPage((current) => Math.max(1, Math.min(current, visiblePages.length - targets.length)));
+    toast.success(`Removed ${targets.length} page${targets.length === 1 ? '' : 's'}.`);
   };
 
-  const rotateCurrentPage = () => {
-    setEditState((current) => ({ ...current, rotations: { ...current.rotations, [String(currentSourcePage)]: ((current.rotations[String(currentSourcePage)] ?? 0) + 90) % 360 } }));
+  const duplicatePages = () => {
+    const targets = targetPositions();
+    setEditState((current) => {
+      const next: number[] = [];
+      current.pageOrder.forEach((sourcePage, index) => {
+        next.push(sourcePage);
+        if (targets.includes(index)) next.push(sourcePage);
+      });
+      return { ...current, pageOrder: next };
+    });
+    setSelectedPages([]);
+    toast.success(`Duplicated ${targets.length} page${targets.length === 1 ? '' : 's'}.`);
+  };
+
+  const rotatePages = (direction: 1 | -1) => {
+    const targets = targetPositions();
+    setEditState((current) => {
+      const rotations = { ...current.rotations };
+      targets.forEach((index) => {
+        const sourcePage = String(current.pageOrder[index]);
+        rotations[sourcePage] = (((rotations[sourcePage] ?? 0) + direction * 90) % 360 + 360) % 360;
+      });
+      return { ...current, rotations };
+    });
+  };
+
+  const movePages = (direction: 1 | -1) => {
+    const targets = targetPositions();
+    setEditState((current) => {
+      const order = [...current.pageOrder];
+      const moved = direction === -1 ? targets : [...targets].reverse();
+      const nextSelection: number[] = [];
+      for (const index of moved) {
+        const destination = index + direction;
+        if (destination < 0 || destination >= order.length || targets.includes(destination)) {
+          nextSelection.push(index);
+          continue;
+        }
+        [order[index], order[destination]] = [order[destination], order[index]];
+        nextSelection.push(destination);
+      }
+      setSelectedPages(selectedPages.length ? nextSelection : []);
+      if (!selectedPages.length) setPage(Math.min(order.length, Math.max(1, page + direction)));
+      return { ...current, pageOrder: order };
+    });
   };
 
   const panelContent = useMemo(() => {
     if (activePanel === 'pages') return (
       <div className="space-y-3">
-        <p className="text-xs font-semibold text-foreground">{visiblePages.length} pages</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-foreground">{visiblePages.length} pages</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedPages(selectedPages.length === visiblePages.length ? [] : visiblePages.map((_, index) => index))}
+          >
+            {selectedPages.length === visiblePages.length ? 'Clear' : 'Select all'}
+          </Button>
+        </div>
+        <p className="text-[11px] text-foreground">{selectedPages.length ? `${selectedPages.length} selected` : 'Actions apply to the current page unless pages are selected.'}</p>
         <div className="grid grid-cols-2 gap-2">
-          {visiblePages.map((sourcePage, index) => pdf && <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} active={page === index + 1} onClick={() => setPage(index + 1)} />)}
+          {visiblePages.map((sourcePage, index) => pdf && (
+            <Thumbnail
+              key={`${sourcePage}-${index}`}
+              pdf={pdf}
+              pageNumber={sourcePage}
+              label={index + 1}
+              rotation={editState.rotations[String(sourcePage)] ?? 0}
+              active={page === index + 1}
+              selected={selectedPages.includes(index)}
+              onToggleSelect={() => togglePageSelection(index)}
+              onClick={() => setPage(index + 1)}
+            />
+          ))}
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Button variant="secondary" size="sm" onClick={rotateCurrentPage}><RotateCw className="h-4 w-4" />Rotate</Button>
-          <Button variant="secondary" size="sm" onClick={deleteCurrentPage}><Trash2 className="h-4 w-4" />Delete</Button>
+          <Button variant="secondary" size="sm" onClick={() => movePages(-1)}><ArrowUp className="h-4 w-4" />Move up</Button>
+          <Button variant="secondary" size="sm" onClick={() => movePages(1)}><ArrowDown className="h-4 w-4" />Move down</Button>
+          <Button variant="secondary" size="sm" onClick={() => rotatePages(-1)}><RotateCcw className="h-4 w-4" />Rotate left</Button>
+          <Button variant="secondary" size="sm" onClick={() => rotatePages(1)}><RotateCw className="h-4 w-4" />Rotate right</Button>
+          <Button variant="secondary" size="sm" onClick={duplicatePages}><Copy className="h-4 w-4" />Duplicate</Button>
+          <Button variant="secondary" size="sm" onClick={deletePages}><Trash2 className="h-4 w-4" />Delete</Button>
         </div>
       </div>
     );
