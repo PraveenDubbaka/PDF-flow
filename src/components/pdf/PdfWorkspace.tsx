@@ -118,7 +118,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
     if (!activeKind) { onSelect(null); return; }
     if (activeKind === 'freehand') return;
     const { x, y } = relative(event);
-    const isPoint = activeKind === 'comment' || activeKind === 'link';
+    const isPoint = activeKind === 'comment' || activeKind === 'link' || activeKind === 'trial-balance';
     onAdd({
       id: crypto.randomUUID(), kind: activeKind, page: pageNumber, x, y,
       width: isPoint ? 4 : 18, height: isPoint ? 4 : 5,
