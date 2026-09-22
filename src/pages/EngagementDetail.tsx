@@ -1009,7 +1009,15 @@ export default function EngagementDetail() {
  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
  const [objectiveExpanded, setObjectiveExpanded] = useState(false);
  const [isLetterEditing, setIsLetterEditing] = useState(false);
- const letterSaveRef = useRef<(() => void) | null>(null);
+  const letterSaveRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setPdfDocName(null);
+    if (pdfDocumentId) {
+      getPdfDocument(pdfDocumentId).then((doc) => { if (!cancelled) setPdfDocName(doc.name); }).catch(() => { /* name stays generic */ });
+    }
+    return () => { cancelled = true; };
+  }, [pdfDocumentId]);
  const letterPageRef = useRef<LetterSectionPageHandle>(null);
  const [customLetterExists, setCustomLetterExists] = useState(false);
  const [customLetterIsEditing, setCustomLetterIsEditing] = useState(false);
