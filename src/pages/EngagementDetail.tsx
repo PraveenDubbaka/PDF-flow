@@ -2748,6 +2748,8 @@ export default function EngagementDetail() {
   </div>
   </div>
   )}
+  </div>
+
 
  {/* Content Area */}
  <div className="flex-1 overflow-auto bg-card" id={checklistKey && WORKSHEET_KEYS.has(checklistKey) ? 'worksheet-export-content' : undefined}>
