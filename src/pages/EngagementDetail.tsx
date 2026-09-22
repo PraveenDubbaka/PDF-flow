@@ -88,6 +88,7 @@ import { toast } from "sonner";
 import { ShareWithClientDialog } from "@/components/ShareWithClientDialog";
 import { LetterSectionPage, type LetterSectionPageHandle } from "@/components/LetterSectionPage";
 import { CustomSection } from "@/components/Sidebar";
+import { PdfWorkspace } from "@/components/pdf/PdfWorkspace";
 import { NotesWorksheet } from "@/components/NotesWorksheet";
 import { NotesSlidePanel } from "@/components/NotesSlidePanel";
 import { ClientResponseDialog } from "@/components/ClientResponseDialog";
@@ -991,9 +992,11 @@ export default function EngagementDetail() {
  const {
  engagementId,
  checklistKey,
+  pdfDocumentId,
  } = useParams<{
  engagementId: string;
  checklistKey?: string;
+  pdfDocumentId?: string;
  }>();
  const navigate = useNavigate();
  const [searchParams] = useSearchParams();
@@ -1334,7 +1337,7 @@ export default function EngagementDetail() {
 
  // Redirect to first checklist when no key is in URL
  useEffect(() => {
- if (checklistKey || !engagementId) return;
+ if (checklistKey || pdfDocumentId || !engagementId) return;
  const type = engagement?.type ?? '';
  let defaultKey = 'co-ca';
  if (type.includes('GAAS/US') || engagementId.startsWith('AUD-US-')) {
@@ -1343,7 +1346,7 @@ export default function EngagementDetail() {
  defaultKey = 'aud-form-410';
  }
  navigate(`/engagements/${engagementId}/checklist/${defaultKey}`, { replace: true });
- }, [engagementId, checklistKey]);
+ }, [engagementId, checklistKey, pdfDocumentId, engagement, navigate]);
 
  // Handle client change - show dialog with engagements
  const handleClientChange = (newClient: string) => {
@@ -2914,7 +2917,9 @@ export default function EngagementDetail() {
  })()}
 
  {/* ── Financial Statement pages ── */}
- {checklistKey && FS_PAGE_KEYS.has(checklistKey) && engagementId ? (
+ {pdfDocumentId ? (
+ <PdfWorkspace documentId={pdfDocumentId} />
+ ) : checklistKey && FS_PAGE_KEYS.has(checklistKey) && engagementId ? (
  <LayoutSettingsProvider>
  <CommentProvider>
  <FSCommentsBridge open={isFSCommentsOpen} currentScreen={FS_SCREEN_NAMES[FS_PAGE_TYPE_MAP[checklistKey]] ?? 'Balance Sheet'} />
@@ -3163,15 +3168,15 @@ export default function EngagementDetail() {
  </div>
 
  {/* Floating Action Bar for Preview Mode - Inside content area */}
- {checklist && !FS_PAGE_KEYS.has(checklistKey ?? '') && !checklistKey?.startsWith('notes-') && !(checklistKey && checklistKey !== 'aud-ra-pap501a' && (checklistKey in CUSTOM_WORKSHEET_TITLES || WORKSHEET_KEYS.has(checklistKey))) && <FloatingActionBar checklist={checklist ?? undefined} onUpdate={handleChecklistUpdate} onCollapseSections={handleCollapseSections} onExpandSections={handleExpandSections} onCollapseQuestions={handleCollapseQuestions} onExpandQuestions={handleExpandQuestions} allSectionsCollapsed={allSectionsCollapsed} allQuestionsCollapsed={allQuestionsCollapsed} isCompactMode={isCompactMode} onToggleCompactMode={handleToggleCompactMode} selectedQuestions={selectedQuestions} onBulkDelete={handleBulkDelete} onAddCategory={handleAddCategory} onBulkAnswer={handleBulkAnswer} onBulkClear={handleBulkClear} onBulkRestore={handleBulkRestore} isPreviewMode={true} isChecklist={!!checklist && !(checklist.sections?.length && checklist.sections[0]?.questions?.length && checklist.sections[0].questions[0]?.answerType === 'none' && !checklist.objective)} totalQuestions={allTopLevelQuestionIds.length} onSelectAll={handleSelectAll} />}
+ {checklist && !pdfDocumentId && !FS_PAGE_KEYS.has(checklistKey ?? '') && !checklistKey?.startsWith('notes-') && !(checklistKey && checklistKey !== 'aud-ra-pap501a' && (checklistKey in CUSTOM_WORKSHEET_TITLES || WORKSHEET_KEYS.has(checklistKey))) && <FloatingActionBar checklist={checklist ?? undefined} onUpdate={handleChecklistUpdate} onCollapseSections={handleCollapseSections} onExpandSections={handleExpandSections} onCollapseQuestions={handleCollapseQuestions} onExpandQuestions={handleExpandQuestions} allSectionsCollapsed={allSectionsCollapsed} allQuestionsCollapsed={allQuestionsCollapsed} isCompactMode={isCompactMode} onToggleCompactMode={handleToggleCompactMode} selectedQuestions={selectedQuestions} onBulkDelete={handleBulkDelete} onAddCategory={handleAddCategory} onBulkAnswer={handleBulkAnswer} onBulkClear={handleBulkClear} onBulkRestore={handleBulkRestore} isPreviewMode={true} isChecklist={!!checklist && !(checklist.sections?.length && checklist.sections[0]?.questions?.length && checklist.sections[0].questions[0]?.answerType === 'none' && !checklist.objective)} totalQuestions={allTopLevelQuestionIds.length} onSelectAll={handleSelectAll} />}
  </div>
 
  {/* Right Panel or Add Checklist Sheet */}
- {showAddChecklistSheet ? (
+ {!pdfDocumentId && (showAddChecklistSheet ? (
  <AddChecklistSheet open={showAddChecklistSheet} onClose={() => setShowAddChecklistSheet(false)} onSelect={handleAddChecklist} />
  ) : (
  <EngagementRightPanel />
- )}
+ ))}
 
  {/* Document Request Panel */}
  <Sheet open={showRequestPanel} onOpenChange={(v) => { setShowRequestPanel(v); if (!v) setRequestPanelFullscreen(false); }}>

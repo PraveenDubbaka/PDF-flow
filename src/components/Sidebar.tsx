@@ -65,6 +65,7 @@ import signoffUncheckAllIcon from "@/assets/signoff-uncheck-all.png";
 import { useSecondaryPanel } from "@/hooks/useSecondaryPanel";
 import { FinancialStatementsPanelContent } from "@/components/FinancialStatementsPanelContent";
 import { FinancialStatementsIcon } from "@/components/icons/FinancialStatementsIcon";
+import { uploadEngagementPdf } from "@/lib/pdfDocuments";
 
 interface FirmProfile {
  id: string;
@@ -1821,10 +1822,11 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
  const [hasDarkSecondary, setHasDarkSecondary] = useState(false);
  const [sectionFillStatus, setSectionFillStatus] = useState<Record<string, boolean>>({});
  const [notesPages, setNotesPages] = useState<Set<string>>(new Set());
- const [nodeDocuments, setNodeDocuments] = useState<Record<string, { id: string; name: string; type?: 'note' }[]>>({});
+ type NodeDocument = { id: string; name: string; type?: 'note'; mimeType?: string; size?: number };
+ const [nodeDocuments, setNodeDocuments] = useState<Record<string, NodeDocument[]>>({});
  const [collapsedNodeDocs, setCollapsedNodeDocs] = useState<Set<string>>(new Set());
  const [addDocModal, setAddDocModal] = useState<{ nodeId: string; nodeCode?: string; nodeLabel: string } | null>(null);
- const [pendingDocFiles, setPendingDocFiles] = useState<{ name: string }[]>([]);
+ const [pendingDocFiles, setPendingDocFiles] = useState<File[]>([]);
  const [addNoteModal, setAddNoteModal] = useState<{ nodeId: string; nodeCode?: string; nodeLabel: string } | null>(null);
  const [addNoteName, setAddNoteName] = useState('');
  const [hiddenChildren, setHiddenChildren] = useState<Record<string, string[]>>({});
@@ -1953,7 +1955,7 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
  };
  }, [location.pathname]);
 
- const saveNodeDocs = (docs: Record<string, { id: string; name: string; type?: 'note' }[]>) => {
+ const saveNodeDocs = (docs: Record<string, NodeDocument[]>) => {
  const engId = location.pathname.split("/engagements/")[1]?.split("/")[0];
  if (!engId) return;
  localStorage.setItem(`engagement-node-docs-${engId}`, JSON.stringify(docs));
@@ -1974,17 +1976,25 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
  setAddNoteName('');
  };
 
- const handleAddDocs = () => {
+ const handleAddDocs = async () => {
  if (!addDocModal || pendingDocFiles.length === 0) return;
+ const engId = location.pathname.split("/engagements/")[1]?.split("/")[0];
+ if (!engId) return;
  const existing = nodeDocuments[addDocModal.nodeId] ?? [];
  const code = addDocModal.nodeCode ?? 'DOC';
- const newDocs = pendingDocFiles.map((f, i) => ({
- id: `${addDocModal.nodeId}-${Date.now()}-${i}`,
- name: `${code}-${existing.length + i + 1}-${f.name}`,
+ try {
+ const newDocs = await Promise.all(pendingDocFiles.map(async (file, index) => {
+ const name = `${code}-${existing.length + index + 1}-${file.name}`;
+ const record = await uploadEngagementPdf(file, engId, addDocModal.nodeId, name);
+ return { id: record.id, name: record.name, mimeType: record.mime_type, size: record.size_bytes };
  }));
  saveNodeDocs({...nodeDocuments, [addDocModal.nodeId]: [...existing,...newDocs] });
  setAddDocModal(null);
  setPendingDocFiles([]);
+ toast({ title: `${newDocs.length} PDF${newDocs.length === 1 ? '' : 's'} added` });
+ } catch (error) {
+ toast({ title: 'Unable to upload PDF', description: error instanceof Error ? error.message : 'Please try again.', variant: 'destructive' });
+ }
  };
 
  const [customSections, setCustomSections] = useState<CustomSection[]>([]);
@@ -3172,8 +3182,9 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
  {isOpen && (nodeDocuments[section.id] ?? []).filter(d => d.type !== 'note').map(doc => (
  <div
  key={doc.id}
- className="group/doc flex items-center gap-1.5 py-1.5 px-2 rounded-[8px] cursor-pointer hover:bg-primary/10 transition-colors text-sm mt-0.5"
+ className={cn("group/doc flex items-center gap-1.5 py-1.5 px-2 rounded-[8px] cursor-pointer hover:bg-primary/10 transition-colors text-sm mt-0.5", location.pathname.endsWith(`/pdf/${doc.id}`) && "bg-primary/10 ring-1 ring-primary/25")}
  style={{ paddingLeft: `${(depth + 2) * 16 + 8}px` }}
+ onClick={() => engId && navigate(`/engagements/${engId}/pdf/${doc.id}`)}
  >
  {getFileTypeIcon(doc.name, 'h-4 w-4')}
  <span className="truncate flex-1 text-black dark:text-white font-medium">{doc.name}</span>
@@ -3602,8 +3613,9 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
  {(nodeDocuments[node.id]?.length ?? 0) > 0 && !collapsedNodeDocs.has(node.id) && (nodeDocuments[node.id] ?? []).filter(d => d.type !== 'note').map(doc => (
  <div
  key={doc.id}
- className="group/doc flex items-center gap-1.5 py-1.5 px-2 rounded-[8px] cursor-pointer hover:bg-primary/10 transition-colors text-sm mt-0.5"
+ className={cn("group/doc flex items-center gap-1.5 py-1.5 px-2 rounded-[8px] cursor-pointer hover:bg-primary/10 transition-colors text-sm mt-0.5", location.pathname.endsWith(`/pdf/${doc.id}`) && "bg-primary/10 ring-1 ring-primary/25")}
  style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
+ onClick={() => { const engId = location.pathname.split("/engagements/")[1]?.split("/")[0]; if (engId) navigate(`/engagements/${engId}/pdf/${doc.id}`); }}
  >
  {getFileTypeIcon(doc.name, 'h-4 w-4')}
  <span className="truncate flex-1 text-black dark:text-white font-medium">{doc.name}</span>
@@ -4671,10 +4683,11 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
  <input
  type="file"
  multiple
+ accept=".pdf,application/pdf"
  className="hidden"
  onChange={e => {
  const files = Array.from(e.target.files ?? []);
- setPendingDocFiles(prev => [...prev,...files.map(f => ({ name: f.name }))]);
+ setPendingDocFiles(prev => [...prev,...files.filter(file => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))]);
  e.target.value = '';
  }}
  />
@@ -4682,7 +4695,7 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
  </div>
  <DialogFooter className="gap-2">
  <Button variant="outline" size="sm" onClick={() => { setAddDocModal(null); setPendingDocFiles([]); }}>Cancel</Button>
- <Button size="sm" disabled={pendingDocFiles.length === 0} onClick={handleAddDocs}>Add</Button>
+ <Button size="sm" disabled={pendingDocFiles.length === 0} onClick={() => void handleAddDocs()}>Add</Button>
  </DialogFooter>
  </DialogContent>
  </Dialog>

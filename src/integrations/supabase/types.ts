@@ -14,7 +14,89 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      engagement_pdf_documents: {
+        Row: {
+          created_at: string
+          current_version: number
+          edit_state: Json
+          engagement_id: string
+          id: string
+          mime_type: string
+          name: string
+          node_id: string
+          owner_id: string
+          size_bytes: number
+          storage_path: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_version?: number
+          edit_state?: Json
+          engagement_id: string
+          id?: string
+          mime_type?: string
+          name: string
+          node_id: string
+          owner_id?: string
+          size_bytes?: number
+          storage_path: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_version?: number
+          edit_state?: Json
+          engagement_id?: string
+          id?: string
+          mime_type?: string
+          name?: string
+          node_id?: string
+          owner_id?: string
+          size_bytes?: number
+          storage_path?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      engagement_pdf_versions: {
+        Row: {
+          created_at: string
+          document_id: string
+          edit_state: Json
+          id: string
+          owner_id: string
+          storage_path: string
+          version_number: number
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          edit_state?: Json
+          id?: string
+          owner_id?: string
+          storage_path: string
+          version_number: number
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          edit_state?: Json
+          id?: string
+          owner_id?: string
+          storage_path?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "engagement_pdf_versions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "engagement_pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
