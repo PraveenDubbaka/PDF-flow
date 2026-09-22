@@ -1264,6 +1264,22 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full flex-1"><div className="p-3">{panelContent}</div></ScrollArea>}
         </aside>}
       </div>
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this PDF?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes “{document.name}” and all of its saved versions from the engagement. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={deleting} onClick={(event) => { event.preventDefault(); void handleDeleteDocument(); }}>
+              {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog open={!!pendingAnnotation} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
