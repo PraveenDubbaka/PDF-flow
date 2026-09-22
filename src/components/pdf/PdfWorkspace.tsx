@@ -1245,6 +1245,11 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <Button variant="secondary" size="sm" onClick={() => blobUrl && window.open(blobUrl, '_blank', 'noopener,noreferrer')}><ExternalLink />Edit in window</Button>
         </div>
       </div>
+      <div className="flex h-9 shrink-0 items-center justify-end border-b border-border px-4">
+        <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={deleting} onClick={() => setConfirmDelete(true)}>
+          <Trash2 />Delete PDF
+        </Button>
+      </div>
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-36 shrink-0 border-r border-border bg-muted/30 lg:block"><ScrollArea className="h-full p-2">{visiblePages.map((sourcePage, index) => <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} label={index + 1} rotation={editState.rotations[String(sourcePage)] ?? 0} active={page === index + 1} onClick={() => setPage(index + 1)} />)}</ScrollArea></aside>
         <section className="flex min-w-0 flex-1 flex-col">
