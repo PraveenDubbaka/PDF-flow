@@ -1139,13 +1139,35 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     );
     if (activePanel === 'calculations') return (
       <div className="space-y-3">
-        <p className="text-xs font-semibold text-foreground">BUILD A CALCULATION</p>
-        <div className="flex gap-2"><Input value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="Header (optional)" /><input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-10 rounded-[6px] border border-border bg-background p-1" /></div>
-        <div className="space-y-2">{calcRows.map((row, index) => <div key={index} className="grid grid-cols-[28px_72px_1fr_28px] items-center gap-2"><span className="text-center text-xs text-foreground">{index + 1}</span><select value={row.operator} disabled={index === 0} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 rounded-[8px] border border-border bg-background px-2 text-xs text-foreground"><option>+</option><option>-</option><option>×</option><option>÷</option></select><Input type="number" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" /><Button variant="ghost" size="icon-sm" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label="Remove calculation row"><X /></Button></div>)}</div>
-        <div className="flex gap-2"><Button variant="secondary" className="flex-1" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+' }])}><Plus />Add</Button><Button variant="secondary" onClick={() => setCalcRows([{ value: '', operator: '+' }])}><X />Clear</Button></div>
-        <div className="flex items-center justify-between rounded-[8px] bg-primary/15 px-3 py-2 text-sm font-semibold text-foreground"><span>Result</span><span>{Number.isFinite(calculationResult) ? calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}</span></div>
-        <Button className="w-full" onClick={addCalculation}><Plus />Add to document</Button>
-        <div className="border-t border-border pt-3"><p className="mb-2 text-xs font-semibold text-foreground">PLACED CALCULATIONS</p><div className="space-y-2">{(editState.calculations ?? []).map((calculation) => <div key={calculation.id} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-2 py-2"><Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start" onClick={() => setPage(Math.max(1, visiblePages.indexOf(calculation.page) + 1))}><span className="truncate">{calculation.title}<br /><span className="font-normal">Result = {calculation.result}</span></span></Button><Button variant="ghost" size="icon-sm" aria-label="Delete calculation" onClick={() => setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) }))}><Trash2 /></Button></div>)}</div></div>
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><Calculator className="h-3.5 w-3.5" />{editingCalcId ? 'EDIT CALCULATION' : 'BUILD A CALCULATION'}</p>
+        <div className="space-y-1.5">
+          <Label htmlFor="calc-header">Header (optional)</Label>
+          <div className="flex gap-2">
+            <Input id="calc-header" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
+            <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-10 rounded-[6px] border border-border bg-background p-1" />
+          </div>
+        </div>
+        <div className="grid grid-cols-[22px_1fr_60px_96px_24px] items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-foreground">
+          <span className="text-center">#</span><span>Comment</span><span>Op</span><span className="text-right">Amount</span><span />
+        </div>
+        <div className="space-y-2">{calcRows.map((row, index) => (
+          <div key={index} className="grid grid-cols-[22px_1fr_60px_96px_24px] items-center gap-2">
+            <span className="text-center text-xs text-foreground">{index + 1}</span>
+            <Input aria-label={`Comment ${index + 1}`} value={row.comment} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, comment: event.target.value } : item))} placeholder={`Value ${index + 1}`} />
+            {index === 0 ? <span /> : (
+              <select value={row.operator} aria-label={`Operator ${index + 1}`} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 rounded-[8px] border border-border bg-background px-2 text-xs text-foreground"><option>+</option><option>-</option><option>×</option><option>÷</option></select>
+            )}
+            <Input aria-label={`Amount ${index + 1}`} type="number" inputMode="decimal" className="text-right" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" />
+            <Button variant="ghost" size="icon-sm" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove row ${index + 1}`}><X /></Button>
+          </div>
+        ))}</div>
+        <div className="flex gap-2"><Button variant="secondary" className="flex-1" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+', comment: '' }])}><Plus />Add</Button><Button variant="secondary" onClick={() => setCalcRows([{ value: '', operator: '+', comment: '' }])}><X />Clear</Button></div>
+        <div className="flex items-center justify-between rounded-[8px] bg-primary/15 px-3 py-2 text-sm font-semibold text-foreground"><span className="truncate">{calcTitle.trim() || 'Result'}</span><span>{calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+        <div className="flex gap-2">
+          {editingCalcId && <Button variant="ghost" onClick={resetCalculator}>Cancel</Button>}
+          <Button className="flex-1" onClick={addCalculation}>{editingCalcId ? <Save /> : <Plus />}{editingCalcId ? 'Update' : 'Add to document'}</Button>
+        </div>
+        <div className="border-t border-border pt-3"><p className="mb-2 text-xs font-semibold text-foreground">PLACED CALCULATIONS</p><div className="space-y-2">{(editState.calculations ?? []).map((calculation) => <div key={calculation.id} className="flex items-center gap-1 rounded-[8px] border border-border bg-background px-2 py-2"><button type="button" className="min-w-0 flex-1 text-center" onClick={() => setPage(Math.max(1, visiblePages.indexOf(calculation.page) + 1))}><span className="block truncate text-xs font-semibold text-foreground">{calculation.title}</span><span className="block truncate text-xs text-foreground">Result = {calculation.result.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></button><Button variant="ghost" size="icon-sm" aria-label="Edit calculation" onClick={() => startEditCalculation(calculation)}><Pencil /></Button><Button variant="ghost" size="icon-sm" aria-label="Go to calculation" onClick={() => setPage(Math.max(1, visiblePages.indexOf(calculation.page) + 1))}><Calculator /></Button><Button variant="ghost" size="icon-sm" aria-label="Delete calculation" className="text-destructive hover:bg-destructive/10" onClick={() => { if (editingCalcId === calculation.id) resetCalculator(); setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) })); }}><Trash2 /></Button></div>)}</div></div>
       </div>
     );
     if (activePanel === 'luka') return (
