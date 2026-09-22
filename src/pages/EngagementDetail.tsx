@@ -1337,7 +1337,7 @@ export default function EngagementDetail() {
 
  // Redirect to first checklist when no key is in URL
  useEffect(() => {
- if (checklistKey || !engagementId) return;
+ if (checklistKey || pdfDocumentId || !engagementId) return;
  const type = engagement?.type ?? '';
  let defaultKey = 'co-ca';
  if (type.includes('GAAS/US') || engagementId.startsWith('AUD-US-')) {
@@ -1346,7 +1346,7 @@ export default function EngagementDetail() {
  defaultKey = 'aud-form-410';
  }
  navigate(`/engagements/${engagementId}/checklist/${defaultKey}`, { replace: true });
- }, [engagementId, checklistKey]);
+ }, [engagementId, checklistKey, pdfDocumentId, engagement, navigate]);
 
  // Handle client change - show dialog with engagements
  const handleClientChange = (newClient: string) => {
