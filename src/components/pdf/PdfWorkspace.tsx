@@ -1039,28 +1039,64 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   );
 }
 
-function AnnotationRow({ item, selected, onSelect, onRename, onDelete }: { item: PdfAnnotation; selected?: boolean; onSelect?: () => void; onRename?: (label: string) => void; onDelete: () => void }) {
+const KIND_ICONS: Record<string, React.ElementType> = {
+  highlight: Highlighter, underline: Underline, strikeout: Strikethrough, freehand: Pen,
+  text: TextCursorInput, rectangle: Square, circle: Circle, arrow: ArrowRight,
+  comment: MessageSquare, link: Link2, 'trial-balance': BookOpen, redaction: Square,
+  image: Image, calculation: Calculator,
+};
+
+function AnnotationRow({ item, selected, onSelect, onRename, onDelete, onColor }: { item: PdfAnnotation; selected?: boolean; onSelect?: () => void; onRename?: (label: string) => void; onDelete: () => void; onColor?: (color: string) => void }) {
   const [renaming, setRenaming] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [draft, setDraft] = useState(item.label ?? item.value ?? '');
+  const KindIcon = KIND_ICONS[item.kind] ?? MousePointer2;
   return (
-    <div className={cn('flex items-center gap-2 rounded-[8px] border bg-background px-2 py-2', selected ? 'border-primary' : 'border-border')} onClick={onSelect}>
-      {renaming ? (
-        <Input
-          autoFocus
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={() => { onRename?.(draft.trim()); setRenaming(false); }}
-          onKeyDown={(event) => { if (event.key === 'Enter') { onRename?.(draft.trim()); setRenaming(false); } }}
-          className="h-7 flex-1 text-xs"
+    <div className={cn('rounded-[8px] border bg-background px-2 py-2', selected ? 'border-primary' : 'border-border')} onClick={onSelect}>
+      <div className="flex items-center gap-2">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-border" style={{ color: item.color }} aria-hidden>
+          <KindIcon className="h-3.5 w-3.5" />
+        </span>
+        {renaming ? (
+          <Input
+            autoFocus
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => { onRename?.(draft.trim()); setRenaming(false); }}
+            onKeyDown={(event) => { if (event.key === 'Enter') { onRename?.(draft.trim()); setRenaming(false); } }}
+            className="h-7 flex-1 text-xs"
+          />
+        ) : (
+          <button type="button" className="flex-1 truncate text-left text-xs font-medium text-foreground" onDoubleClick={() => setRenaming(true)}>
+            p.{item.page} {item.label || item.value || item.kind}
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label="Change colour"
+          disabled={!onColor}
+          onClick={() => setPicking((current) => !current)}
+          className="h-5 w-5 shrink-0 rounded-[5px] border border-border"
+          style={{ backgroundColor: item.color }}
         />
-      ) : (
-        <button type="button" className="flex-1 truncate text-left text-xs font-medium text-foreground" onDoubleClick={() => setRenaming(true)}>
-          p.{item.page} {item.label || item.value || item.kind}
-        </button>
+        {onRename && <Button variant="ghost" size="icon-sm" onClick={() => setRenaming(true)} aria-label="Rename"><Pencil /></Button>}
+        <Button variant="ghost" size="icon-sm" onClick={onDelete} aria-label="Delete"><Trash2 /></Button>
+      </div>
+      {picking && onColor && (
+        <div className="mt-2 flex gap-2 border-t border-border pt-2">
+          {COLORS.map((color) => (
+            <button
+              key={color}
+              type="button"
+              aria-label={`Colour ${color}`}
+              onClick={() => { onColor(color); setPicking(false); }}
+              className={cn('h-5 w-5 rounded-[5px] border', item.color === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')}
+              style={{ backgroundColor: color }}
+            />
+          ))}
+        </div>
       )}
-      <span className="h-5 w-5 rounded-[5px] border border-border" style={{ backgroundColor: item.color }} />
-      {onRename && <Button variant="ghost" size="icon-sm" onClick={() => setRenaming(true)} aria-label="Rename"><Pencil /></Button>}
-      <Button variant="ghost" size="icon-sm" onClick={onDelete} aria-label="Delete"><Trash2 /></Button>
     </div>
   );
 }
+
