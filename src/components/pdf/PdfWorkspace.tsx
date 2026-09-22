@@ -549,6 +549,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     } finally { setScanningImages(false); }
   }, [pdf, visiblePages]);
 
+  useEffect(() => {
+    if (activePanel !== 'images' || !pdf) return;
+    if (docImages.length || scanningImages) return;
+    void scanDocumentImages();
+  }, [activePanel, docImages.length, pdf, scanDocumentImages, scanningImages]);
+
   const goToImage = useCallback((item: DocImage) => {
     const position = visiblePages.indexOf(item.page);
     setPage(Math.max(1, position + 1));
