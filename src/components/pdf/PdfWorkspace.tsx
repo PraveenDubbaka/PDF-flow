@@ -406,25 +406,65 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     toast.success('Image placed on this page.');
   };
 
+  const goToMatch = useCallback((match: SearchMatch, index: number) => {
+    setSearchIndex(index);
+    const position = visiblePages.indexOf(match.page);
+    setPage(Math.max(1, position + 1));
+    setSearchHighlight({ id: `${match.id}-${Date.now()}`, page: match.page, x: match.x, y: match.y, width: match.width, height: match.height });
+  }, [visiblePages]);
+
   const runSearch = useCallback(async () => {
-    if (!pdf || !search.trim()) { setSearchResults([]); return; }
-    const matches: number[] = [];
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-      const content = await (await pdf.getPage(pageNumber)).getTextContent();
-      const text = content.items.map((item) => 'str' in item ? item.str : '').join(' ');
-      if (text.toLowerCase().includes(search.toLowerCase())) matches.push(pageNumber);
-    }
-    setSearchResults(matches);
-    setSearchIndex(0);
-    if (matches[0]) setPage(Math.max(1, visiblePages.indexOf(matches[0]) + 1));
-  }, [pdf, search, visiblePages]);
+    const query = search.trim();
+    if (!pdf || !query) { setSearchResults([]); setSearchHighlight(null); return; }
+    setSearching(true);
+    try {
+      const found: SearchMatch[] = [];
+      const needle = query.toLowerCase();
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const target = await pdf.getPage(pageNumber);
+        const viewport = target.getViewport({ scale: 1 });
+        const content = await target.getTextContent();
+        const pieces: { text: string; start: number; item: TextItemLike }[] = [];
+        let joined = '';
+        for (const raw of content.items) {
+          if (!('str' in raw)) continue;
+          const item = raw as unknown as TextItemLike;
+          pieces.push({ text: item.str, start: joined.length, item });
+          joined += `${item.str} `;
+        }
+        const haystack = joined.toLowerCase();
+        let from = 0;
+        for (;;) {
+          const at = haystack.indexOf(needle, from);
+          if (at === -1) break;
+          from = at + needle.length;
+          const piece = [...pieces].reverse().find((entry) => entry.start <= at);
+          const transform = piece?.item.transform ?? [1, 0, 0, 1, 0, 0];
+          const itemHeight = piece?.item.height || Math.hypot(transform[1], transform[3]) || 10;
+          const itemWidth = piece?.item.width || itemHeight * needle.length * 0.5;
+          found.push({
+            id: `${pageNumber}-${at}`,
+            page: pageNumber,
+            snippet: `…${joined.slice(Math.max(0, at - 60), at + needle.length + 60).trim()}…`,
+            x: Math.max(0, (transform[4] / viewport.width) * 100),
+            y: Math.max(0, ((viewport.height - transform[5] - itemHeight) / viewport.height) * 100),
+            width: Math.min(100, Math.max(1.5, (itemWidth / viewport.width) * 100)),
+            height: Math.max(1, (itemHeight * 1.25 / viewport.height) * 100),
+          });
+        }
+      }
+      setSearchResults(found);
+      setSearchIndex(0);
+      setSearchHighlight(null);
+      if (found[0]) goToMatch(found[0], 0);
+    } finally { setSearching(false); }
+  }, [goToMatch, pdf, search]);
 
   const jumpToMatch = useCallback((direction: 1 | -1) => {
     if (!searchResults.length) return;
     const next = (searchIndex + direction + searchResults.length) % searchResults.length;
-    setSearchIndex(next);
-    setPage(Math.max(1, visiblePages.indexOf(searchResults[next]) + 1));
-  }, [searchIndex, searchResults, visiblePages]);
+    goToMatch(searchResults[next], next);
+  }, [goToMatch, searchIndex, searchResults]);
 
   const extractPageText = useCallback(async (sourcePage = currentSourcePage) => {
     if (!pdf) return '';
