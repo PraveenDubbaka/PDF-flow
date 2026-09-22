@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, BookOpen, Bookmark, Check, ChevronLeft, ChevronRight, Circle,
-  Download, ExternalLink, FileImage, FileText, Highlighter, Image, Link2, Loader2, LockKeyhole,
-  MessageSquare, MousePointer2, Pencil, Redo2, RotateCw, Save, Search, ShieldCheck, Square,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Check, ChevronLeft, ChevronRight, Circle,
+  Copy, Download, ExternalLink, FileImage, FileText, Highlighter, Image, Link2, Loader2, LockKeyhole,
+  MessageSquare, MousePointer2, Pencil, Redo2, RotateCcw, RotateCw, Save, Search, ShieldCheck, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, Undo2, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
@@ -122,7 +122,16 @@ function CanvasPage({ pdf, pageNumber, zoom, annotations, activeKind, onAdd }: {
   );
 }
 
-function Thumbnail({ pdf, pageNumber, active, onClick }: { pdf: pdfjs.PDFDocumentProxy; pageNumber: number; active: boolean; onClick: () => void }) {
+function Thumbnail({ pdf, pageNumber, active, onClick, label, rotation = 0, selected, onToggleSelect }: {
+  pdf: pdfjs.PDFDocumentProxy;
+  pageNumber: number;
+  active: boolean;
+  onClick: () => void;
+  label?: number;
+  rotation?: number;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     let task: pdfjs.RenderTask | null = null;
@@ -130,21 +139,33 @@ function Thumbnail({ pdf, pageNumber, active, onClick }: { pdf: pdfjs.PDFDocumen
       const canvas = canvasRef.current;
       const context = canvas?.getContext('2d');
       if (!canvas || !context) return;
-      const viewport = page.getViewport({ scale: 0.22 });
+      const viewport = page.getViewport({ scale: 0.22, rotation: (page.rotate + rotation) % 360 });
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       task = page.render({ canvas, canvasContext: context, viewport });
       return task.promise;
     }).catch(() => undefined);
     return () => task?.cancel();
-  }, [pdf, pageNumber]);
+  }, [pdf, pageNumber, rotation]);
   return (
-    <button onClick={onClick} className={cn('w-full p-2 border rounded-[8px] bg-card', active ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-muted')}>
-      <canvas ref={canvasRef} className="mx-auto max-w-full bg-card border border-border" />
-      <span className="mt-1 block text-[11px] text-foreground">{pageNumber}</span>
-    </button>
+    <div className={cn('relative w-full rounded-[8px] border bg-card p-2', active ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-muted')}>
+      {onToggleSelect && (
+        <input
+          type="checkbox"
+          checked={!!selected}
+          onChange={onToggleSelect}
+          aria-label={`Select page ${label ?? pageNumber}`}
+          className="absolute left-2 top-2 h-3.5 w-3.5 cursor-pointer accent-primary"
+        />
+      )}
+      <button type="button" onClick={onClick} className="block w-full">
+        <canvas ref={canvasRef} className="mx-auto max-w-full border border-border bg-card" />
+        <span className="mt-1 block text-[11px] text-foreground">{label ?? pageNumber}</span>
+      </button>
+    </div>
   );
 }
+
 
 export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [document, setDocument] = useState<PdfDocumentRecord | null>(null);
@@ -166,6 +187,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.3);
   const [watermarkRotation, setWatermarkRotation] = useState(45);
+  const [selectedPages, setSelectedPages] = useState<number[]>([]);
 
   useEffect(() => {
     let currentUrl: string | null = null;
@@ -270,26 +292,103 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     URL.revokeObjectURL(url);
   };
 
-  const deleteCurrentPage = () => {
-    if (visiblePages.length === 1) return toast.error('A PDF must keep at least one page.');
-    setEditState((current) => ({ ...current, pageOrder: current.pageOrder.filter((_, index) => index !== page - 1) }));
-    setPage((current) => Math.min(current, visiblePages.length - 1));
+  const targetPositions = () => (selectedPages.length ? [...selectedPages].sort((a, b) => a - b) : [page - 1]);
+
+  const togglePageSelection = (index: number) =>
+    setSelectedPages((current) => (current.includes(index) ? current.filter((value) => value !== index) : [...current, index]));
+
+  const deletePages = () => {
+    const targets = targetPositions();
+    if (targets.length >= visiblePages.length) return toast.error('A PDF must keep at least one page.');
+    setEditState((current) => ({ ...current, pageOrder: current.pageOrder.filter((_, index) => !targets.includes(index)) }));
+    setSelectedPages([]);
+    setPage((current) => Math.max(1, Math.min(current, visiblePages.length - targets.length)));
+    toast.success(`Removed ${targets.length} page${targets.length === 1 ? '' : 's'}.`);
   };
 
-  const rotateCurrentPage = () => {
-    setEditState((current) => ({ ...current, rotations: { ...current.rotations, [String(currentSourcePage)]: ((current.rotations[String(currentSourcePage)] ?? 0) + 90) % 360 } }));
+  const duplicatePages = () => {
+    const targets = targetPositions();
+    setEditState((current) => {
+      const next: number[] = [];
+      current.pageOrder.forEach((sourcePage, index) => {
+        next.push(sourcePage);
+        if (targets.includes(index)) next.push(sourcePage);
+      });
+      return { ...current, pageOrder: next };
+    });
+    setSelectedPages([]);
+    toast.success(`Duplicated ${targets.length} page${targets.length === 1 ? '' : 's'}.`);
+  };
+
+  const rotatePages = (direction: 1 | -1) => {
+    const targets = targetPositions();
+    setEditState((current) => {
+      const rotations = { ...current.rotations };
+      targets.forEach((index) => {
+        const sourcePage = String(current.pageOrder[index]);
+        rotations[sourcePage] = (((rotations[sourcePage] ?? 0) + direction * 90) % 360 + 360) % 360;
+      });
+      return { ...current, rotations };
+    });
+  };
+
+  const movePages = (direction: 1 | -1) => {
+    const targets = targetPositions();
+    setEditState((current) => {
+      const order = [...current.pageOrder];
+      const moved = direction === -1 ? targets : [...targets].reverse();
+      const nextSelection: number[] = [];
+      for (const index of moved) {
+        const destination = index + direction;
+        if (destination < 0 || destination >= order.length || targets.includes(destination)) {
+          nextSelection.push(index);
+          continue;
+        }
+        [order[index], order[destination]] = [order[destination], order[index]];
+        nextSelection.push(destination);
+      }
+      setSelectedPages(selectedPages.length ? nextSelection : []);
+      if (!selectedPages.length) setPage(Math.min(order.length, Math.max(1, page + direction)));
+      return { ...current, pageOrder: order };
+    });
   };
 
   const panelContent = useMemo(() => {
     if (activePanel === 'pages') return (
       <div className="space-y-3">
-        <p className="text-xs font-semibold text-foreground">{visiblePages.length} pages</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-foreground">{visiblePages.length} pages</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedPages(selectedPages.length === visiblePages.length ? [] : visiblePages.map((_, index) => index))}
+          >
+            {selectedPages.length === visiblePages.length ? 'Clear' : 'Select all'}
+          </Button>
+        </div>
+        <p className="text-[11px] text-foreground">{selectedPages.length ? `${selectedPages.length} selected` : 'Actions apply to the current page unless pages are selected.'}</p>
         <div className="grid grid-cols-2 gap-2">
-          {visiblePages.map((sourcePage, index) => pdf && <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} active={page === index + 1} onClick={() => setPage(index + 1)} />)}
+          {visiblePages.map((sourcePage, index) => pdf && (
+            <Thumbnail
+              key={`${sourcePage}-${index}`}
+              pdf={pdf}
+              pageNumber={sourcePage}
+              label={index + 1}
+              rotation={editState.rotations[String(sourcePage)] ?? 0}
+              active={page === index + 1}
+              selected={selectedPages.includes(index)}
+              onToggleSelect={() => togglePageSelection(index)}
+              onClick={() => setPage(index + 1)}
+            />
+          ))}
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Button variant="secondary" size="sm" onClick={rotateCurrentPage}><RotateCw className="h-4 w-4" />Rotate</Button>
-          <Button variant="secondary" size="sm" onClick={deleteCurrentPage}><Trash2 className="h-4 w-4" />Delete</Button>
+          <Button variant="secondary" size="sm" onClick={() => movePages(-1)}><ArrowUp className="h-4 w-4" />Move up</Button>
+          <Button variant="secondary" size="sm" onClick={() => movePages(1)}><ArrowDown className="h-4 w-4" />Move down</Button>
+          <Button variant="secondary" size="sm" onClick={() => rotatePages(-1)}><RotateCcw className="h-4 w-4" />Rotate left</Button>
+          <Button variant="secondary" size="sm" onClick={() => rotatePages(1)}><RotateCw className="h-4 w-4" />Rotate right</Button>
+          <Button variant="secondary" size="sm" onClick={duplicatePages}><Copy className="h-4 w-4" />Duplicate</Button>
+          <Button variant="secondary" size="sm" onClick={deletePages}><Trash2 className="h-4 w-4" />Delete</Button>
         </div>
       </div>
     );
@@ -325,7 +424,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         <div className="border-t border-border pt-4"><p className="text-xs font-semibold text-foreground">SANITIZE & OPTIMIZE</p><p className="my-2 text-xs text-foreground">Remove embedded active content and compress the saved document.</p><div className="grid grid-cols-2 gap-2"><Button variant="secondary" onClick={() => toast.success('The document will be sanitized when saved.')}>Sanitize</Button><Button variant="secondary" onClick={() => toast.success('Object stream optimization is enabled for the next save.')}>Optimize</Button></div></div>
       </div>
     );
-  }, [activeKind, activePanel, editState, page, pdf, runSearch, search, searchResults, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeKind, activePanel, editState, page, pdf, runSearch, search, searchResults, selectedPages, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   if (loading) return <div className="flex h-full items-center justify-center gap-3 text-foreground"><Loader2 className="h-5 w-5 animate-spin text-primary" />Opening PDF…</div>;
   if (error || !pdf || !document) return <div className="flex h-full flex-col items-center justify-center gap-3"><FileText className="h-10 w-10 text-muted-foreground" /><p className="text-sm font-semibold text-foreground">Unable to open PDF</p><p className="max-w-md text-center text-xs text-foreground">{error}</p></div>;
@@ -341,7 +440,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-36 shrink-0 border-r border-border bg-muted/30 lg:block"><ScrollArea className="h-full p-2">{visiblePages.map((sourcePage, index) => <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} active={page === index + 1} onClick={() => setPage(index + 1)} />)}</ScrollArea></aside>
+        <aside className="hidden w-36 shrink-0 border-r border-border bg-muted/30 lg:block"><ScrollArea className="h-full p-2">{visiblePages.map((sourcePage, index) => <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} label={index + 1} rotation={editState.rotations[String(sourcePage)] ?? 0} active={page === index + 1} onClick={() => setPage(index + 1)} />)}</ScrollArea></aside>
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
             <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button></div>
