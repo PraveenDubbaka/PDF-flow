@@ -159,6 +159,14 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
       onMouseLeave={endDraw}
     >
       <canvas ref={canvasRef} className="block" />
+      {highlight && highlight.page === pageNumber && (
+        <div
+          ref={highlightRef}
+          key={highlight.id}
+          className="pointer-events-none absolute animate-pulse rounded-[2px] bg-warning/50 ring-2 ring-warning"
+          style={{ left: `${highlight.x}%`, top: `${highlight.y}%`, width: `${highlight.width}%`, height: `${highlight.height}%` }}
+        />
+      )}
       <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
         {annotations.filter((item) => item.kind === 'freehand' && item.points?.length).map((item) => (
           <polyline key={item.id} points={polyline(item.points!)} fill="none" stroke={item.color} strokeWidth={0.4} vectorEffect="non-scaling-stroke" />
