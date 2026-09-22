@@ -102,6 +102,7 @@ import { AuditASMImportBanner } from "@/components/AuditASMImportBanner";
 import { Audit506ImportBanner } from "@/components/Audit506ImportBanner";
 import { Audit525ImportBanner } from "@/components/Audit525ImportBanner";
 import { useSecondaryPanel } from "@/hooks/useSecondaryPanel";
+import { getPdfDocument } from "@/lib/pdfDocuments";
 import {
  generateClientAcceptanceContinuanceChecklist,
  generateIndependenceChecklist,
@@ -1001,8 +1002,9 @@ export default function EngagementDetail() {
  const navigate = useNavigate();
  const [searchParams] = useSearchParams();
  const { isCollapsed: isPanelCollapsed, toggle: togglePanel } = useSecondaryPanel();
- const [checklist, setChecklist] = useState<Checklist | null>(null);
- const [isLoading, setIsLoading] = useState(true);
+  const [checklist, setChecklist] = useState<Checklist | null>(null);
+  const [pdfDocName, setPdfDocName] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
  const [isCompactMode, setIsCompactMode] = useState(false);
  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
  const [objectiveExpanded, setObjectiveExpanded] = useState(false);
