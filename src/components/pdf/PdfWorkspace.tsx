@@ -115,16 +115,14 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
     if (!activeKind) { onSelect(null); return; }
     if (activeKind === 'freehand') return;
     const { x, y } = relative(event);
-    const isComment = activeKind === 'comment';
-    const label = isComment ? window.prompt('Comment')?.trim() : activeKind === 'text' ? window.prompt('Text')?.trim() : undefined;
-    if ((isComment || activeKind === 'text') && !label) return;
+    const isPoint = activeKind === 'comment' || activeKind === 'link';
     onAdd({
       id: crypto.randomUUID(), kind: activeKind, page: pageNumber, x, y,
-      width: isComment ? 4 : 18, height: isComment ? 4 : 5,
-      color: activeKind === 'comment' ? '#f59e0b' : activeKind === 'trial-balance' ? '#2563eb' : activeKind === 'redaction' ? '#111827' : color,
-      label,
+      width: isPoint ? 4 : 18, height: isPoint ? 4 : 5,
+      color: activeKind === 'comment' ? '#f59e0b' : activeKind === 'link' ? '#1C63A6' : activeKind === 'trial-balance' ? '#2563eb' : activeKind === 'redaction' ? '#111827' : color,
     });
   };
+
 
   const startDraw = (event: React.MouseEvent<HTMLDivElement>) => {
     if (activeKind !== 'freehand') return;
