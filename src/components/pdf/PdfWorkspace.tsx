@@ -317,6 +317,8 @@ function multiply(a: number[], b: number[]) {
 }
 
 export function PdfWorkspace({ documentId }: { documentId: string }) {
+  const navigate = useNavigate();
+  const { engagementId } = useParams<{ engagementId: string }>();
   const [document, setDocument] = useState<PdfDocumentRecord | null>(null);
   const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(null);
   const [sourceBytes, setSourceBytes] = useState<Uint8Array | null>(null);
