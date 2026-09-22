@@ -3,7 +3,30 @@ import type { Json } from '@/integrations/supabase/types';
 
 export const PDF_BUCKET = 'engagement-pdfs';
 
-export type PdfAnnotationKind = 'highlight' | 'underline' | 'strikeout' | 'freehand' | 'text' | 'rectangle' | 'circle' | 'arrow' | 'comment' | 'link' | 'trial-balance' | 'redaction' | 'image';
+export type PdfAnnotationKind = 'highlight' | 'underline' | 'strikeout' | 'freehand' | 'text' | 'rectangle' | 'circle' | 'arrow' | 'comment' | 'link' | 'trial-balance' | 'redaction' | 'image' | 'calculation';
+
+export interface PdfBookmark {
+  id: string;
+  title: string;
+  page: number;
+}
+
+export interface PdfCalculation {
+  id: string;
+  title: string;
+  page: number;
+  values: number[];
+  result: number;
+  color: string;
+}
+
+export interface PdfDocumentProperties {
+  title: string;
+  author: string;
+  subject: string;
+  keywords: string;
+  creator: string;
+}
 
 export interface PdfAnnotation {
   id: string;
@@ -23,6 +46,10 @@ export interface PdfEditState {
   annotations: PdfAnnotation[];
   pageOrder: number[];
   rotations: Record<string, number>;
+  bookmarks?: PdfBookmark[];
+  properties?: PdfDocumentProperties;
+  ocrText?: Record<string, string>;
+  calculations?: PdfCalculation[];
   watermark?: { text: string; opacity: number; rotation: number; applied: boolean };
   sanitize?: boolean;
   optimize?: boolean;
@@ -54,6 +81,10 @@ export const emptyPdfEditState = (): PdfEditState => ({
   annotations: [],
   pageOrder: [],
   rotations: {},
+  bookmarks: [],
+  properties: { title: '', author: '', subject: '', keywords: '', creator: '' },
+  ocrText: {},
+  calculations: [],
   security: {
     allowPrinting: true,
     allowExtraction: false,
