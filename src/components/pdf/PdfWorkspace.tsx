@@ -8,6 +8,7 @@ import {
 import * as pdfjs from 'pdfjs-dist';
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -991,7 +992,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <div className="mt-2 space-y-2">
             <Input type="password" placeholder="User password" value={userPassword} onChange={(event) => setUserPassword(event.target.value)} />
             <Input type="password" placeholder="Owner password" value={ownerPassword} onChange={(event) => setOwnerPassword(event.target.value)} />
-            {Object.entries(editState.security ?? {}).map(([key, checked]) => <label key={key} className="flex items-center gap-2 text-xs text-foreground"><input type="checkbox" checked={checked} onChange={(event) => setEditState((current) => ({ ...current, security: { ...(current.security ?? emptyPdfEditState().security), [key]: event.target.checked } as PdfEditState['security'] }))} />{key.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase())}</label>)}
+            {Object.entries(editState.security ?? {}).map(([key, checked]) => <label key={key} className="flex cursor-pointer items-center gap-2 text-xs text-foreground"><Checkbox checked={checked} onCheckedChange={(value) => setEditState((current) => ({ ...current, security: { ...(current.security ?? emptyPdfEditState().security), [key]: value === true } as PdfEditState['security'] }))} />{key.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase())}</label>)}
             <p className="text-[11px] text-foreground">Passwords and permissions are stored with this document and applied when the protected copy is generated on save.</p>
           </div>
         </div>
