@@ -166,7 +166,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
 
   return (
     <div
-      className={cn('relative bg-card border border-border', activeKind && 'cursor-crosshair')}
+      className={cn('relative shrink-0 overflow-hidden rounded-[4px] border border-border bg-card shadow-[0_2px_10px_hsl(220_30%_50%/0.12)]', activeKind && 'cursor-crosshair')}
       style={{ width: size.width, height: size.height }}
       onClick={addAtPoint}
       onMouseDown={startDraw}
