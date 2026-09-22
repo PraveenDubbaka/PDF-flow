@@ -289,7 +289,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       setProperties(state.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
       setUserPassword(state.passwords?.user ?? '');
       setOwnerPassword(state.passwords?.owner ?? '');
-    }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to open this PDF.')).finally(() => setLoading(false));
+    }).catch((reason) => { console.error('PDF open failed:', reason); setError(reason instanceof Error ? reason.message : 'Unable to open this PDF.'); }).finally(() => setLoading(false));
     return () => { if (currentUrl) URL.revokeObjectURL(currentUrl); };
   }, [documentId]);
 
