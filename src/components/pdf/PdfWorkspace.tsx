@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, BookOpen, Bookmark, Check, ChevronLeft, ChevronRight, Circle,
-  Download, ExternalLink, FileImage, FileText, Highlighter, Image, Link2, Loader2, LockKeyhole,
-  MessageSquare, MousePointer2, Pencil, Redo2, RotateCw, Save, Search, ShieldCheck, Square,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Check, ChevronLeft, ChevronRight, Circle,
+  Copy, Download, ExternalLink, FileImage, FileText, Highlighter, Image, Link2, Loader2, LockKeyhole,
+  MessageSquare, MousePointer2, Pencil, Redo2, RotateCcw, RotateCw, Save, Search, ShieldCheck, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, Undo2, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
@@ -187,6 +187,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.3);
   const [watermarkRotation, setWatermarkRotation] = useState(45);
+  const [selectedPages, setSelectedPages] = useState<number[]>([]);
 
   useEffect(() => {
     let currentUrl: string | null = null;
@@ -423,7 +424,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         <div className="border-t border-border pt-4"><p className="text-xs font-semibold text-foreground">SANITIZE & OPTIMIZE</p><p className="my-2 text-xs text-foreground">Remove embedded active content and compress the saved document.</p><div className="grid grid-cols-2 gap-2"><Button variant="secondary" onClick={() => toast.success('The document will be sanitized when saved.')}>Sanitize</Button><Button variant="secondary" onClick={() => toast.success('Object stream optimization is enabled for the next save.')}>Optimize</Button></div></div>
       </div>
     );
-  }, [activeKind, activePanel, editState, page, pdf, runSearch, search, searchResults, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeKind, activePanel, editState, page, pdf, runSearch, search, searchResults, selectedPages, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   if (loading) return <div className="flex h-full items-center justify-center gap-3 text-foreground"><Loader2 className="h-5 w-5 animate-spin text-primary" />Opening PDF…</div>;
   if (error || !pdf || !document) return <div className="flex h-full flex-col items-center justify-center gap-3"><FileText className="h-10 w-10 text-muted-foreground" /><p className="text-sm font-semibold text-foreground">Unable to open PDF</p><p className="max-w-md text-center text-xs text-foreground">{error}</p></div>;
