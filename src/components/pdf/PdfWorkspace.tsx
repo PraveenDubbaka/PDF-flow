@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronLeft, ChevronRight, Circle,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle,
   Copy, Download, ExternalLink, FileText, Highlighter, Image, Link2, Loader2, LockKeyhole,
   MessageSquare, MousePointer2, Pen, Pencil, Plus, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Sparkles, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, X, ZoomIn, ZoomOut,
@@ -23,6 +23,8 @@ import { toast } from 'sonner';
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
 type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'trial-balance' | 'comments' | 'redact' | 'security' | 'details' | 'ocr' | 'calculations' | 'luka';
+type TextItemLike = { str: string; width: number; height: number; transform: number[] };
+type SearchMatch = { id: string; page: number; snippet: string; x: number; y: number; width: number; height: number };
 const TOOLS: { id: ToolId; label: string; icon: React.ElementType }[] = [
   { id: 'pages', label: 'Pages', icon: BookOpen },
   { id: 'search', label: 'Search', icon: Search },
@@ -59,7 +61,7 @@ const hexToRgb = (hex: string) => {
   return rgb(((int >> 16) & 255) / 255, ((int >> 8) & 255) / 255, (int & 255) / 255);
 };
 
-function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId }: {
+function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight }: {
   pdf: pdfjs.PDFDocumentProxy;
   pageNumber: number;
   zoom: number;
@@ -70,10 +72,18 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   onAdd: (annotation: PdfAnnotation) => void;
   onSelect: (id: string | null) => void;
   selectedId: string | null;
+  highlight?: { id: string; page: number; x: number; y: number; width: number; height: number } | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 612, height: 792 });
   const [drawing, setDrawing] = useState<{ x: number; y: number }[] | null>(null);
+
+  useEffect(() => {
+    if (!highlight || highlight.page !== pageNumber) return;
+    const timer = window.setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
+    return () => window.clearTimeout(timer);
+  }, [highlight, pageNumber]);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,6 +161,14 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
       onMouseLeave={endDraw}
     >
       <canvas ref={canvasRef} className="block" />
+      {highlight && highlight.page === pageNumber && (
+        <div
+          ref={highlightRef}
+          key={highlight.id}
+          className="pointer-events-none absolute animate-pulse rounded-[2px] bg-warning/50 ring-2 ring-warning"
+          style={{ left: `${highlight.x}%`, top: `${highlight.y}%`, width: `${highlight.width}%`, height: `${highlight.height}%` }}
+        />
+      )}
       <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
         {annotations.filter((item) => item.kind === 'freehand' && item.points?.length).map((item) => (
           <polyline key={item.id} points={polyline(item.points!)} fill="none" stroke={item.color} strokeWidth={0.4} vectorEffect="non-scaling-stroke" />
@@ -246,8 +264,10 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [editState, setEditState] = useState<PdfEditState>(emptyPdfEditState());
   const [savedState, setSavedState] = useState<PdfEditState>(emptyPdfEditState());
   const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<number[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchMatch[]>([]);
   const [searchIndex, setSearchIndex] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [searchHighlight, setSearchHighlight] = useState<{ id: string; page: number; x: number; y: number; width: number; height: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.3);
@@ -388,25 +408,65 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     toast.success('Image placed on this page.');
   };
 
+  const goToMatch = useCallback((match: SearchMatch, index: number) => {
+    setSearchIndex(index);
+    const position = visiblePages.indexOf(match.page);
+    setPage(Math.max(1, position + 1));
+    setSearchHighlight({ id: `${match.id}-${Date.now()}`, page: match.page, x: match.x, y: match.y, width: match.width, height: match.height });
+  }, [visiblePages]);
+
   const runSearch = useCallback(async () => {
-    if (!pdf || !search.trim()) { setSearchResults([]); return; }
-    const matches: number[] = [];
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-      const content = await (await pdf.getPage(pageNumber)).getTextContent();
-      const text = content.items.map((item) => 'str' in item ? item.str : '').join(' ');
-      if (text.toLowerCase().includes(search.toLowerCase())) matches.push(pageNumber);
-    }
-    setSearchResults(matches);
-    setSearchIndex(0);
-    if (matches[0]) setPage(Math.max(1, visiblePages.indexOf(matches[0]) + 1));
-  }, [pdf, search, visiblePages]);
+    const query = search.trim();
+    if (!pdf || !query) { setSearchResults([]); setSearchHighlight(null); return; }
+    setSearching(true);
+    try {
+      const found: SearchMatch[] = [];
+      const needle = query.toLowerCase();
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const target = await pdf.getPage(pageNumber);
+        const viewport = target.getViewport({ scale: 1 });
+        const content = await target.getTextContent();
+        const pieces: { text: string; start: number; item: TextItemLike }[] = [];
+        let joined = '';
+        for (const raw of content.items) {
+          if (!('str' in raw)) continue;
+          const item = raw as unknown as TextItemLike;
+          pieces.push({ text: item.str, start: joined.length, item });
+          joined += `${item.str} `;
+        }
+        const haystack = joined.toLowerCase();
+        let from = 0;
+        for (;;) {
+          const at = haystack.indexOf(needle, from);
+          if (at === -1) break;
+          from = at + needle.length;
+          const piece = [...pieces].reverse().find((entry) => entry.start <= at);
+          const transform = piece?.item.transform ?? [1, 0, 0, 1, 0, 0];
+          const itemHeight = piece?.item.height || Math.hypot(transform[1], transform[3]) || 10;
+          const itemWidth = piece?.item.width || itemHeight * needle.length * 0.5;
+          found.push({
+            id: `${pageNumber}-${at}`,
+            page: pageNumber,
+            snippet: `…${joined.slice(Math.max(0, at - 60), at + needle.length + 60).trim()}…`,
+            x: Math.max(0, (transform[4] / viewport.width) * 100),
+            y: Math.max(0, ((viewport.height - transform[5] - itemHeight) / viewport.height) * 100),
+            width: Math.min(100, Math.max(1.5, (itemWidth / viewport.width) * 100)),
+            height: Math.max(1, (itemHeight * 1.25 / viewport.height) * 100),
+          });
+        }
+      }
+      setSearchResults(found);
+      setSearchIndex(0);
+      setSearchHighlight(null);
+      if (found[0]) goToMatch(found[0], 0);
+    } finally { setSearching(false); }
+  }, [goToMatch, pdf, search]);
 
   const jumpToMatch = useCallback((direction: 1 | -1) => {
     if (!searchResults.length) return;
     const next = (searchIndex + direction + searchResults.length) % searchResults.length;
-    setSearchIndex(next);
-    setPage(Math.max(1, visiblePages.indexOf(searchResults[next]) + 1));
-  }, [searchIndex, searchResults, visiblePages]);
+    goToMatch(searchResults[next], next);
+  }, [goToMatch, searchIndex, searchResults]);
 
   const extractPageText = useCallback(async (sourcePage = currentSourcePage) => {
     if (!pdf) return '';
@@ -708,15 +768,52 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     );
     if (activePanel === 'search') return (
       <div className="space-y-3">
-        <div className="flex gap-2"><Input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void runSearch()} placeholder="Search document text…" /><Button size="icon-sm" onClick={() => void runSearch()}><Search /></Button></div>
+        <div className="relative">
+          {searching
+            ? <Loader2 className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />
+            : <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground" />}
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && void runSearch()}
+            placeholder="Search document text…"
+            className="pl-8 pr-8"
+          />
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground"
+              onClick={() => { setSearch(''); setSearchResults([]); setSearchHighlight(null); }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
         <div className="flex items-center justify-between">
-          <p className="text-xs text-foreground">{search ? `${searchResults.length ? searchIndex + 1 : 0} of ${searchResults.length} matching page${searchResults.length === 1 ? '' : 's'}` : 'Search the document text to see matches here.'}</p>
+          <p className="text-xs text-foreground">{search ? `${searchResults.length ? searchIndex + 1 : 0} of ${searchResults.length}` : 'Search the document text to see matches here.'}</p>
           <div className="flex gap-1">
-            <Button variant="secondary" size="icon-sm" disabled={!searchResults.length} onClick={() => jumpToMatch(-1)} aria-label="Previous match"><ArrowLeft /></Button>
-            <Button variant="secondary" size="icon-sm" disabled={!searchResults.length} onClick={() => jumpToMatch(1)} aria-label="Next match"><ArrowRight /></Button>
+            <Button variant="ghost" size="icon-sm" disabled={!searchResults.length} onClick={() => jumpToMatch(-1)} aria-label="Previous match"><ChevronUp /></Button>
+            <Button variant="ghost" size="icon-sm" disabled={!searchResults.length} onClick={() => jumpToMatch(1)} aria-label="Next match"><ChevronDown /></Button>
           </div>
         </div>
-        {searchResults.map((result, index) => <Button key={result} variant={index === searchIndex ? 'default' : 'secondary'} size="sm" className="w-full justify-start" onClick={() => { setSearchIndex(index); setPage(Math.max(1, visiblePages.indexOf(result) + 1)); }}>Page {result}</Button>)}
+        <div className="space-y-2">
+          {searchResults.map((result, index) => (
+            <button
+              key={result.id}
+              type="button"
+              onClick={() => goToMatch(result, index)}
+              className={cn(
+                'w-full rounded-[8px] border bg-background p-2 text-left',
+                index === searchIndex ? 'border-primary bg-primary/5' : 'border-border',
+              )}
+            >
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><FileText className="h-3.5 w-3.5" />Page {result.page}</span>
+              <span className="mt-1 block text-[11px] leading-snug text-foreground">{result.snippet}</span>
+            </button>
+          ))}
+          {!!search && !searchResults.length && !searching && <p className="text-xs text-foreground">No matches found.</p>}
+        </div>
       </div>
     );
     if (activePanel === 'images') return (
@@ -823,7 +920,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
     );
-  }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, deleteAnnotation, detectedFonts, editState, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, page, pageImages, pdf, properties, runOcr, runSearch, search, searchIndex, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, page, pageImages, pdf, properties, runOcr, runSearch, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   if (loading) return <div className="flex h-full items-center justify-center gap-3 text-foreground"><Loader2 className="h-5 w-5 animate-spin text-primary" />Opening PDF…</div>;
   if (error || !pdf || !document) return <div className="flex h-full flex-col items-center justify-center gap-3"><FileText className="h-10 w-10 text-muted-foreground" /><p className="text-sm font-semibold text-foreground">Unable to open PDF</p><p className="max-w-md text-center text-xs text-foreground">{error}</p></div>;
@@ -846,7 +943,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button></div>
             <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(zoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto bg-muted/30 p-5"><div className="mx-auto w-fit"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} /></div></div>
+          <div className="min-h-0 flex-1 overflow-auto bg-muted/30 p-5"><div className="mx-auto w-fit"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} /></div></div>
         </section>
         {editing && <aside className="flex w-[340px] min-h-0 shrink-0 border-l border-border bg-card">
           <ScrollArea className="w-12 shrink-0 border-r border-border"><div className="flex min-h-full flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? (activePanel === 'luka' ? <LukaIcon size={22} bare /> : <LukaIcon size={22} />) : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
