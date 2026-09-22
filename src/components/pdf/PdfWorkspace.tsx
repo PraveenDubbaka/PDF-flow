@@ -283,7 +283,6 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.3);
   const [watermarkRotation, setWatermarkRotation] = useState(45);
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
-  const [pageImages, setPageImages] = useState<{ name: string; width: number; height: number }[]>([]);
   const [docImages, setDocImages] = useState<DocImage[]>([]);
   const [scanningImages, setScanningImages] = useState(false);
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
