@@ -29,6 +29,14 @@ export interface PdfDocumentProperties {
   creator: string;
 }
 
+export interface PdfCommentReply {
+  id: string;
+  author: string;
+  text: string;
+  createdAt: string;
+  mentions?: string[];
+}
+
 export interface PdfAnnotation {
   id: string;
   kind: PdfAnnotationKind;
@@ -41,6 +49,11 @@ export interface PdfAnnotation {
   label?: string;
   value?: string;
   points?: { x: number; y: number }[];
+  author?: string;
+  createdAt?: string;
+  mentions?: string[];
+  replies?: PdfCommentReply[];
+  resolved?: boolean;
 }
 
 export interface PdfEditState {
