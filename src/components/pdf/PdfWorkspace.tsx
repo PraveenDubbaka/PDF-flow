@@ -855,6 +855,20 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     } finally { setSaving(false); }
   };
 
+  const handleDeleteDocument = async () => {
+    if (!document || deleting) return;
+    setDeleting(true);
+    try {
+      await deletePdfDocument(document);
+      toast.success('PDF deleted.');
+      navigate(engagementId ? `/engagements/${engagementId}` : -1 as never);
+    } catch (reason) {
+      console.error('PDF delete failed:', reason);
+      toast.error(reason instanceof Error ? reason.message : 'Unable to delete this PDF.');
+:     setDeleting(false);
+    }
+  };
+
   const downloadPdf = async () => {
     const bytes = editing ? await createSavedBytes() : sourceBytes;
     if (!bytes || !document) return;
