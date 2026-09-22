@@ -1267,7 +1267,53 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     <div className="flex h-full min-h-0 flex-col bg-background">
       <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void handleImageFile(file); }} />
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
-        <div className="min-w-0 text-[10px] text-foreground">Version {document.current_version}</div>
+        <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className="-ml-2 gap-1.5 text-xs font-medium">
+              <History />
+              Version {document.current_version}
+              <ChevronDown className={cn('transition-transform', historyOpen && 'rotate-180')} />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-[380px] p-0">
+            <div className="border-b border-border px-3 py-2">
+              <p className="text-xs font-semibold text-foreground">History of changes</p>
+              <p className="text-[11px] text-foreground">{historyEntries.length} change{historyEntries.length === 1 ? '' : 's'} · click one to jump to it</p>
+            </div>
+            <ScrollArea className="max-h-[320px]">
+              <div className="p-2">
+                {historyEntries.length === 0 && <p className="px-2 py-6 text-center text-xs text-foreground">No changes yet.</p>}
+                {historyEntries.map((entry) => {
+                  const KindIcon = KIND_ICONS[entry.kind] ?? MousePointer2;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => goToHistoryEntry(entry)}
+                      className="flex w-full items-start gap-2.5 rounded-[8px] px-2 py-2 text-left hover:bg-muted"
+                    >
+                      <span
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                        style={{ backgroundColor: entry.color }}
+                      >
+                        {initialsOf(entry.author)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <KindIcon className="h-3 w-3 shrink-0" style={{ color: entry.color }} />
+                          <span className="truncate text-xs font-semibold text-foreground">{entry.title}</span>
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] text-foreground">
+                          {entry.author} · Page {entry.page} · {new Date(entry.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
         <div className="flex items-center gap-2">
           {editing ? <>
             <Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button>
