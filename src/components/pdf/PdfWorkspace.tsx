@@ -1338,7 +1338,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </section>
         {editing && <aside className="flex w-[340px] min-h-0 shrink-0 border-l border-border bg-card">
           <ScrollArea className="w-12 shrink-0 border-r border-border"><div className="flex min-h-full flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? (activePanel === 'luka' ? <LukaIcon size={22} bare /> : <LukaIcon size={22} />) : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
-          {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full flex-1"><div className="p-3">{panelContent}</div></ScrollArea>}
+          {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full min-w-0 flex-1"><div className="min-w-0 p-3">{panelContent}</div></ScrollArea>}
         </aside>}
       </div>
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
