@@ -409,6 +409,18 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
   }, []);
 
+  const confirmTrialBalanceAccount = useCallback((label: string) => {
+    setPendingAnnotation((pending) => {
+      if (pending) {
+        const annotation: PdfAnnotation = { ...pending, value: label, label };
+        setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+        setSelectedAnnotationId(annotation.id);
+      }
+      return null;
+    });
+    setPendingValue('');
+  }, []);
+
   const confirmPendingAnnotation = useCallback(() => {
     const value = pendingValue.trim();
     if (!pendingAnnotation || !value) return;
