@@ -110,8 +110,13 @@ export async function uploadEngagementPdf(file: File, engagementId: string, node
 }
 
 export async function getPdfDocument(documentId: string) {
-  const { data, error } = await supabase.from('engagement_pdf_documents').select('*').eq('id', documentId).single();
+  if (!UUID_PATTERN.test(documentId)) {
+    throw new Error('This file was added before secure storage was set up, so its contents are not stored. Please upload the PDF again.');
+  }
+  await requireUser();
+  const { data, error } = await supabase.from('engagement_pdf_documents').select('*').eq('id', documentId).maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error('This PDF is no longer available. Please upload it again.');
   return data as unknown as PdfDocumentRecord;
 }
 
