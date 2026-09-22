@@ -1,0 +1,28 @@
+export function FinancialStatementsIcon({ className }: { className?: string }) {
+ return (
+ <svg
+ xmlns="http://www.w3.org/2000/svg"
+ width="14"
+ height="16"
+ viewBox="0 0 14 16"
+ fill="none"
+ className={className}
+ >
+ {/* Document outline — same base as ReportIcon */}
+ <path
+ d="M12.3332 4.53301V11.4663C12.3332 12.5864 12.3332 13.1465 12.1152 13.5743C11.9234 13.9506 11.6175 14.2566 11.2412 14.4484C10.8133 14.6663 10.2533 14.6663 9.13317 14.6663H4.8665C3.7464 14.6663 3.18635 14.6663 2.75852 14.4484C2.3822 14.2566 2.07624 13.9506 1.88449 13.5743C1.6665 13.1465 1.6665 12.5864 1.6665 11.4663V4.53301C1.6665 3.4129 1.6665 2.85285 1.88449 2.42503C2.07624 2.0487 2.3822 1.74274 2.75852 1.55099C3.18635 1.33301 3.7464 1.33301 4.8665 1.33301H9.13317C10.2533 1.33301 10.8133 1.33301 11.2412 1.55099C11.6175 1.74274 11.9234 2.0487 12.1152 2.42503C12.3332 2.85285 12.3332 3.4129 12.3332 4.53301Z"
+ stroke="currentColor"
+ strokeWidth="1.5"
+ strokeLinecap="round"
+ strokeLinejoin="round"
+ />
+ {/* Two-column financial data rows: label (left) | amount (right) + subtotal separator + total */}
+ <path
+ d="M3.5 5H7.5M9.5 5H11M3.5 7H7M9.5 7H11M3.5 9H7.5M9.5 9H11M3.5 10.5H11M3.5 12.5H7.5M9.5 12.5H11"
+ stroke="currentColor"
+ strokeWidth="1"
+ strokeLinecap="round"
+ />
+ </svg>
+ );
+}

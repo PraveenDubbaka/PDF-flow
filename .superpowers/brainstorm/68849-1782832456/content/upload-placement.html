@@ -1,0 +1,86 @@
+<h2>Where should the prior year file upload appear?</h2>
+<p class="subtitle">When the user selects "No — prior files exist", where does the upload show up?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#f8fafc;border-radius:8px;font-size:12px;font-family:sans-serif">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
+          <div style="background:#f1f5f9;border-radius:4px;padding:6px 8px;font-size:11px;color:#64748b">Accounting Framework</div>
+          <div style="background:#f1f5f9;border-radius:4px;padding:6px 8px;font-size:11px;color:#64748b">First-Year Audit? <span style="color:#0f172a;font-weight:600">Yes</span></div>
+          <div style="background:#dbeafe;border:1px solid #93c5fd;border-radius:4px;padding:6px 8px;font-size:11px;color:#1e40af;font-weight:600">First audit on this platform? <span style="display:block;color:#0f172a">No — prior files exist</span></div>
+          <div style="background:#f1f5f9;border-radius:4px;padding:6px 8px;font-size:11px;color:#64748b">Is this a roll-forward? <span style="color:#0f172a;font-weight:600">Yes</span></div>
+        </div>
+        <div style="border:2px dashed #93c5fd;border-radius:8px;padding:16px;text-align:center;background:#eff6ff">
+          <div style="font-size:18px;margin-bottom:4px">📄</div>
+          <div style="font-weight:600;color:#1e40af;font-size:12px">Upload prior year audit file (PDF)</div>
+          <div style="color:#64748b;font-size:11px;margin-top:2px">Drag and drop or click to browse</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Inline in the wizard form</h3>
+      <p>Drop zone appears immediately after selecting "prior files exist". Luka processes it before the user clicks Create. Completion confirmation happens in the same flow.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#f8fafc;border-radius:8px;font-size:12px;font-family:sans-serif">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
+          <div style="background:#f1f5f9;border-radius:4px;padding:6px 8px;font-size:11px;color:#64748b">Accounting Framework</div>
+          <div style="background:#f1f5f9;border-radius:4px;padding:6px 8px;font-size:11px;color:#64748b">First-Year Audit? <span style="color:#0f172a;font-weight:600">Yes</span></div>
+          <div style="background:#f1f5f9;border-radius:4px;padding:6px 8px;font-size:11px;color:#64748b">First audit on this platform? <span style="color:#0f172a;font-weight:600">No — prior files exist</span></div>
+          <div style="background:#f1f5f9;border-radius:4px;padding:6px 8px;font-size:11px;color:#64748b">Is this a roll-forward? <span style="color:#0f172a;font-weight:600">Yes</span></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end">
+          <div style="background:#3b82f6;color:#fff;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:600">Create Engagement →</div>
+        </div>
+        <!-- Simulated modal overlay -->
+        <div style="background:rgba(0,0,0,0.04);border-radius:8px;border:1px solid #e2e8f0;padding:12px;margin-top:2px">
+          <div style="font-weight:700;color:#0f172a;font-size:12px;margin-bottom:6px">📁 Import Prior Year Files</div>
+          <div style="border:2px dashed #93c5fd;border-radius:8px;padding:12px;text-align:center;background:#eff6ff">
+            <div style="font-size:14px;margin-bottom:2px">📄</div>
+            <div style="font-weight:600;color:#1e40af;font-size:11px">Upload prior year audit file (PDF)</div>
+          </div>
+          <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
+            <div style="background:#f1f5f9;border-radius:4px;padding:4px 10px;font-size:10px;color:#64748b">Skip for now</div>
+            <div style="background:#3b82f6;color:#fff;border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600">Import</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Dialog after clicking Create</h3>
+      <p>User fills the form and clicks Create. A "Prior Year Files" dialog immediately opens. They can import or skip. Luka processes it while the engagement loads.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#f8fafc;border-radius:8px;font-size:12px;font-family:sans-serif">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;gap:4px;margin-bottom:4px">
+          <div style="background:#f1f5f9;border-radius:4px;padding:3px 8px;font-size:10px;color:#64748b">1 Client Info</div>
+          <div style="background:#f1f5f9;border-radius:4px;padding:3px 8px;font-size:10px;color:#64748b">2 Engagement Details</div>
+          <div style="background:#f1f5f9;border-radius:4px;padding:3px 8px;font-size:10px;color:#64748b">3 Audit Config</div>
+          <div style="background:#3b82f6;border-radius:4px;padding:3px 8px;font-size:10px;color:#fff;font-weight:600">4 Prior Year</div>
+        </div>
+        <div style="border:2px dashed #93c5fd;border-radius:8px;padding:20px;text-align:center;background:#eff6ff">
+          <div style="font-size:20px;margin-bottom:4px">📄</div>
+          <div style="font-weight:600;color:#1e40af;font-size:12px">Upload prior year audit file (PDF)</div>
+          <div style="color:#64748b;font-size:11px;margin-top:2px">Drag and drop or click to browse</div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:6px">
+          <div style="background:#f1f5f9;border-radius:4px;padding:4px 10px;font-size:10px;color:#64748b">← Back</div>
+          <div style="background:#3b82f6;color:#fff;border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600">Next →</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Dedicated wizard step</h3>
+      <p>The create-engagement wizard adds a "Prior Year" step (step 4). Feels most structured but adds friction to users who want to skip or who don't have the file handy.</p>
+    </div>
+  </div>
+
+</div>
