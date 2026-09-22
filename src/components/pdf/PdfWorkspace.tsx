@@ -213,7 +213,14 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           }}
           title={annotation.kind === 'link' ? annotation.value ?? annotation.label : annotation.label}
         >
-          {annotation.kind === 'comment' && <MessageSquare className="h-3 w-3" />}
+          {annotation.kind === 'comment' && (
+            <>
+              <MessageSquare className="h-3 w-3" />
+              {!!annotation.replies?.length && (
+                <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground">{annotation.replies.length}</span>
+              )}
+            </>
+          )}
           {annotation.kind === 'link' && (
             <>
               <Link2 className="h-3 w-3 shrink-0" style={{ color: annotation.color }} />
@@ -230,7 +237,20 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           {(annotation.kind === 'text' || annotation.kind === 'calculation') && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
         </div>
       ))}
-
+      {selectedComment && onUpdate && (
+        <div
+          className="absolute z-40"
+          style={{ left: `${Math.min(Math.max(selectedComment.x + 3, 0), 55)}%`, top: `${Math.min(Math.max(selectedComment.y - 1, 0), 85)}%` }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <PdfCommentNote
+            annotation={selectedComment}
+            onChange={(changes) => onUpdate(selectedComment.id, changes)}
+            onDelete={() => { onDelete?.(selectedComment.id); onSelect(null); }}
+            onClose={() => onSelect(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }
