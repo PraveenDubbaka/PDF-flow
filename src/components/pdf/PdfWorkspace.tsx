@@ -22,6 +22,8 @@ import {
   PdfDocumentRecord, PdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
 import { trialBalanceAccounts } from '@/data/trialBalanceAccounts';
+import { PdfCommentNote, MentionText } from '@/components/pdf/PdfCommentNote';
+import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
@@ -65,7 +67,7 @@ const hexToRgb = (hex: string) => {
   return rgb(((int >> 16) & 255) / 255, ((int >> 8) & 255) / 255, (int & 255) / 255);
 };
 
-function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight }: {
+function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete }: {
   pdf: pdfjs.PDFDocumentProxy;
   pageNumber: number;
   zoom: number;
@@ -77,7 +79,10 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   onSelect: (id: string | null) => void;
   selectedId: string | null;
   highlight?: { id: string; page: number; x: number; y: number; width: number; height: number } | null;
+  onUpdate?: (id: string, changes: Partial<PdfAnnotation>) => void;
+  onDelete?: (id: string) => void;
 }) {
+  const selectedComment = annotations.find((item) => item.id === selectedId && item.kind === 'comment');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 612, height: 792 });
