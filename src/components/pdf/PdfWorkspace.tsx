@@ -425,7 +425,20 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   }, []);
 
   const addAnnotation = useCallback((annotation: PdfAnnotation) => {
-    const needsValue = (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'comment' || annotation.kind === 'text') && !annotation.label && !annotation.value;
+    if (annotation.kind === 'comment') {
+      const note: PdfAnnotation = {
+        ...annotation,
+        author: annotation.author ?? currentMentionUser.name,
+        createdAt: annotation.createdAt ?? new Date().toISOString(),
+        mentions: annotation.mentions ?? [],
+        replies: annotation.replies ?? [],
+      };
+      setEditState((current) => ({ ...current, annotations: [...current.annotations, note] }));
+      setSelectedAnnotationId(note.id);
+      setActiveKind(null);
+      return;
+    }
+    const needsValue = (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'text') && !annotation.label && !annotation.value;
     if (needsValue) {
       setPendingAnnotation(annotation);
       setPendingValue('');
