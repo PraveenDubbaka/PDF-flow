@@ -3,7 +3,7 @@ import type { Json } from '@/integrations/supabase/types';
 
 export const PDF_BUCKET = 'engagement-pdfs';
 
-export type PdfAnnotationKind = 'highlight' | 'underline' | 'strikeout' | 'freehand' | 'text' | 'rectangle' | 'circle' | 'arrow' | 'comment' | 'link' | 'trial-balance' | 'redaction';
+export type PdfAnnotationKind = 'highlight' | 'underline' | 'strikeout' | 'freehand' | 'text' | 'rectangle' | 'circle' | 'arrow' | 'comment' | 'link' | 'trial-balance' | 'redaction' | 'image';
 
 export interface PdfAnnotation {
   id: string;
@@ -16,6 +16,7 @@ export interface PdfAnnotation {
   color: string;
   label?: string;
   value?: string;
+  points?: { x: number; y: number }[];
 }
 
 export interface PdfEditState {
@@ -23,6 +24,9 @@ export interface PdfEditState {
   pageOrder: number[];
   rotations: Record<string, number>;
   watermark?: { text: string; opacity: number; rotation: number; applied: boolean };
+  sanitize?: boolean;
+  optimize?: boolean;
+  passwords?: { user: string; owner: string };
   security?: {
     allowPrinting: boolean;
     allowExtraction: boolean;
