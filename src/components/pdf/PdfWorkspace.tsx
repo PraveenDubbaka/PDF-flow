@@ -1135,6 +1135,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               {pendingAnnotation?.kind === 'link' ? 'Add link' : 'Add'}
             </Button>
           </DialogFooter>
+          </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
@@ -1145,7 +1147,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
 const KIND_ICONS: Record<string, React.ElementType> = {
   highlight: Highlighter, underline: Underline, strikeout: Strikethrough, freehand: Pen,
   text: TextCursorInput, rectangle: Square, circle: Circle, arrow: ArrowRight,
-  comment: MessageSquare, link: Link2, 'trial-balance': BookOpen, redaction: Square,
+  comment: MessageSquare, link: Link2, 'trial-balance': Landmark, redaction: Square,
   image: Image, calculation: Calculator,
 };
 
