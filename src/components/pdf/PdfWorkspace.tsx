@@ -1075,9 +1075,53 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              {pendingAnnotation?.kind === 'link' ? 'Link to web URL' : pendingAnnotation?.kind === 'trial-balance' ? 'Trial balance account' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
+              {pendingAnnotation?.kind === 'link' ? 'Link to web URL' : pendingAnnotation?.kind === 'trial-balance' ? 'Link to Trial Balance' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
             </DialogTitle>
           </DialogHeader>
+          {pendingAnnotation?.kind === 'trial-balance' ? (
+            <div className="space-y-2">
+              <Input
+                autoFocus
+                value={pendingValue}
+                placeholder="Search account no. or description"
+                onChange={(event) => setPendingValue(event.target.value)}
+              />
+              <div className="max-h-72 overflow-auto rounded-[8px] border border-border">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-muted">
+                    <tr className="text-left text-foreground">
+                      <th className="px-2 py-1.5 font-semibold">Acc No.</th>
+                      <th className="px-2 py-1.5 font-semibold">Description</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trialBalanceAccounts
+                      .filter((account) => {
+                        const query = pendingValue.trim().toLowerCase();
+                        if (!query) return true;
+                        return account.accNo.toLowerCase().includes(query) || account.description.toLowerCase().includes(query);
+                      })
+                      .map((account) => (
+                        <tr
+                          key={account.accNo + account.description}
+                          className="cursor-pointer border-t border-border hover:bg-muted/60"
+                          onClick={() => confirmTrialBalanceAccount(`${account.accNo} ${account.description}`)}
+                        >
+                          <td className="px-2 py-1.5 text-foreground">{account.accNo}</td>
+                          <td className="px-2 py-1.5 text-foreground">{account.description}</td>
+                          <td className="px-2 py-1.5 text-right text-foreground">{account.balance.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => { setPendingAnnotation(null); setPendingValue(''); }}>Cancel</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+          <>
           <Input
             autoFocus
             value={pendingValue}
