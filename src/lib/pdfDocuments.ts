@@ -17,6 +17,7 @@ export interface PdfCalculation {
   page: number;
   values: number[];
   operators?: ('+' | '-' | '×' | '÷')[];
+  comments?: string[];
   result: number;
   color: string;
 }
