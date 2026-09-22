@@ -352,7 +352,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [ocrRunning, setOcrRunning] = useState(false);
   const [calcTitle, setCalcTitle] = useState('');
   const [calcColor, setCalcColor] = useState(COLORS[0]);
-  const [calcRows, setCalcRows] = useState<{ value: string; operator: '+' | '-' | '×' | '÷' }[]>([{ value: '', operator: '+' }]);
+  const [calcRows, setCalcRows] = useState<{ value: string; operator: '+' | '-' | '×' | '÷'; comment: string }[]>([{ value: '', operator: '+', comment: '' }]);
+  const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
   const [lukaQuestion, setLukaQuestion] = useState('');
   const [lukaAnswer, setLukaAnswer] = useState('');
   const [lukaLoading, setLukaLoading] = useState(false);
