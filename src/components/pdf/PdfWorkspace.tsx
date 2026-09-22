@@ -456,7 +456,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       setPendingValue('');
       return;
     }
-    setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+    const stamped: PdfAnnotation = {
+      ...annotation,
+      author: annotation.author ?? currentMentionUser.name,
+      createdAt: annotation.createdAt ?? new Date().toISOString(),
+    };
+    setEditState((current) => ({ ...current, annotations: [...current.annotations, stamped] }));
   }, []);
 
   const confirmTrialBalanceAccount = useCallback((label: string) => {
