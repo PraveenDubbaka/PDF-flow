@@ -676,30 +676,68 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     } finally { setOcrRunning(false); }
   }, [document?.name, extractPageText, pdf, renderPageImage, visiblePages]);
 
-  const calculationResult = useMemo(() => calcRows.reduce((result, row, index) => {
-    const value = Number(row.value) || 0;
-    if (index === 0) return value;
-    if (row.operator === '-') return result - value;
-    if (row.operator === '×') return result * value;
-    if (row.operator === '÷') return value === 0 ? result : result / value;
-    return result + value;
-  }, 0), [calcRows]);
+  const calculationResult = useMemo(() => {
+    const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
+    if (rows.length === 0) return 0;
+    // Multiplication and division bind tighter than addition and subtraction.
+    const terms: number[] = [Number(rows[0].value) || 0];
+    for (let index = 1; index < rows.length; index += 1) {
+      const value = Number(rows[index].value) || 0;
+      const operator = rows[index].operator;
+      if (operator === '×') terms[terms.length - 1] *= value;
+      else if (operator === '÷') terms[terms.length - 1] = value === 0 ? terms[terms.length - 1] : terms[terms.length - 1] / value;
+      else terms.push(operator === '-' ? -value : value);
+    }
+    const total = terms.reduce((sum, term) => sum + term, 0);
+    return Number.isFinite(total) ? Math.round(total * 100) / 100 : 0;
+  }, [calcRows]);
+
+  const resetCalculator = useCallback(() => {
+    setEditingCalcId(null);
+    setCalcTitle('');
+    setCalcRows([{ value: '', operator: '+', comment: '' }]);
+  }, []);
+
+  const startEditCalculation = useCallback((calculation: PdfCalculation) => {
+    setEditingCalcId(calculation.id);
+    setCalcTitle(calculation.title);
+    setCalcColor(calculation.color);
+    setCalcRows(calculation.values.map((value, index) => ({
+      value: String(value),
+      operator: calculation.operators?.[index] ?? '+',
+      comment: calculation.comments?.[index] ?? '',
+    })));
+  }, []);
 
   const addCalculation = useCallback(() => {
-    const calculation: PdfCalculation = {
-      id: crypto.randomUUID(), title: calcTitle.trim() || 'Calculation', page: currentSourcePage,
-      values: calcRows.map((row) => Number(row.value) || 0), operators: calcRows.map((row) => row.operator),
-      result: calculationResult, color: calcColor,
+    const title = calcTitle.trim() || 'Calculation';
+    const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
+    const base = {
+      title,
+      values: rows.map((row) => Number(row.value) || 0),
+      operators: rows.map((row) => row.operator),
+      comments: rows.map((row) => row.comment),
+      result: calculationResult,
+      color: calcColor,
     };
-    setEditState((current) => ({
-      ...current,
-      calculations: [...(current.calculations ?? []), calculation],
-      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: currentSourcePage, x: 30, y: 30, width: 25, height: 6, color: calcColor, label: `${calculation.title}: ${calculationResult}` }],
-    }));
-    setCalcTitle('');
-    setCalcRows([{ value: '', operator: '+' }]);
-    toast.success('Calculation added to the document.');
-  }, [calcColor, calcRows, calcTitle, calculationResult, currentSourcePage]);
+    if (editingCalcId) {
+      setEditState((current) => ({
+        ...current,
+        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, ...base } : item),
+        annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${calculationResult}` } : item),
+      }));
+      toast.success('Calculation updated.');
+    } else {
+      const calculation: PdfCalculation = { id: crypto.randomUUID(), page: currentSourcePage, ...base };
+      setEditState((current) => ({
+        ...current,
+        calculations: [...(current.calculations ?? []), calculation],
+        annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: currentSourcePage, x: 30, y: 30, width: 25, height: 6, color: calcColor, label: `${title}: ${calculationResult}` }],
+      }));
+      toast.success('Calculation added to the document.');
+    }
+    resetCalculator();
+  }, [calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, editingCalcId, resetCalculator]);
 
   const askLuka = useCallback(async (question: string) => {
     const prompt = question.trim();
