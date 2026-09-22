@@ -70,7 +70,7 @@ function CanvasPage({ pdf, pageNumber, zoom, annotations, activeKind, onAdd }: {
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
       setSize({ width: viewport.width, height: viewport.height });
-      task = page.render({ canvasContext: context, viewport });
+      task = page.render({ canvas, canvasContext: context, viewport });
       return task.promise;
     }).catch(() => undefined);
     return () => { cancelled = true; task?.cancel(); };
@@ -133,7 +133,7 @@ function Thumbnail({ pdf, pageNumber, active, onClick }: { pdf: pdfjs.PDFDocumen
       const viewport = page.getViewport({ scale: 0.22 });
       canvas.width = viewport.width;
       canvas.height = viewport.height;
-      task = page.render({ canvasContext: context, viewport });
+      task = page.render({ canvas, canvasContext: context, viewport });
       return task.promise;
     }).catch(() => undefined);
     return () => task?.cancel();

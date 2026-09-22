@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 
 export const PDF_BUCKET = 'engagement-pdfs';
 
@@ -85,8 +86,8 @@ export async function uploadEngagementPdf(file: File, engagementId: string, node
     mime_type: file.type || 'application/pdf',
     size_bytes: file.size,
     storage_path: storagePath,
-    edit_state: editState,
-  }).select().single();
+    edit_state: editState as unknown as Json,
+  } as never).select().single();
 
   if (error) {
     await supabase.storage.from(PDF_BUCKET).remove([storagePath]);
@@ -98,8 +99,8 @@ export async function uploadEngagementPdf(file: File, engagementId: string, node
     owner_id: user.id,
     version_number: 1,
     storage_path: storagePath,
-    edit_state: editState,
-  });
+    edit_state: editState as unknown as Json,
+  } as never);
   if (versionError) throw versionError;
   return data as unknown as PdfDocumentRecord;
 }
@@ -132,16 +133,16 @@ export async function savePdfVersion(document: PdfDocumentRecord, bytes: Uint8Ar
     owner_id: user.id,
     version_number: nextVersion,
     storage_path: storagePath,
-    edit_state: editState,
-  });
+    edit_state: editState as unknown as Json,
+  } as never);
   if (versionError) throw versionError;
 
   const { data, error } = await supabase.from('engagement_pdf_documents').update({
     storage_path: storagePath,
     current_version: nextVersion,
-    edit_state: editState,
+    edit_state: editState as unknown as Json,
     updated_at: new Date().toISOString(),
-  }).eq('id', document.id).select().single();
+  } as never).eq('id', document.id).select().single();
   if (error) throw error;
   return data as unknown as PdfDocumentRecord;
 }
