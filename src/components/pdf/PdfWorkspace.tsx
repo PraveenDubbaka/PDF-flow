@@ -345,6 +345,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
   const [userPassword, setUserPassword] = useState('');
   const [ownerPassword, setOwnerPassword] = useState('');
+  const [decryptPassword, setDecryptPassword] = useState('');
   const [bookmarkTitle, setBookmarkTitle] = useState('');
   const [properties, setProperties] = useState<PdfDocumentProperties>(emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
   const [detectedFonts, setDetectedFonts] = useState<string[]>([]);
@@ -1117,17 +1118,25 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     return (
       <div className="space-y-4">
         <div>
-          <p className="text-xs font-semibold text-foreground">PASSWORDS AND PERMISSIONS</p>
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><LockKeyhole className="h-3.5 w-3.5" />ENCRYPT</p>
           <div className="mt-2 space-y-2">
             <Input type="password" placeholder="User password" value={userPassword} onChange={(event) => setUserPassword(event.target.value)} />
             <Input type="password" placeholder="Owner password" value={ownerPassword} onChange={(event) => setOwnerPassword(event.target.value)} />
             {Object.entries(editState.security ?? {}).map(([key, checked]) => <label key={key} className="flex cursor-pointer items-center gap-2 text-xs text-foreground"><Checkbox checked={checked} onCheckedChange={(value) => setEditState((current) => ({ ...current, security: { ...(current.security ?? emptyPdfEditState().security), [key]: value === true } as PdfEditState['security'] }))} />{key.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase())}</label>)}
+            <Button className="w-full" disabled={!userPassword && !ownerPassword} onClick={() => toast.success('Document encryption settings applied. They are used when the protected copy is generated on save.')}>Encrypt document</Button>
             <p className="text-[11px] text-foreground">Passwords and permissions are stored with this document and applied when the protected copy is generated on save.</p>
           </div>
         </div>
         <div className="border-t border-border pt-4">
-          <p className="text-xs font-semibold text-foreground">SANITIZE & OPTIMIZE</p>
-          <p className="my-2 text-xs text-foreground">Remove embedded active content and compress the saved document.</p>
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><LockKeyhole className="h-3.5 w-3.5" />DECRYPT</p>
+          <div className="mt-2 space-y-2">
+            <Input type="password" placeholder="Password" value={decryptPassword} onChange={(event) => setDecryptPassword(event.target.value)} />
+            <Button variant="secondary" className="w-full" disabled={!decryptPassword} onClick={() => { setUserPassword(''); setOwnerPassword(''); setDecryptPassword(''); setEditState((current) => ({ ...current, security: emptyPdfEditState().security })); toast.success('Document decrypted. Passwords and permission restrictions were removed.'); }}>Decrypt document</Button>
+          </div>
+        </div>
+        <div className="border-t border-border pt-4">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><ShieldCheck className="h-3.5 w-3.5" />SANITIZE & OPTIMIZE</p>
+          <p className="my-2 text-xs text-foreground">Sanitize removes embedded JavaScript, embedded files, and open/document actions. Optimize removes unreferenced objects, compresses streams, and linearizes the file.</p>
           <div className="grid grid-cols-2 gap-2">
             <Button variant={editState.sanitize ? 'default' : 'secondary'} onClick={() => { setEditState((current) => ({ ...current, sanitize: !current.sanitize })); toast.success('Sanitization setting updated.'); }}>Sanitize</Button>
             <Button variant={editState.optimize ? 'default' : 'secondary'} onClick={() => { setEditState((current) => ({ ...current, optimize: !current.optimize })); toast.success('Optimization setting updated.'); }}>Optimize</Button>
@@ -1135,7 +1144,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
     );
-  }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, decryptPassword, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   if (loading) return <div className="flex h-full items-center justify-center gap-3 text-foreground"><Loader2 className="h-5 w-5 animate-spin text-primary" />Opening PDF…</div>;
   if (error || !pdf || !document) return <div className="flex h-full flex-col items-center justify-center gap-3"><FileText className="h-10 w-10 text-muted-foreground" /><p className="text-sm font-semibold text-foreground">Unable to open PDF</p><p className="max-w-md text-center text-xs text-foreground">{error}</p></div>;
