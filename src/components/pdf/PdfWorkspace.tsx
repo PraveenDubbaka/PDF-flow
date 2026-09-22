@@ -454,6 +454,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (!sourceBytes) throw new Error('The source PDF is unavailable.');
     const source = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
     const output = await PDFDocument.create();
+    const metadata = editState.properties ?? properties;
+    if (metadata.title) output.setTitle(metadata.title);
+    if (metadata.author) output.setAuthor(metadata.author);
+    if (metadata.subject) output.setSubject(metadata.subject);
+    if (metadata.keywords) output.setKeywords(metadata.keywords.split(',').map((item) => item.trim()).filter(Boolean));
+    if (metadata.creator) output.setCreator(metadata.creator);
     const sourceIndices = visiblePages.map((sourcePage) => sourcePage - 1);
     const copied = await output.copyPages(source, sourceIndices);
     const font = await output.embedFont(StandardFonts.HelveticaBold);
@@ -504,7 +510,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               color, thickness: 1.5,
             });
           }
-        } else if ((item.kind === 'text' || item.kind === 'comment' || item.kind === 'link' || item.kind === 'trial-balance') && (item.label || item.value)) {
+        } else if ((item.kind === 'text' || item.kind === 'comment' || item.kind === 'link' || item.kind === 'trial-balance' || item.kind === 'calculation') && (item.label || item.value)) {
           copiedPage.drawText(String(item.label ?? item.value), { x, y: y + boxHeight / 2, size: 10, font, color });
         } else if (item.kind === 'image' && item.value) {
           const bytes = Uint8Array.from(atob(item.value.split(',')[1] ?? ''), (character) => character.charCodeAt(0));
@@ -712,6 +718,46 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         <div className="border-t border-border pt-4 space-y-2"><p className="text-xs font-semibold text-foreground">WATERMARK</p><Input value={watermarkText} onChange={(event) => setWatermarkText(event.target.value)} /><div className="grid grid-cols-2 gap-2"><Input type="number" min="0.1" max="1" step="0.1" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /><Input type="number" value={watermarkRotation} onChange={(event) => setWatermarkRotation(Number(event.target.value))} /></div><Button className="w-full" onClick={() => setEditState((current) => ({ ...current, watermark: { text: watermarkText, opacity: watermarkOpacity, rotation: watermarkRotation, applied: true } }))}><Save />Apply to all pages</Button>{editState.watermark?.applied && <Button variant="secondary" className="w-full" onClick={() => setEditState((current) => ({ ...current, watermark: undefined }))}>Remove watermark</Button>}</div>
       </div>
     );
+    if (activePanel === 'details') return (
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold text-foreground">BOOKMARKS</p>
+          <div className="mt-2 flex gap-2"><Input value={bookmarkTitle} onChange={(event) => setBookmarkTitle(event.target.value)} placeholder="Bookmark title" /><Input className="w-16" type="number" min={1} max={visiblePages.length} value={page} readOnly /><Button size="icon-sm" disabled={!bookmarkTitle.trim()} onClick={() => { setEditState((current) => ({ ...current, bookmarks: [...(current.bookmarks ?? []), { id: crypto.randomUUID(), title: bookmarkTitle.trim(), page }] })); setBookmarkTitle(''); }} aria-label="Add bookmark"><Plus /></Button></div>
+          <div className="mt-2 space-y-2">{(editState.bookmarks ?? []).length === 0 && <p className="text-xs text-foreground">No bookmarks yet.</p>}{(editState.bookmarks ?? []).map((bookmark) => <div key={bookmark.id} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-2 py-2"><Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start truncate" onClick={() => setPage(Math.min(visiblePages.length, Math.max(1, bookmark.page)))}>{bookmark.title} · p.{bookmark.page}</Button><Button variant="ghost" size="icon-sm" aria-label="Delete bookmark" onClick={() => setEditState((current) => ({ ...current, bookmarks: (current.bookmarks ?? []).filter((item) => item.id !== bookmark.id) }))}><Trash2 /></Button></div>)}</div>
+        </div>
+        <div className="space-y-2 border-t border-border pt-4">
+          <p className="text-xs font-semibold text-foreground">DOCUMENT PROPERTIES</p>
+          {(['title', 'author', 'subject', 'keywords', 'creator'] as const).map((key) => <Input key={key} value={properties[key]} onChange={(event) => setProperties((current) => ({ ...current, [key]: event.target.value }))} placeholder={key.charAt(0).toUpperCase() + key.slice(1)} />)}
+          <Button className="w-full" onClick={() => { setEditState((current) => ({ ...current, properties })); toast.success('Document properties updated.'); }}>Save properties</Button>
+        </div>
+        <div className="border-t border-border pt-4"><p className="text-xs font-semibold text-foreground">FONTS ON THIS PAGE</p><div className="mt-2 space-y-1">{detectedFonts.length ? detectedFonts.map((font) => <p key={font} className="truncate text-xs text-foreground">{font}</p>) : <p className="text-xs text-foreground">No font names detected.</p>}</div></div>
+      </div>
+    );
+    if (activePanel === 'ocr') return (
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-foreground">OCR</p>
+        <p className="text-xs text-foreground">Recognizes text across the document and makes it available for search and Ask Luka.</p>
+        <Button className="w-full" disabled={ocrRunning} onClick={() => void runOcr()}>{ocrRunning ? <Loader2 className="animate-spin" /> : <ScanText />}Make document searchable</Button>
+        <div className="border-t border-border pt-3"><p className="text-xs font-semibold text-foreground">PAGE {page} TEXT</p><div className="mt-2 max-h-72 overflow-auto rounded-[8px] border border-border bg-background p-2 text-xs text-foreground">{editState.ocrText?.[String(currentSourcePage)] || 'Run OCR to extract searchable text.'}</div></div>
+      </div>
+    );
+    if (activePanel === 'calculations') return (
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-foreground">BUILD A CALCULATION</p>
+        <div className="flex gap-2"><Input value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="Header (optional)" /><input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-10 rounded-[6px] border border-border bg-background p-1" /></div>
+        <div className="space-y-2">{calcRows.map((row, index) => <div key={index} className="grid grid-cols-[28px_72px_1fr_28px] items-center gap-2"><span className="text-center text-xs text-foreground">{index + 1}</span><select value={row.operator} disabled={index === 0} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 rounded-[8px] border border-border bg-background px-2 text-xs text-foreground"><option>+</option><option>-</option><option>×</option><option>÷</option></select><Input type="number" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" /><Button variant="ghost" size="icon-sm" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label="Remove calculation row"><X /></Button></div>)}</div>
+        <div className="flex gap-2"><Button variant="secondary" className="flex-1" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+' }])}><Plus />Add</Button><Button variant="secondary" onClick={() => setCalcRows([{ value: '', operator: '+' }])}><X />Clear</Button></div>
+        <div className="flex items-center justify-between rounded-[8px] bg-primary/15 px-3 py-2 text-sm font-semibold text-foreground"><span>Result</span><span>{Number.isFinite(calculationResult) ? calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}</span></div>
+        <Button className="w-full" onClick={addCalculation}><Plus />Add to document</Button>
+        <div className="border-t border-border pt-3"><p className="mb-2 text-xs font-semibold text-foreground">PLACED CALCULATIONS</p><div className="space-y-2">{(editState.calculations ?? []).map((calculation) => <div key={calculation.id} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-2 py-2"><Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start" onClick={() => setPage(Math.max(1, visiblePages.indexOf(calculation.page) + 1))}><span className="truncate">{calculation.title}<br /><span className="font-normal">Result = {calculation.result}</span></span></Button><Button variant="ghost" size="icon-sm" aria-label="Delete calculation" onClick={() => setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) }))}><Trash2 /></Button></div>)}</div></div>
+      </div>
+    );
+    if (activePanel === 'luka') return (
+      <div className="flex min-h-[560px] flex-col">
+        <div className="flex flex-1 flex-col items-center justify-center text-center"><Sparkles className="mb-3 h-10 w-10 text-primary" /><p className="text-sm font-semibold text-foreground">Ask Luka about this document</p><p className="mt-2 max-w-xs text-xs text-foreground">Luka uses the page you are viewing and can place an answer as a note or calculation.</p><div className="mt-4 flex flex-wrap justify-center gap-2">{['Summarize this page', 'Extract the figures on this page', 'Check these totals'].map((prompt) => <Button key={prompt} variant="secondary" size="sm" onClick={() => void askLuka(prompt)}>{prompt}</Button>)}</div>{lukaLoading && <Loader2 className="mt-5 h-5 w-5 animate-spin text-primary" />}{lukaAnswer && <div className="mt-5 w-full rounded-[8px] border border-border bg-background p-3 text-left text-xs text-foreground"><p>{lukaAnswer}</p><div className="mt-3 flex gap-2"><Button size="sm" variant="secondary" onClick={() => addAnnotation({ id: crypto.randomUUID(), kind: 'comment', page: currentSourcePage, x: 80, y: 8, width: 4, height: 4, color: '#f59e0b', label: lukaAnswer })}>Add note</Button><Button size="sm" variant="secondary" onClick={() => { const numeric = Number(lukaAnswer.match(/-?[\d,]+(?:\.\d+)?/)?.[0]?.replace(/,/g, '')); if (!Number.isFinite(numeric)) return toast.error('This answer does not contain a calculation result.'); setCalcTitle(lukaQuestion); setCalcRows([{ value: String(numeric), operator: '+' }]); setActivePanel('calculations'); }}>Use result</Button></div></div>}</div>
+        <div className="border-t border-border pt-3"><Textarea size="default" className="min-h-[76px] p-3 text-xs" value={lukaQuestion} onChange={(event) => setLukaQuestion(event.target.value)} placeholder="Ask Luka about this document…" /><Button className="mt-2 w-full" disabled={lukaLoading || !lukaQuestion.trim()} onClick={() => void askLuka(lukaQuestion)}>{lukaLoading ? <Loader2 className="animate-spin" /> : <ArrowRight />}Send</Button></div>
+      </div>
+    );
     return (
       <div className="space-y-4">
         <div>
@@ -733,7 +779,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
     );
-  }, [activeColor, activeKind, activePanel, currentSourcePage, deleteAnnotation, editState, jumpToMatch, ownerPassword, page, pageImages, pdf, runSearch, search, searchIndex, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, deleteAnnotation, detectedFonts, editState, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, page, pageImages, pdf, properties, runOcr, runSearch, search, searchIndex, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   if (loading) return <div className="flex h-full items-center justify-center gap-3 text-foreground"><Loader2 className="h-5 w-5 animate-spin text-primary" />Opening PDF…</div>;
   if (error || !pdf || !document) return <div className="flex h-full flex-col items-center justify-center gap-3"><FileText className="h-10 w-10 text-muted-foreground" /><p className="text-sm font-semibold text-foreground">Unable to open PDF</p><p className="max-w-md text-center text-xs text-foreground">{error}</p></div>;
@@ -744,7 +790,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
         <div className="min-w-0"><h1 className="truncate text-sm font-semibold text-foreground">{document.name}</h1><p className="text-[10px] text-foreground">Version {document.current_version}</p></div>
         <div className="flex items-center gap-2">
-          {editing ? <><Button variant="secondary" size="sm" onClick={() => { setEditState(structuredClone(savedState)); setEditing(false); setActiveKind(null); }}><X />Cancel</Button><Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button></> : <Button variant="secondary" size="sm" onClick={() => setEditing(true)}><Pencil />Edit</Button>}
+          {editing ? <><Button variant="secondary" size="sm" onClick={() => { setEditState(structuredClone(savedState)); setProperties(savedState.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' }); setEditing(false); setActiveKind(null); }}><X />Cancel</Button><Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button></> : <Button variant="secondary" size="sm" onClick={() => setEditing(true)}><Pencil />Edit</Button>}
           <Button variant="secondary" size="sm" onClick={() => void downloadPdf()}><Download />Download</Button>
           <Button variant="secondary" size="sm" onClick={() => blobUrl && window.open(blobUrl, '_blank', 'noopener,noreferrer')}><ExternalLink />Edit in window</Button>
         </div>
@@ -759,7 +805,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <div className="min-h-0 flex-1 overflow-auto bg-muted/30 p-5"><div className="mx-auto w-fit"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} /></div></div>
         </section>
         {editing && <aside className="flex w-[340px] shrink-0 border-l border-border bg-card">
-          <div className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-border py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}><Icon /></Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div>
+          <ScrollArea className="w-12 shrink-0 border-r border-border"><div className="flex min-h-full flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}><Icon /></Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
           <ScrollArea className="h-full flex-1"><div className="p-3">{panelContent}</div></ScrollArea>
         </aside>}
       </div>
