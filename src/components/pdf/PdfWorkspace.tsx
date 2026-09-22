@@ -345,6 +345,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
   const [userPassword, setUserPassword] = useState('');
   const [ownerPassword, setOwnerPassword] = useState('');
+  const [decryptPassword, setDecryptPassword] = useState('');
   const [bookmarkTitle, setBookmarkTitle] = useState('');
   const [properties, setProperties] = useState<PdfDocumentProperties>(emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
   const [detectedFonts, setDetectedFonts] = useState<string[]>([]);
