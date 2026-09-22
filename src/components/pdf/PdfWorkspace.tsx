@@ -1058,10 +1058,10 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       );
     }
     if (activePanel === 'links' || activePanel === 'trial-balance') {
-      const kind: PdfAnnotationKind = activePanel === 'links' ? 'link' : activePanel === 'trial-balance' ? 'trial-balance' : 'comment';
-      const heading = activePanel === 'links' ? 'HYPERLINKS' : activePanel === 'trial-balance' ? 'TRIAL BALANCE' : 'COMMENTS';
-      const hint = activePanel === 'comments' ? 'Click anywhere on the page to drop a sticky note.' : activePanel === 'trial-balance' ? 'Click anywhere on the page to drop a link, then pick a trial balance account.' : 'Click anywhere on the page to drop a link, then attach a web address.';
-      const cta = activePanel === 'comments' ? 'Add comment' : activePanel === 'trial-balance' ? 'Add trial balance link' : 'Add link';
+      const kind: PdfAnnotationKind = activePanel === 'links' ? 'link' : 'trial-balance';
+      const heading = activePanel === 'links' ? 'HYPERLINKS' : 'TRIAL BALANCE';
+      const hint = activePanel === 'trial-balance' ? 'Click anywhere on the page to drop a link, then pick a trial balance account.' : 'Click anywhere on the page to drop a link, then attach a web address.';
+      const cta = activePanel === 'trial-balance' ? 'Add trial balance link' : 'Add link';
       return <div className="space-y-3"><p className="text-xs font-semibold text-foreground">{heading}</p><p className="text-xs text-foreground">{hint}</p><Button variant={activeKind === kind ? 'default' : 'secondary'} className="w-full" onClick={() => setActiveKind(activeKind === kind ? null : kind)}>{activeKind === kind ? 'Click the page… click again to cancel' : cta}</Button>{editState.annotations.filter((item) => item.kind === kind).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => { setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }} onRename={(label) => updateAnnotation(item.id, { label, value: kind === 'comment' ? item.value : label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>;
     }
     if (activePanel === 'redact') return (
