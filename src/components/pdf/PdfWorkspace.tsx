@@ -9,6 +9,8 @@ import * as pdfjs from 'pdfjs-dist';
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -115,16 +117,14 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
     if (!activeKind) { onSelect(null); return; }
     if (activeKind === 'freehand') return;
     const { x, y } = relative(event);
-    const isComment = activeKind === 'comment';
-    const label = isComment ? window.prompt('Comment')?.trim() : activeKind === 'text' ? window.prompt('Text')?.trim() : undefined;
-    if ((isComment || activeKind === 'text') && !label) return;
+    const isPoint = activeKind === 'comment' || activeKind === 'link';
     onAdd({
       id: crypto.randomUUID(), kind: activeKind, page: pageNumber, x, y,
-      width: isComment ? 4 : 18, height: isComment ? 4 : 5,
-      color: activeKind === 'comment' ? '#f59e0b' : activeKind === 'trial-balance' ? '#2563eb' : activeKind === 'redaction' ? '#111827' : color,
-      label,
+      width: isPoint ? 4 : 18, height: isPoint ? 4 : 5,
+      color: activeKind === 'comment' ? '#f59e0b' : activeKind === 'link' ? '#1C63A6' : activeKind === 'trial-balance' ? '#2563eb' : activeKind === 'redaction' ? '#111827' : color,
     });
   };
+
 
   const startDraw = (event: React.MouseEvent<HTMLDivElement>) => {
     if (activeKind !== 'freehand') return;
@@ -179,26 +179,46 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
       {annotations.filter((item) => item.kind !== 'freehand').map((annotation) => (
         <div
           key={annotation.id}
-          onClick={(event) => { event.stopPropagation(); onSelect(annotation.id); }}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(annotation.id);
+            if (annotation.kind === 'link' && !activeKind && annotation.value && /^https?:\/\//i.test(annotation.value)) {
+              window.open(annotation.value, '_blank', 'noopener,noreferrer');
+            }
+          }}
           className={cn(
             'absolute border-2',
             activeKind ? 'pointer-events-none' : 'cursor-pointer',
             selectedId === annotation.id && 'ring-2 ring-primary ring-offset-1',
             annotation.kind === 'comment' && 'flex items-center justify-center rounded-sm border-none bg-warning text-warning-foreground',
+            annotation.kind === 'link' && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
             annotation.kind === 'underline' && 'border-x-0 border-t-0',
             annotation.kind === 'strikeout' && 'border-x-0 border-b-0 top-auto',
             annotation.kind === 'highlight' && 'border-none opacity-40',
             annotation.kind === 'redaction' && 'bg-foreground border-foreground',
             annotation.kind === 'circle' && 'rounded-full',
           )}
-          style={{ left: `${annotation.x}%`, top: `${annotation.y}%`, width: `${annotation.width}%`, height: `${annotation.height}%`, borderColor: annotation.color, backgroundColor: annotation.kind === 'highlight' ? annotation.color : undefined }}
-          title={annotation.label}
+          style={{
+            left: `${annotation.x}%`, top: `${annotation.y}%`,
+            width: annotation.kind === 'link' ? 'auto' : `${annotation.width}%`,
+            height: annotation.kind === 'link' ? 'auto' : `${annotation.height}%`,
+            borderColor: annotation.color,
+            backgroundColor: annotation.kind === 'highlight' ? annotation.color : undefined,
+          }}
+          title={annotation.kind === 'link' ? annotation.value ?? annotation.label : annotation.label}
         >
           {annotation.kind === 'comment' && <MessageSquare className="h-3 w-3" />}
+          {annotation.kind === 'link' && (
+            <>
+              <Link2 className="h-3 w-3 shrink-0" style={{ color: annotation.color }} />
+              <span className="truncate text-[10px] font-medium underline" style={{ color: annotation.color }}>{annotation.value ?? annotation.label}</span>
+            </>
+          )}
           {annotation.kind === 'image' && annotation.value && <img src={annotation.value} alt={annotation.label ?? 'Inserted image'} className="h-full w-full object-contain" />}
           {(annotation.kind === 'text' || annotation.kind === 'calculation') && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
         </div>
       ))}
+
     </div>
   );
 }
@@ -272,6 +292,9 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [activeKind, setActiveKind] = useState<PdfAnnotationKind | null>(null);
   const [activeColor, setActiveColor] = useState(COLORS[1]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [pendingAnnotation, setPendingAnnotation] = useState<PdfAnnotation | null>(null);
+  const [pendingValue, setPendingValue] = useState('');
+
   const [editState, setEditState] = useState<PdfEditState>(emptyPdfEditState());
   const [savedState, setSavedState] = useState<PdfEditState>(emptyPdfEditState());
   const [search, setSearch] = useState('');
@@ -370,20 +393,25 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   }, []);
 
   const addAnnotation = useCallback((annotation: PdfAnnotation) => {
-    if (annotation.kind === 'link') {
-      const value = window.prompt('Web address or page number')?.trim();
-      if (!value) return;
-      annotation.value = value;
-      annotation.label = value;
-    }
-    if (annotation.kind === 'trial-balance') {
-      const value = window.prompt('Trial balance account')?.trim();
-      if (!value) return;
-      annotation.value = value;
-      annotation.label = value;
+    const needsValue = (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'comment' || annotation.kind === 'text') && !annotation.label && !annotation.value;
+    if (needsValue) {
+      setPendingAnnotation(annotation);
+      setPendingValue('');
+      return;
     }
     setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
   }, []);
+
+  const confirmPendingAnnotation = useCallback(() => {
+    const value = pendingValue.trim();
+    if (!pendingAnnotation || !value) return;
+    const annotation: PdfAnnotation = { ...pendingAnnotation, value, label: value };
+    setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+    setPendingAnnotation(null);
+    setPendingValue('');
+    setSelectedAnnotationId(annotation.id);
+  }, [pendingAnnotation, pendingValue]);
+
 
   const handleImageFile = async (file: File) => {
     const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -1036,7 +1064,30 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full flex-1"><div className="p-3">{panelContent}</div></ScrollArea>}
         </aside>}
       </div>
+      <Dialog open={!!pendingAnnotation} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {pendingAnnotation?.kind === 'link' ? 'Link to web URL' : pendingAnnotation?.kind === 'trial-balance' ? 'Trial balance account' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
+            </DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={pendingValue}
+            placeholder={pendingAnnotation?.kind === 'link' ? 'https://example.com' : ''}
+            onChange={(event) => setPendingValue(event.target.value)}
+            onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); confirmPendingAnnotation(); } }}
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setPendingAnnotation(null); setPendingValue(''); }}>Cancel</Button>
+            <Button disabled={!pendingValue.trim()} onClick={confirmPendingAnnotation}>
+              {pendingAnnotation?.kind === 'link' ? 'Add link' : 'Add'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
 
