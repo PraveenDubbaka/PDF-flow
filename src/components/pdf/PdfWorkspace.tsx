@@ -247,6 +247,16 @@ function Thumbnail({ pdf, pageNumber, active, onClick, label, rotation = 0, sele
 }
 
 
+type DocImage = { id: string; page: number; index: number; x: number; y: number; width: number; height: number; pixelWidth: number; pixelHeight: number; thumb: string };
+
+function multiply(a: number[], b: number[]) {
+  return [
+    a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5],
+  ];
+}
+
 export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [document, setDocument] = useState<PdfDocumentRecord | null>(null);
   const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(null);
