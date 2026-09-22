@@ -1,26 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, ChevronLeft, ChevronRight, Circle,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronLeft, ChevronRight, Circle,
   Copy, Download, ExternalLink, FileText, Highlighter, Image, Link2, Loader2, LockKeyhole,
-  MessageSquare, MousePointer2, Pen, Pencil, RotateCcw, RotateCw, Save, Search, ShieldCheck, Square,
+  MessageSquare, MousePointer2, Pen, Pencil, Plus, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Sparkles, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
-  emptyPdfEditState, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind,
+  emptyPdfEditState, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfDocumentProperties,
   PdfDocumentRecord, PdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
 import { toast } from 'sonner';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
-type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'trial-balance' | 'comments' | 'redact' | 'security';
+type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'trial-balance' | 'comments' | 'redact' | 'security' | 'details' | 'ocr' | 'calculations' | 'luka';
 const TOOLS: { id: ToolId; label: string; icon: React.ElementType }[] = [
   { id: 'pages', label: 'Pages', icon: BookOpen },
   { id: 'search', label: 'Search', icon: Search },
@@ -31,6 +32,10 @@ const TOOLS: { id: ToolId; label: string; icon: React.ElementType }[] = [
   { id: 'comments', label: 'Comments', icon: MessageSquare },
   { id: 'redact', label: 'Redact and watermark', icon: ShieldCheck },
   { id: 'security', label: 'Security and optimize', icon: LockKeyhole },
+  { id: 'details', label: 'Bookmarks and properties', icon: Bookmark },
+  { id: 'ocr', label: 'Make searchable', icon: ScanText },
+  { id: 'calculations', label: 'Calculations', icon: Calculator },
+  { id: 'luka', label: 'Ask Luka', icon: Sparkles },
 ];
 
 const ANNOTATION_TOOLS: { kind: PdfAnnotationKind | 'select'; label: string; icon: React.ElementType }[] = [
@@ -171,7 +176,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
         >
           {annotation.kind === 'comment' && <MessageSquare className="h-3 w-3" />}
           {annotation.kind === 'image' && annotation.value && <img src={annotation.value} alt={annotation.label ?? 'Inserted image'} className="h-full w-full object-contain" />}
-          {annotation.kind === 'text' && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
+          {(annotation.kind === 'text' || annotation.kind === 'calculation') && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
         </div>
       ))}
     </div>
@@ -251,6 +256,16 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
   const [userPassword, setUserPassword] = useState('');
   const [ownerPassword, setOwnerPassword] = useState('');
+  const [bookmarkTitle, setBookmarkTitle] = useState('');
+  const [properties, setProperties] = useState<PdfDocumentProperties>(emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
+  const [detectedFonts, setDetectedFonts] = useState<string[]>([]);
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const [calcTitle, setCalcTitle] = useState('');
+  const [calcColor, setCalcColor] = useState(COLORS[0]);
+  const [calcRows, setCalcRows] = useState<{ value: string; operator: '+' | '-' | '×' | '÷' }[]>([{ value: '', operator: '+' }]);
+  const [lukaQuestion, setLukaQuestion] = useState('');
+  const [lukaAnswer, setLukaAnswer] = useState('');
+  const [lukaLoading, setLukaLoading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -270,6 +285,9 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       setPdf(loadedPdf);
       setEditState(state);
       setSavedState(structuredClone(state));
+      setProperties(state.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
+      setUserPassword(state.passwords?.user ?? '');
+      setOwnerPassword(state.passwords?.owner ?? '');
     }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to open this PDF.')).finally(() => setLoading(false));
     return () => { if (currentUrl) URL.revokeObjectURL(currentUrl); };
   }, [documentId]);
@@ -293,6 +311,17 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       });
       if (!cancelled) setPageImages(found);
     }).catch(() => setPageImages([]));
+    return () => { cancelled = true; };
+  }, [pdf, currentSourcePage]);
+
+  useEffect(() => {
+    if (!pdf) return;
+    let cancelled = false;
+    void pdf.getPage(currentSourcePage).then(async (target) => {
+      const operators = await target.getOperatorList();
+      const fonts = operators.fnArray.flatMap((fn, index) => fn === pdfjs.OPS.setFont ? [String(operators.argsArray[index]?.[0] ?? '')] : []).filter(Boolean);
+      if (!cancelled) setDetectedFonts([...new Set(fonts)]);
+    }).catch(() => setDetectedFonts([]));
     return () => { cancelled = true; };
   }, [pdf, currentSourcePage]);
 
@@ -360,10 +389,102 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setPage(Math.max(1, visiblePages.indexOf(searchResults[next]) + 1));
   }, [searchIndex, searchResults, visiblePages]);
 
+  const extractPageText = useCallback(async (sourcePage = currentSourcePage) => {
+    if (!pdf) return '';
+    const content = await (await pdf.getPage(sourcePage)).getTextContent();
+    return content.items.map((item) => 'str' in item ? item.str : '').join(' ').replace(/\s+/g, ' ').trim();
+  }, [currentSourcePage, pdf]);
+
+  const renderPageImage = useCallback(async (sourcePage: number) => {
+    if (!pdf) return '';
+    const target = await pdf.getPage(sourcePage);
+    const viewport = target.getViewport({ scale: 1.35 });
+    const canvas = window.document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const context = canvas.getContext('2d');
+    if (!context) return '';
+    await target.render({ canvas, canvasContext: context, viewport }).promise;
+    return canvas.toDataURL('image/jpeg', 0.78);
+  }, [pdf]);
+
+  const runOcr = useCallback(async () => {
+    if (!pdf) return;
+    setOcrRunning(true);
+    try {
+      const extracted: Record<string, string> = {};
+      const { supabase } = await import('@/integrations/supabase/client');
+      for (const sourcePage of visiblePages) {
+        const embeddedText = await extractPageText(sourcePage);
+        if (embeddedText) {
+          extracted[String(sourcePage)] = embeddedText;
+          continue;
+        }
+        const pageImage = await renderPageImage(sourcePage);
+        const { data, error: invokeError } = await supabase.functions.invoke('pdf-ask-luka', { body: { action: 'ocr', pageImage, documentName: document?.name, pageNumber: sourcePage } });
+        if (invokeError) throw invokeError;
+        if (data?.error) throw new Error(data.error);
+        extracted[String(sourcePage)] = data?.result ?? '';
+      }
+      setEditState((current) => ({ ...current, ocrText: { ...(current.ocrText ?? {}), ...extracted } }));
+      toast.success(`Made ${visiblePages.length} page${visiblePages.length === 1 ? '' : 's'} searchable.`);
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Unable to recognize document text.');
+    } finally { setOcrRunning(false); }
+  }, [document?.name, extractPageText, pdf, renderPageImage, visiblePages]);
+
+  const calculationResult = useMemo(() => calcRows.reduce((result, row, index) => {
+    const value = Number(row.value) || 0;
+    if (index === 0) return value;
+    if (row.operator === '-') return result - value;
+    if (row.operator === '×') return result * value;
+    if (row.operator === '÷') return value === 0 ? result : result / value;
+    return result + value;
+  }, 0), [calcRows]);
+
+  const addCalculation = useCallback(() => {
+    const calculation: PdfCalculation = {
+      id: crypto.randomUUID(), title: calcTitle.trim() || 'Calculation', page: currentSourcePage,
+      values: calcRows.map((row) => Number(row.value) || 0), operators: calcRows.map((row) => row.operator),
+      result: calculationResult, color: calcColor,
+    };
+    setEditState((current) => ({
+      ...current,
+      calculations: [...(current.calculations ?? []), calculation],
+      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: currentSourcePage, x: 30, y: 30, width: 25, height: 6, color: calcColor, label: `${calculation.title}: ${calculationResult}` }],
+    }));
+    setCalcTitle('');
+    setCalcRows([{ value: '', operator: '+' }]);
+    toast.success('Calculation added to the document.');
+  }, [calcColor, calcRows, calcTitle, calculationResult, currentSourcePage]);
+
+  const askLuka = useCallback(async (question: string) => {
+    const prompt = question.trim();
+    if (!prompt) return;
+    setLukaQuestion(prompt);
+    setLukaLoading(true);
+    setLukaAnswer('');
+    try {
+      const pageText = editState.ocrText?.[String(currentSourcePage)] || await extractPageText();
+      const { data, error: invokeError } = await import('@/integrations/supabase/client').then(({ supabase }) => supabase.functions.invoke('pdf-ask-luka', { body: { question: prompt, pageText, documentName: document?.name, pageNumber: page } }));
+      if (invokeError) throw invokeError;
+      if (data?.error) throw new Error(data.error);
+      setLukaAnswer(data?.result ?? 'No answer was returned.');
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Ask Luka could not answer this question.');
+    } finally { setLukaLoading(false); }
+  }, [currentSourcePage, document?.name, editState.ocrText, extractPageText, page]);
+
   const createSavedBytes = async () => {
     if (!sourceBytes) throw new Error('The source PDF is unavailable.');
     const source = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
     const output = await PDFDocument.create();
+    const metadata = editState.properties ?? properties;
+    if (metadata.title) output.setTitle(metadata.title);
+    if (metadata.author) output.setAuthor(metadata.author);
+    if (metadata.subject) output.setSubject(metadata.subject);
+    if (metadata.keywords) output.setKeywords(metadata.keywords.split(',').map((item) => item.trim()).filter(Boolean));
+    if (metadata.creator) output.setCreator(metadata.creator);
     const sourceIndices = visiblePages.map((sourcePage) => sourcePage - 1);
     const copied = await output.copyPages(source, sourceIndices);
     const font = await output.embedFont(StandardFonts.HelveticaBold);
@@ -414,7 +535,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               color, thickness: 1.5,
             });
           }
-        } else if ((item.kind === 'text' || item.kind === 'comment' || item.kind === 'link' || item.kind === 'trial-balance') && (item.label || item.value)) {
+        } else if ((item.kind === 'text' || item.kind === 'comment' || item.kind === 'link' || item.kind === 'trial-balance' || item.kind === 'calculation') && (item.label || item.value)) {
           copiedPage.drawText(String(item.label ?? item.value), { x, y: y + boxHeight / 2, size: 10, font, color });
         } else if (item.kind === 'image' && item.value) {
           const bytes = Uint8Array.from(atob(item.value.split(',')[1] ?? ''), (character) => character.charCodeAt(0));
@@ -608,7 +729,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       <div className="space-y-3">
         <div className="grid grid-cols-5 gap-2">{ANNOTATION_TOOLS.map(({ kind, label, icon: Icon }) => <Tooltip key={kind}><TooltipTrigger asChild><Button variant={(kind === 'select' ? activeKind === null : activeKind === kind) ? 'default' : 'secondary'} size="icon" onClick={() => setActiveKind(kind === 'select' ? null : kind as PdfAnnotationKind)} aria-label={label}><Icon /></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>)}</div>
         <div className="flex gap-2">{COLORS.map((color) => <button key={color} type="button" aria-label={`Colour ${color}`} onClick={() => { setActiveColor(color); if (selectedAnnotationId) updateAnnotation(selectedAnnotationId, { color }); }} className={cn('h-6 w-6 rounded-[6px] border', activeColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}</div>
-        <div className="space-y-2">{editState.annotations.filter((item) => !['comment', 'link', 'trial-balance', 'image'].includes(item.kind)).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => setSelectedAnnotationId(item.id)} onRename={(label) => updateAnnotation(item.id, { label })} onDelete={() => deleteAnnotation(item.id)} />)}</div>
+        <div className="space-y-2">{editState.annotations.filter((item) => !['comment', 'link', 'trial-balance', 'image', 'calculation'].includes(item.kind)).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => setSelectedAnnotationId(item.id)} onRename={(label) => updateAnnotation(item.id, { label })} onDelete={() => deleteAnnotation(item.id)} />)}</div>
       </div>
     );
     if (activePanel === 'links' || activePanel === 'trial-balance' || activePanel === 'comments') {
@@ -620,6 +741,46 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       <div className="space-y-4">
         <div><p className="text-xs font-semibold text-foreground">REDACT</p><p className="mt-1 text-xs text-foreground">Draws a region and permanently removes the visible underlying area when saved.</p><Button variant={activeKind === 'redaction' ? 'default' : 'secondary'} className="mt-2 w-full" onClick={() => setActiveKind('redaction')}>Draw redaction region</Button></div>
         <div className="border-t border-border pt-4 space-y-2"><p className="text-xs font-semibold text-foreground">WATERMARK</p><Input value={watermarkText} onChange={(event) => setWatermarkText(event.target.value)} /><div className="grid grid-cols-2 gap-2"><Input type="number" min="0.1" max="1" step="0.1" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /><Input type="number" value={watermarkRotation} onChange={(event) => setWatermarkRotation(Number(event.target.value))} /></div><Button className="w-full" onClick={() => setEditState((current) => ({ ...current, watermark: { text: watermarkText, opacity: watermarkOpacity, rotation: watermarkRotation, applied: true } }))}><Save />Apply to all pages</Button>{editState.watermark?.applied && <Button variant="secondary" className="w-full" onClick={() => setEditState((current) => ({ ...current, watermark: undefined }))}>Remove watermark</Button>}</div>
+      </div>
+    );
+    if (activePanel === 'details') return (
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold text-foreground">BOOKMARKS</p>
+          <div className="mt-2 flex gap-2"><Input value={bookmarkTitle} onChange={(event) => setBookmarkTitle(event.target.value)} placeholder="Bookmark title" /><Input className="w-16" type="number" min={1} max={visiblePages.length} value={page} readOnly /><Button size="icon-sm" disabled={!bookmarkTitle.trim()} onClick={() => { setEditState((current) => ({ ...current, bookmarks: [...(current.bookmarks ?? []), { id: crypto.randomUUID(), title: bookmarkTitle.trim(), page }] })); setBookmarkTitle(''); }} aria-label="Add bookmark"><Plus /></Button></div>
+          <div className="mt-2 space-y-2">{(editState.bookmarks ?? []).length === 0 && <p className="text-xs text-foreground">No bookmarks yet.</p>}{(editState.bookmarks ?? []).map((bookmark) => <div key={bookmark.id} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-2 py-2"><Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start truncate" onClick={() => setPage(Math.min(visiblePages.length, Math.max(1, bookmark.page)))}>{bookmark.title} · p.{bookmark.page}</Button><Button variant="ghost" size="icon-sm" aria-label="Delete bookmark" onClick={() => setEditState((current) => ({ ...current, bookmarks: (current.bookmarks ?? []).filter((item) => item.id !== bookmark.id) }))}><Trash2 /></Button></div>)}</div>
+        </div>
+        <div className="space-y-2 border-t border-border pt-4">
+          <p className="text-xs font-semibold text-foreground">DOCUMENT PROPERTIES</p>
+          {(['title', 'author', 'subject', 'keywords', 'creator'] as const).map((key) => <Input key={key} value={properties[key]} onChange={(event) => setProperties((current) => ({ ...current, [key]: event.target.value }))} placeholder={key.charAt(0).toUpperCase() + key.slice(1)} />)}
+          <Button className="w-full" onClick={() => { setEditState((current) => ({ ...current, properties })); toast.success('Document properties updated.'); }}>Save properties</Button>
+        </div>
+        <div className="border-t border-border pt-4"><p className="text-xs font-semibold text-foreground">FONTS ON THIS PAGE</p><div className="mt-2 space-y-1">{detectedFonts.length ? detectedFonts.map((font) => <p key={font} className="truncate text-xs text-foreground">{font}</p>) : <p className="text-xs text-foreground">No font names detected.</p>}</div></div>
+      </div>
+    );
+    if (activePanel === 'ocr') return (
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-foreground">OCR</p>
+        <p className="text-xs text-foreground">Recognizes text across the document and makes it available for search and Ask Luka.</p>
+        <Button className="w-full" disabled={ocrRunning} onClick={() => void runOcr()}>{ocrRunning ? <Loader2 className="animate-spin" /> : <ScanText />}Make document searchable</Button>
+        <div className="border-t border-border pt-3"><p className="text-xs font-semibold text-foreground">PAGE {page} TEXT</p><div className="mt-2 max-h-72 overflow-auto rounded-[8px] border border-border bg-background p-2 text-xs text-foreground">{editState.ocrText?.[String(currentSourcePage)] || 'Run OCR to extract searchable text.'}</div></div>
+      </div>
+    );
+    if (activePanel === 'calculations') return (
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-foreground">BUILD A CALCULATION</p>
+        <div className="flex gap-2"><Input value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="Header (optional)" /><input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-10 rounded-[6px] border border-border bg-background p-1" /></div>
+        <div className="space-y-2">{calcRows.map((row, index) => <div key={index} className="grid grid-cols-[28px_72px_1fr_28px] items-center gap-2"><span className="text-center text-xs text-foreground">{index + 1}</span><select value={row.operator} disabled={index === 0} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 rounded-[8px] border border-border bg-background px-2 text-xs text-foreground"><option>+</option><option>-</option><option>×</option><option>÷</option></select><Input type="number" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" /><Button variant="ghost" size="icon-sm" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label="Remove calculation row"><X /></Button></div>)}</div>
+        <div className="flex gap-2"><Button variant="secondary" className="flex-1" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+' }])}><Plus />Add</Button><Button variant="secondary" onClick={() => setCalcRows([{ value: '', operator: '+' }])}><X />Clear</Button></div>
+        <div className="flex items-center justify-between rounded-[8px] bg-primary/15 px-3 py-2 text-sm font-semibold text-foreground"><span>Result</span><span>{Number.isFinite(calculationResult) ? calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}</span></div>
+        <Button className="w-full" onClick={addCalculation}><Plus />Add to document</Button>
+        <div className="border-t border-border pt-3"><p className="mb-2 text-xs font-semibold text-foreground">PLACED CALCULATIONS</p><div className="space-y-2">{(editState.calculations ?? []).map((calculation) => <div key={calculation.id} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-2 py-2"><Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start" onClick={() => setPage(Math.max(1, visiblePages.indexOf(calculation.page) + 1))}><span className="truncate">{calculation.title}<br /><span className="font-normal">Result = {calculation.result}</span></span></Button><Button variant="ghost" size="icon-sm" aria-label="Delete calculation" onClick={() => setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) }))}><Trash2 /></Button></div>)}</div></div>
+      </div>
+    );
+    if (activePanel === 'luka') return (
+      <div className="flex min-h-[560px] flex-col">
+        <div className="flex flex-1 flex-col items-center justify-center text-center"><Sparkles className="mb-3 h-10 w-10 text-primary" /><p className="text-sm font-semibold text-foreground">Ask Luka about this document</p><p className="mt-2 max-w-xs text-xs text-foreground">Luka uses the page you are viewing and can place an answer as a note or calculation.</p><div className="mt-4 flex flex-wrap justify-center gap-2">{['Summarize this page', 'Extract the figures on this page', 'Check these totals'].map((prompt) => <Button key={prompt} variant="secondary" size="sm" onClick={() => void askLuka(prompt)}>{prompt}</Button>)}</div>{lukaLoading && <Loader2 className="mt-5 h-5 w-5 animate-spin text-primary" />}{lukaAnswer && <div className="mt-5 w-full rounded-[8px] border border-border bg-background p-3 text-left text-xs text-foreground"><p>{lukaAnswer}</p><div className="mt-3 flex gap-2"><Button size="sm" variant="secondary" onClick={() => addAnnotation({ id: crypto.randomUUID(), kind: 'comment', page: currentSourcePage, x: 80, y: 8, width: 4, height: 4, color: '#f59e0b', label: lukaAnswer })}>Add note</Button><Button size="sm" variant="secondary" onClick={() => { const numeric = Number(lukaAnswer.match(/-?[\d,]+(?:\.\d+)?/)?.[0]?.replace(/,/g, '')); if (!Number.isFinite(numeric)) return toast.error('This answer does not contain a calculation result.'); setCalcTitle(lukaQuestion); setCalcRows([{ value: String(numeric), operator: '+' }]); setActivePanel('calculations'); }}>Use result</Button></div></div>}</div>
+        <div className="border-t border-border pt-3"><Textarea size="default" className="min-h-[76px] p-3 text-xs" value={lukaQuestion} onChange={(event) => setLukaQuestion(event.target.value)} placeholder="Ask Luka about this document…" /><Button className="mt-2 w-full" disabled={lukaLoading || !lukaQuestion.trim()} onClick={() => void askLuka(lukaQuestion)}>{lukaLoading ? <Loader2 className="animate-spin" /> : <ArrowRight />}Send</Button></div>
       </div>
     );
     return (
@@ -643,7 +804,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
     );
-  }, [activeColor, activeKind, activePanel, currentSourcePage, deleteAnnotation, editState, jumpToMatch, ownerPassword, page, pageImages, pdf, runSearch, search, searchIndex, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, deleteAnnotation, detectedFonts, editState, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, page, pageImages, pdf, properties, runOcr, runSearch, search, searchIndex, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   if (loading) return <div className="flex h-full items-center justify-center gap-3 text-foreground"><Loader2 className="h-5 w-5 animate-spin text-primary" />Opening PDF…</div>;
   if (error || !pdf || !document) return <div className="flex h-full flex-col items-center justify-center gap-3"><FileText className="h-10 w-10 text-muted-foreground" /><p className="text-sm font-semibold text-foreground">Unable to open PDF</p><p className="max-w-md text-center text-xs text-foreground">{error}</p></div>;
@@ -654,7 +815,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
         <div className="min-w-0"><h1 className="truncate text-sm font-semibold text-foreground">{document.name}</h1><p className="text-[10px] text-foreground">Version {document.current_version}</p></div>
         <div className="flex items-center gap-2">
-          {editing ? <><Button variant="secondary" size="sm" onClick={() => { setEditState(structuredClone(savedState)); setEditing(false); setActiveKind(null); }}><X />Cancel</Button><Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button></> : <Button variant="secondary" size="sm" onClick={() => setEditing(true)}><Pencil />Edit</Button>}
+          {editing ? <><Button variant="secondary" size="sm" onClick={() => { setEditState(structuredClone(savedState)); setProperties(savedState.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' }); setEditing(false); setActiveKind(null); }}><X />Cancel</Button><Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button></> : <Button variant="secondary" size="sm" onClick={() => setEditing(true)}><Pencil />Edit</Button>}
           <Button variant="secondary" size="sm" onClick={() => void downloadPdf()}><Download />Download</Button>
           <Button variant="secondary" size="sm" onClick={() => blobUrl && window.open(blobUrl, '_blank', 'noopener,noreferrer')}><ExternalLink />Edit in window</Button>
         </div>
@@ -669,7 +830,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <div className="min-h-0 flex-1 overflow-auto bg-muted/30 p-5"><div className="mx-auto w-fit"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} /></div></div>
         </section>
         {editing && <aside className="flex w-[340px] shrink-0 border-l border-border bg-card">
-          <div className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-border py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}><Icon /></Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div>
+          <ScrollArea className="w-12 shrink-0 border-r border-border"><div className="flex min-h-full flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}><Icon /></Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
           <ScrollArea className="h-full flex-1"><div className="p-3">{panelContent}</div></ScrollArea>
         </aside>}
       </div>
