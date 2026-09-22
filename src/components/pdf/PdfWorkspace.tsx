@@ -247,6 +247,16 @@ function Thumbnail({ pdf, pageNumber, active, onClick, label, rotation = 0, sele
 }
 
 
+type DocImage = { id: string; page: number; index: number; x: number; y: number; width: number; height: number; pixelWidth: number; pixelHeight: number; thumb: string };
+
+function multiply(a: number[], b: number[]) {
+  return [
+    a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5],
+  ];
+}
+
 export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [document, setDocument] = useState<PdfDocumentRecord | null>(null);
   const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(null);
@@ -273,7 +283,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.3);
   const [watermarkRotation, setWatermarkRotation] = useState(45);
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
-  const [pageImages, setPageImages] = useState<{ name: string; width: number; height: number }[]>([]);
+  const [docImages, setDocImages] = useState<DocImage[]>([]);
+  const [scanningImages, setScanningImages] = useState(false);
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
   const [userPassword, setUserPassword] = useState('');
   const [ownerPassword, setOwnerPassword] = useState('');
@@ -335,23 +346,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const currentSourcePage = visiblePages[Math.max(0, page - 1)] ?? 1;
   const pageAnnotations = editState.annotations.filter((annotation) => annotation.page === currentSourcePage);
 
-  useEffect(() => {
-    if (!pdf) return;
-    let cancelled = false;
-    void pdf.getPage(currentSourcePage).then(async (target) => {
-      const operators = await target.getOperatorList();
-      const found: { name: string; width: number; height: number }[] = [];
-      operators.fnArray.forEach((fn, index) => {
-        if (fn !== pdfjs.OPS.paintImageXObject && fn !== pdfjs.OPS.paintInlineImageXObject) return;
-        const name = String(operators.argsArray[index]?.[0] ?? `image-${found.length + 1}`);
-        const object = (target as unknown as { objs?: { has: (key: string) => boolean; get: (key: string) => { width?: number; height?: number } } }).objs;
-        const details = object?.has?.(name) ? object.get(name) : undefined;
-        found.push({ name, width: details?.width ?? 0, height: details?.height ?? 0 });
-      });
-      if (!cancelled) setPageImages(found);
-    }).catch(() => setPageImages([]));
-    return () => { cancelled = true; };
-  }, [pdf, currentSourcePage]);
+  // document-wide image scan replaces the old per-page detection
+
 
   useEffect(() => {
     if (!pdf) return;
@@ -486,6 +482,85 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     await target.render({ canvas, canvasContext: context, viewport }).promise;
     return canvas.toDataURL('image/jpeg', 0.78);
   }, [pdf]);
+
+  const scanDocumentImages = useCallback(async () => {
+    if (!pdf) return;
+    setScanningImages(true);
+    try {
+      const found: DocImage[] = [];
+      for (const sourcePage of visiblePages) {
+        const target = await pdf.getPage(sourcePage);
+        const operators = await target.getOperatorList();
+        const viewport = target.getViewport({ scale: 1 });
+        let matrix = [1, 0, 0, 1, 0, 0];
+        const stack: number[][] = [];
+        const rects: { x: number; y: number; width: number; height: number }[] = [];
+        operators.fnArray.forEach((fn, index) => {
+          const args = operators.argsArray[index] as number[] | undefined;
+          if (fn === pdfjs.OPS.save) { stack.push(matrix.slice()); return; }
+          if (fn === pdfjs.OPS.restore) { matrix = stack.pop() ?? [1, 0, 0, 1, 0, 0]; return; }
+          if (fn === pdfjs.OPS.transform && args) { matrix = multiply(matrix, args); return; }
+          if (fn !== pdfjs.OPS.paintImageXObject && fn !== pdfjs.OPS.paintInlineImageXObject && fn !== pdfjs.OPS.paintImageMaskXObject) return;
+          const w = Math.abs(matrix[0]);
+          const h = Math.abs(matrix[3]);
+          if (w < 4 || h < 4) return;
+          const x0 = matrix[4] - (matrix[0] < 0 ? w : 0);
+          const y0 = matrix[5] - (matrix[3] < 0 ? h : 0);
+          const [vx1, vy1] = viewport.convertToViewportPoint(x0, y0);
+          const [vx2, vy2] = viewport.convertToViewportPoint(x0 + w, y0 + h);
+          const left = Math.min(vx1, vx2), top = Math.min(vy1, vy2);
+          rects.push({
+            x: (left / viewport.width) * 100,
+            y: (top / viewport.height) * 100,
+            width: (Math.abs(vx2 - vx1) / viewport.width) * 100,
+            height: (Math.abs(vy2 - vy1) / viewport.height) * 100,
+          });
+        });
+        if (!rects.length) continue;
+        const scale = 1.5;
+        const rendered = target.getViewport({ scale });
+        const canvas = window.document.createElement('canvas');
+        canvas.width = rendered.width;
+        canvas.height = rendered.height;
+        const context = canvas.getContext('2d');
+        if (!context) continue;
+        await target.render({ canvas, canvasContext: context, viewport: rendered }).promise;
+        rects.forEach((rect, index) => {
+          const sx = (rect.x / 100) * canvas.width;
+          const sy = (rect.y / 100) * canvas.height;
+          const sw = Math.max(1, (rect.width / 100) * canvas.width);
+          const sh = Math.max(1, (rect.height / 100) * canvas.height);
+          const crop = window.document.createElement('canvas');
+          crop.width = Math.min(160, Math.round(sw));
+          crop.height = Math.max(1, Math.round((sh / sw) * Math.min(160, Math.round(sw))));
+          const cropContext = crop.getContext('2d');
+          cropContext?.drawImage(canvas, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
+          found.push({
+            id: `img-${sourcePage}-${index}`, page: sourcePage, index: index + 1,
+            ...rect,
+            pixelWidth: Math.round(sw / scale), pixelHeight: Math.round(sh / scale),
+            thumb: cropContext ? crop.toDataURL('image/jpeg', 0.7) : '',
+          });
+        });
+      }
+      setDocImages(found);
+    } catch {
+      setDocImages([]);
+    } finally { setScanningImages(false); }
+  }, [pdf, visiblePages]);
+
+  useEffect(() => {
+    if (activePanel !== 'images' || !pdf) return;
+    if (docImages.length || scanningImages) return;
+    void scanDocumentImages();
+  }, [activePanel, docImages.length, pdf, scanDocumentImages, scanningImages]);
+
+  const goToImage = useCallback((item: DocImage) => {
+    const position = visiblePages.indexOf(item.page);
+    setPage(Math.max(1, position + 1));
+    setSearchHighlight({ id: `${item.id}-${Date.now()}`, page: item.page, x: item.x, y: item.y, width: item.width, height: item.height });
+  }, [visiblePages]);
+
 
   const runOcr = useCallback(async () => {
     if (!pdf) return;
@@ -818,16 +893,26 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     );
     if (activePanel === 'images') return (
       <div className="space-y-3">
-        <p className="text-xs font-semibold text-foreground">IMAGES ON THIS PAGE</p>
-        <p className="text-xs text-foreground">{pageImages.length ? `${pageImages.length} embedded image${pageImages.length === 1 ? '' : 's'} detected.` : 'No embedded images detected on this page.'}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-foreground">IMAGES IN DOCUMENT</p>
+          <Button variant="ghost" size="sm" onClick={() => void scanDocumentImages()} disabled={scanningImages}>{scanningImages ? <Loader2 className="animate-spin" /> : <RotateCw />}Rescan</Button>
+        </div>
+        <p className="text-xs text-foreground">{scanningImages ? 'Scanning all pages…' : docImages.length ? `${docImages.length} image${docImages.length === 1 ? '' : 's'} found across ${new Set(docImages.map((item) => item.page)).size} page${new Set(docImages.map((item) => item.page)).size === 1 ? '' : 's'}.` : 'No images detected in this document.'}</p>
         <div className="space-y-2">
-          {pageImages.map((item, index) => (
-            <div key={`${item.name}-${index}`} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-2 py-2">
-              <span className="flex-1 truncate text-xs text-foreground">Image {index + 1}{item.width ? ` · ${item.width}×${item.height}` : ''}</span>
+          {docImages.map((item) => (
+            <div key={item.id} className="flex items-center gap-2 rounded-[8px] border border-border bg-background p-2">
+              <button type="button" onClick={() => goToImage(item)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                {item.thumb ? <img src={item.thumb} alt={`Image ${item.index} on page ${item.page}`} className="h-10 w-12 shrink-0 rounded-[6px] border border-border object-cover" /> : <div className="h-10 w-12 shrink-0 rounded-[6px] border border-border bg-muted" />}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-foreground">Page {item.page} · Image {item.index}</span>
+                  <span className="block truncate text-[11px] text-foreground">{item.pixelWidth}×{item.pixelHeight} pt</span>
+                </span>
+              </button>
               <Button variant="secondary" size="sm" onClick={() => { setReplaceTargetId(null); imageInputRef.current?.click(); }}>Replace</Button>
             </div>
           ))}
         </div>
+
         <div className="border-t border-border pt-3 space-y-2">
           <p className="text-xs font-semibold text-foreground">PLACED IMAGES</p>
           {editState.annotations.filter((item) => item.kind === 'image' && item.page === currentSourcePage).map((item) => (
@@ -920,7 +1005,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
     );
-  }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, page, pageImages, pdf, properties, runOcr, runSearch, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   if (loading) return <div className="flex h-full items-center justify-center gap-3 text-foreground"><Loader2 className="h-5 w-5 animate-spin text-primary" />Opening PDF…</div>;
   if (error || !pdf || !document) return <div className="flex h-full flex-col items-center justify-center gap-3"><FileText className="h-10 w-10 text-muted-foreground" /><p className="text-sm font-semibold text-foreground">Unable to open PDF</p><p className="max-w-md text-center text-xs text-foreground">{error}</p></div>;
