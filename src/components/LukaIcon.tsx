@@ -31,12 +31,15 @@ function starPath(cx: number, cy: number, R: number, r: number): string {
 let _gradientId = 0;
 
 export function LukaIcon({ size = 28, animated = false, bare = false, inverted = false, className = "" }: LukaIconProps) {
- const svgSize = bare ? size : size * 0.78;
- const dur = animated ? "1.3s" : "2.6s";
- const gradId = React.useRef(`luka-grad-${++_gradientId}`).current;
+  const svgSize = bare ? size : size * 0.78;
+  const dur = animated ? "1.3s" : "2.6s";
+  const gradId = React.useRef(`luka-grad-${++_gradientId}`).current;
 
- const starFill = inverted ? `url(#${gradId})` : "white";
- const shadowColor = inverted ? "rgba(134,73,241," : "rgba(255,255,255,";
+  // White stars only for bare usage on dark/navy surfaces; everywhere else the
+  // stars themselves carry the Luka gradient — no filled circle behind them.
+  const gradientStars = !bare || inverted;
+  const starFill = gradientStars ? `url(#${gradId})` : "white";
+  const shadowColor = gradientStars ? "rgba(134,73,241," : "rgba(255,255,255,";
 
  const stars = (
  <svg
