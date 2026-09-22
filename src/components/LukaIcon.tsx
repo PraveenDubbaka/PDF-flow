@@ -49,7 +49,7 @@ export function LukaIcon({ size = 28, animated = false, bare = false, inverted =
  fill={starFill}
  aria-hidden="true"
  >
- {inverted && (
+ {gradientStars && (
  <defs>
  <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
  <stop offset="0%" stopColor="#8649F1" />
@@ -98,9 +98,9 @@ export function LukaIcon({ size = 28, animated = false, bare = false, inverted =
 
  if (bare) return stars;
 
- const wrapperBg = inverted
- ? "white"
- : "linear-gradient(135deg, #8649F1 0%, #2355A4 100%)";
+ // No circle background — the stars themselves are the logo in Luka colors.
+ // `inverted` keeps a subtle white chip for use on tinted banners.
+ const wrapperBg = inverted ? "white" : undefined;
 
  const wrapperBorder = inverted
  ? "1.5px solid rgba(134,73,241,0.25)"
