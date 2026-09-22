@@ -177,26 +177,46 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
       {annotations.filter((item) => item.kind !== 'freehand').map((annotation) => (
         <div
           key={annotation.id}
-          onClick={(event) => { event.stopPropagation(); onSelect(annotation.id); }}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(annotation.id);
+            if (annotation.kind === 'link' && !activeKind && annotation.value && /^https?:\/\//i.test(annotation.value)) {
+              window.open(annotation.value, '_blank', 'noopener,noreferrer');
+            }
+          }}
           className={cn(
             'absolute border-2',
             activeKind ? 'pointer-events-none' : 'cursor-pointer',
             selectedId === annotation.id && 'ring-2 ring-primary ring-offset-1',
             annotation.kind === 'comment' && 'flex items-center justify-center rounded-sm border-none bg-warning text-warning-foreground',
+            annotation.kind === 'link' && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
             annotation.kind === 'underline' && 'border-x-0 border-t-0',
             annotation.kind === 'strikeout' && 'border-x-0 border-b-0 top-auto',
             annotation.kind === 'highlight' && 'border-none opacity-40',
             annotation.kind === 'redaction' && 'bg-foreground border-foreground',
             annotation.kind === 'circle' && 'rounded-full',
           )}
-          style={{ left: `${annotation.x}%`, top: `${annotation.y}%`, width: `${annotation.width}%`, height: `${annotation.height}%`, borderColor: annotation.color, backgroundColor: annotation.kind === 'highlight' ? annotation.color : undefined }}
-          title={annotation.label}
+          style={{
+            left: `${annotation.x}%`, top: `${annotation.y}%`,
+            width: annotation.kind === 'link' ? 'auto' : `${annotation.width}%`,
+            height: annotation.kind === 'link' ? 'auto' : `${annotation.height}%`,
+            borderColor: annotation.color,
+            backgroundColor: annotation.kind === 'highlight' ? annotation.color : undefined,
+          }}
+          title={annotation.kind === 'link' ? annotation.value ?? annotation.label : annotation.label}
         >
           {annotation.kind === 'comment' && <MessageSquare className="h-3 w-3" />}
+          {annotation.kind === 'link' && (
+            <>
+              <Link2 className="h-3 w-3 shrink-0" style={{ color: annotation.color }} />
+              <span className="truncate text-[10px] font-medium underline" style={{ color: annotation.color }}>{annotation.value ?? annotation.label}</span>
+            </>
+          )}
           {annotation.kind === 'image' && annotation.value && <img src={annotation.value} alt={annotation.label ?? 'Inserted image'} className="h-full w-full object-contain" />}
           {(annotation.kind === 'text' || annotation.kind === 'calculation') && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
         </div>
       ))}
+
     </div>
   );
 }
