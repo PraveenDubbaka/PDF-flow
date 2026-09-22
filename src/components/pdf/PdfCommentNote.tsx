@@ -221,11 +221,11 @@ export function PdfCommentNote({ annotation, onChange, onDelete, onClose }: {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-end gap-1">
-                <Button size="sm" variant="ghost" onClick={() => setReplyOpen(true)}><Reply />Reply</Button>
-                <Button size="sm" variant="ghost" onClick={() => { setDraft(body); setEditing(true); }}><Pencil />Edit</Button>
-                <Button size="sm" variant="ghost" onClick={() => onChange({ resolved: !annotation.resolved })}><Check />{annotation.resolved ? 'Reopen' : 'Resolve'}</Button>
-                <Button size="sm" variant="ghost" onClick={onDelete} aria-label="Delete comment"><Trash2 /></Button>
+              <div className="flex items-center justify-end gap-1 border-t border-warning/40 pt-2">
+                <Button size="sm" variant="ghost" className="[&_svg]:size-3.5" onClick={() => setReplyOpen(true)}><Reply />Reply</Button>
+                <Button size="sm" variant="ghost" className="[&_svg]:size-3.5" onClick={() => { setDraft(body); setEditing(true); }}><Pencil />Edit</Button>
+                <Button size="sm" variant="ghost" className="[&_svg]:size-3.5" onClick={() => onChange({ resolved: !annotation.resolved })}><Check />{annotation.resolved ? 'Reopen' : 'Resolve'}</Button>
+                <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 [&_svg]:size-3.5" onClick={onDelete} aria-label="Delete comment"><Trash2 /></Button>
               </div>
             )}
           </div>
