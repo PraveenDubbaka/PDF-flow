@@ -122,7 +122,16 @@ function CanvasPage({ pdf, pageNumber, zoom, annotations, activeKind, onAdd }: {
   );
 }
 
-function Thumbnail({ pdf, pageNumber, active, onClick }: { pdf: pdfjs.PDFDocumentProxy; pageNumber: number; active: boolean; onClick: () => void }) {
+function Thumbnail({ pdf, pageNumber, active, onClick, label, rotation = 0, selected, onToggleSelect }: {
+  pdf: pdfjs.PDFDocumentProxy;
+  pageNumber: number;
+  active: boolean;
+  onClick: () => void;
+  label?: number;
+  rotation?: number;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     let task: pdfjs.RenderTask | null = null;
@@ -130,21 +139,33 @@ function Thumbnail({ pdf, pageNumber, active, onClick }: { pdf: pdfjs.PDFDocumen
       const canvas = canvasRef.current;
       const context = canvas?.getContext('2d');
       if (!canvas || !context) return;
-      const viewport = page.getViewport({ scale: 0.22 });
+      const viewport = page.getViewport({ scale: 0.22, rotation: (page.rotate + rotation) % 360 });
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       task = page.render({ canvas, canvasContext: context, viewport });
       return task.promise;
     }).catch(() => undefined);
     return () => task?.cancel();
-  }, [pdf, pageNumber]);
+  }, [pdf, pageNumber, rotation]);
   return (
-    <button onClick={onClick} className={cn('w-full p-2 border rounded-[8px] bg-card', active ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-muted')}>
-      <canvas ref={canvasRef} className="mx-auto max-w-full bg-card border border-border" />
-      <span className="mt-1 block text-[11px] text-foreground">{pageNumber}</span>
-    </button>
+    <div className={cn('relative w-full rounded-[8px] border bg-card p-2', active ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-muted')}>
+      {onToggleSelect && (
+        <input
+          type="checkbox"
+          checked={!!selected}
+          onChange={onToggleSelect}
+          aria-label={`Select page ${label ?? pageNumber}`}
+          className="absolute left-2 top-2 h-3.5 w-3.5 cursor-pointer accent-primary"
+        />
+      )}
+      <button type="button" onClick={onClick} className="block w-full">
+        <canvas ref={canvasRef} className="mx-auto max-w-full border border-border bg-card" />
+        <span className="mt-1 block text-[11px] text-foreground">{label ?? pageNumber}</span>
+      </button>
+    </div>
   );
 }
+
 
 export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [document, setDocument] = useState<PdfDocumentRecord | null>(null);
