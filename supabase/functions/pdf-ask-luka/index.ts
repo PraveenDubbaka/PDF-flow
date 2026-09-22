@@ -10,8 +10,14 @@ serve(async (request) => {
   try {
     const key = Deno.env.get("LOVABLE_API_KEY");
     if (!key) return Response.json({ error: "Ask Luka is not configured." }, { status: 500, headers: corsHeaders });
-    const { question, pageText, documentName, pageNumber } = await request.json();
-    if (!question?.trim()) return Response.json({ error: "Enter a question first." }, { status: 400, headers: corsHeaders });
+    const { question, pageText, pageImage, documentName, pageNumber, action } = await request.json();
+    if (action !== "ocr" && !question?.trim()) return Response.json({ error: "Enter a question first." }, { status: 400, headers: corsHeaders });
+    const prompt = action === "ocr"
+      ? "Transcribe all visible text from this PDF page exactly, preserving reading order. Return only the transcription."
+      : `You are Luka, an accounting document assistant. Answer only from the supplied PDF page context. If the answer is not present, say so clearly. Keep the answer concise.\n\nDocument: ${documentName}\nPage: ${pageNumber}\nQuestion: ${question}\n\nPage context:\n${String(pageText ?? "").slice(0, 30000)}`;
+    const input = pageImage
+      ? [{ role: "user", content: [{ type: "input_text", text: prompt }, { type: "input_image", image_url: pageImage }] }]
+      : prompt;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
       method: "POST",
@@ -25,7 +31,7 @@ serve(async (request) => {
         stream: true,
         reasoning: { effort: "low", summary: "auto" },
         include: ["reasoning.encrypted_content"],
-        input: `You are Luka, an accounting document assistant. Answer only from the supplied PDF page context. If the answer is not present, say so clearly. Keep the answer concise.\n\nDocument: ${documentName}\nPage: ${pageNumber}\nQuestion: ${question}\n\nPage context:\n${String(pageText ?? "").slice(0, 30000)}`,
+        input,
       }),
     });
     if (!response.ok) {

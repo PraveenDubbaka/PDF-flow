@@ -395,18 +395,43 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     return content.items.map((item) => 'str' in item ? item.str : '').join(' ').replace(/\s+/g, ' ').trim();
   }, [currentSourcePage, pdf]);
 
+  const renderPageImage = useCallback(async (sourcePage: number) => {
+    if (!pdf) return '';
+    const target = await pdf.getPage(sourcePage);
+    const viewport = target.getViewport({ scale: 1.35 });
+    const canvas = window.document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const context = canvas.getContext('2d');
+    if (!context) return '';
+    await target.render({ canvas, canvasContext: context, viewport }).promise;
+    return canvas.toDataURL('image/jpeg', 0.78);
+  }, [pdf]);
+
   const runOcr = useCallback(async () => {
     if (!pdf) return;
     setOcrRunning(true);
     try {
       const extracted: Record<string, string> = {};
-      for (const sourcePage of visiblePages) extracted[String(sourcePage)] = await extractPageText(sourcePage);
+      const { supabase } = await import('@/integrations/supabase/client');
+      for (const sourcePage of visiblePages) {
+        const embeddedText = await extractPageText(sourcePage);
+        if (embeddedText) {
+          extracted[String(sourcePage)] = embeddedText;
+          continue;
+        }
+        const pageImage = await renderPageImage(sourcePage);
+        const { data, error: invokeError } = await supabase.functions.invoke('pdf-ask-luka', { body: { action: 'ocr', pageImage, documentName: document?.name, pageNumber: sourcePage } });
+        if (invokeError) throw invokeError;
+        if (data?.error) throw new Error(data.error);
+        extracted[String(sourcePage)] = data?.result ?? '';
+      }
       setEditState((current) => ({ ...current, ocrText: { ...(current.ocrText ?? {}), ...extracted } }));
       toast.success(`Made ${visiblePages.length} page${visiblePages.length === 1 ? '' : 's'} searchable.`);
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : 'Unable to recognize document text.');
     } finally { setOcrRunning(false); }
-  }, [extractPageText, pdf, visiblePages]);
+  }, [document?.name, extractPageText, pdf, renderPageImage, visiblePages]);
 
   const calculationResult = useMemo(() => calcRows.reduce((result, row, index) => {
     const value = Number(row.value) || 0;
