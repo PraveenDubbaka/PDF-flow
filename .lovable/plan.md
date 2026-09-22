@@ -1,70 +1,65 @@
 ## Goal
 
-Add a **Section Summary / Jump-to** panel to the existing Floating Action Bar (the utility pill on the right). It gives users a hovering table of contents showing every section with its completion progress (answered / total) and jumps to that section on click — solving the Jira feedback about reviewing long T2-style checklists.
+Turn uploaded PDF rows in the engagement’s left menu into a complete PDF workspace matching the supplied flow, styled with the current Countable design system. PDFs and saved edits will persist privately in Lovable Cloud.
 
-No existing design changes. New button lives inside the FAB pill; content opens in a Popover styled like the other FAB popovers.
+## User flow
 
-## Where it lives
+1. Upload one or more PDFs from a Documents folder in the left menu.
+2. Store the real file, filename, folder, size, and engagement association in Lovable Cloud.
+3. Click a PDF row to open it in the main work area and highlight the active row.
+4. Preview pages with a thumbnail rail, current-page indicator, page navigation, zoom controls, loading/error states, and an “open in window” option.
+5. Enter Edit mode to reveal Save, Cancel, and the right-side editing rail.
+6. Save edits as a new current PDF version; Cancel restores the last saved version.
 
-- Only in `FloatingActionBar.tsx`, only for checklists (`isChecklist`), visible in both edit and preview modes.
-- New icon button inserted between "Collapse/Expand Sections" (Layers) and "Reorder" (ArrowUpDown) — natural place for navigation.
-- Icon: `ListTree` from `lucide-react` (matches existing lucide set).
-- Opens a `Popover` (same pattern as Smart Layout / Add Category) anchored `side="left"`.
+## PDF editing workspace
 
-## Panel contents
+Build the screenshot’s editing modes as one consistent right rail:
 
-Header row: "Sections" title + small "X of Y completed" summary.
+- **Pages:** page thumbnails, selection, reorder, rotate, duplicate, and delete.
+- **Search:** search extracted document text, show result counts, and jump between matches.
+- **Images:** list detected images and replace a selected image while retaining its position and bounds.
+- **Annotations:** selection, highlight, underline, strikeout, freehand, text, rectangle, circle, and arrow tools; color editing, rename, and delete.
+- **Hyperlinks:** place a link region, attach a URL or another page, edit, and remove it.
+- **Trial balance links:** place a reference region and associate it with an engagement trial-balance account.
+- **Comments:** place sticky notes, edit comment text, and delete comments.
+- **Redact and watermark:** draw permanent redaction regions; configure watermark text, opacity, rotation, and apply it to every page.
+- **Security and optimization:** password/permission controls, decrypt when a password is supplied, sanitize embedded active content, and optimize the saved PDF.
+- **History safety:** maintain a saved source version and working edit state so destructive tools are not committed until Save.
 
-Scrollable list (max-height ~ 60vh). Each row:
-```
-[index]  Section title                     [answered/total]  [progress bar]
-```
-- Rows are buttons; click → smooth-scroll to the section and close the popover.
-- If a section is fully answered, show a subtle check accent (no new colors — use `text-primary`/existing tokens).
-- Indeterminate / mixed shows a filled bar proportional to answered/total.
-- Empty state ("No sections yet") when checklist has none.
+## Visual direction
 
-Search input at top (simple filter over section titles) — helpful for the 200-question T2 case mentioned in the ticket.
+- Preserve the existing full-height engagement shell, global header, left navigation, and right utility strip.
+- Use the project’s semantic background, foreground, card, muted, border, primary, destructive, and focus tokens.
+- Keep controls compact, 8–10px radii, flat interactions, black/high-contrast supporting text, and no hover lift or scale.
+- Use existing Button, Input, Tooltip, ScrollArea, Dropdown, Dialog, and confirmation patterns.
+- Adapt the workspace at narrower widths by collapsing thumbnail and property rails without obscuring the PDF.
 
-## Progress computation
+## Cloud data and security
 
-Helper `getSectionProgress(section: Section)` in the same file:
-- `total` = count of questions + subQuestions + subSubQuestions where `answerType !== 'none'`.
-- `answered` = same, but where `answer` is a non-empty string (or `labelAnswer` non-empty when `labelPlaceholder` is set).
-- Return `{ answered, total }`.
+- Create a private `engagement-pdfs` storage bucket.
+- Add authenticated, row-level-protected records for PDF documents, versions, annotations, comments, links, trial-balance references, and security/edit metadata.
+- Scope every read/write to the signed-in owner and engagement; grant only authenticated users and service operations.
+- Upload actual PDF bytes rather than retaining filename-only placeholders.
+- Remove stored objects when a document is deleted and preserve version metadata for safe replacement/download.
 
-Totals for header sum across sections.
+## Implementation structure
 
-## Jump-to scroll
+- Add a focused PDF workspace component and smaller page rail, canvas, editor rail, and tool-panel components.
+- Add a PDF document store/service that owns Cloud upload, download, version save, and edit-state serialization.
+- Extend the existing engagement detail screen with a PDF document mode rather than creating a separate shell.
+- Extend left-menu document records with Cloud IDs, storage paths, MIME type, size, and selected-document routing.
+- Use a proven PDF renderer/manipulation library for page rendering and saved output; keep interaction overlays in React.
+- Update generated Cloud types after schema creation.
 
-Sections don't currently expose DOM anchors. Minimal, non-visual change:
+## Validation
 
-- `src/components/ChecklistSection.tsx`: add `id={`checklist-section-${section.id}`}` and `data-section-id={section.id}` to the outermost wrapper `<div>`. Also add `scroll-mt-40` so the sticky header doesn't cover it.
+- Upload a real multi-page PDF from the left menu and reopen it from the active document row.
+- Verify thumbnails, page navigation, zoom, search, each editing panel, Save/Cancel, download, and new-window viewing.
+- Reload and confirm the PDF plus annotations/comments remain available from Lovable Cloud.
+- Verify permanent redaction/watermark output by downloading and reopening the saved file.
+- Verify desktop and compact-width layouts, focus states, empty/loading/error states, and no overlapping controls.
+- Check current build, runtime, console, and network diagnostics after implementation.
 
-Jump handler in the new panel:
-```ts
-const el = document.getElementById(`checklist-section-${id}`);
-el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-```
-If the section is collapsed, first dispatch an expand: reuse `onExpandSections` isn't per-section, so we set `isExpanded: true` on that section via the existing `onUpdate(checklist)` prop before scrolling.
+## Technical note
 
-## Props added to FloatingActionBar
-
-`checklist` prop already passed in. No new required props. Uses existing `onUpdate` for the "expand target section" case.
-
-## Files touched
-
-1. `src/components/FloatingActionBar.tsx`
-   - Import `ListTree`, add local state `showSectionsPopover`.
-   - Insert new `<Popover>` button in the pill (checklist-only, both modes).
-   - Add small helpers: `getSectionProgress`, `jumpToSection`.
-2. `src/components/ChecklistSection.tsx`
-   - Add `id` + `data-section-id` + `scroll-mt-40` on the outer wrapper only. No visual change.
-
-That's it — no changes to worksheets, no new global state, no new routes.
-
-## Out of scope (can be follow-up)
-
-- Persisting last-viewed section.
-- Hover-preview of section contents.
-- Applying to non-checklist worksheets (ticket is specifically about checklists).
+True PDF encryption/decryption, sanitization, and content-stream optimization will run during the Cloud save pipeline rather than being represented by UI-only toggles. If a source PDF uses an unsupported encryption variant, the editor will retain the original and show a clear non-destructive error.
