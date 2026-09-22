@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle,
   Copy, Download, ExternalLink, FileText, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
-  MessageSquare, MousePointer2, Pen, Pencil, Plus, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Sparkles, Square,
+  History, MessageSquare, MousePointer2, Pen, Pencil, Plus, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Sparkles, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { LukaIcon } from '@/components/LukaIcon';
 import { cn } from '@/lib/utils';
@@ -342,6 +343,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [searchIndex, setSearchIndex] = useState(0);
   const [searching, setSearching] = useState(false);
   const [searchHighlight, setSearchHighlight] = useState<{ id: string; page: number; x: number; y: number; width: number; height: number } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -456,7 +458,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       setPendingValue('');
       return;
     }
-    setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+    const stamped: PdfAnnotation = {
+      ...annotation,
+      author: annotation.author ?? currentMentionUser.name,
+      createdAt: annotation.createdAt ?? new Date().toISOString(),
+    };
+    setEditState((current) => ({ ...current, annotations: [...current.annotations, stamped] }));
   }, []);
 
   const confirmTrialBalanceAccount = useCallback((label: string) => {
@@ -1231,6 +1238,29 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     );
   }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
+  const historyEntries = useMemo(() => {
+    const fallbackDate = document?.updated_at ?? document?.created_at ?? new Date().toISOString();
+    const entries = editState.annotations.map((item) => ({
+      id: item.id,
+      page: item.page,
+      author: item.author ?? currentMentionUser.name,
+      createdAt: item.createdAt ?? fallbackDate,
+      kind: item.kind,
+      title: item.label || item.value || `${item.kind.replace('-', ' ')} added`,
+      color: item.color,
+      x: item.x, y: item.y, width: item.width, height: item.height,
+    }));
+    return entries.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }, [document, editState.annotations]);
+
+  const goToHistoryEntry = useCallback((entry: { id: string; page: number; x: number; y: number; width: number; height: number }) => {
+    const position = visiblePages.indexOf(entry.page);
+    setPage(Math.max(1, position + 1));
+    setSelectedAnnotationId(entry.id);
+    setSearchHighlight({ id: `${entry.id}-${Date.now()}`, page: entry.page, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
+    setHistoryOpen(false);
+  }, [visiblePages]);
+
   if (loading) return <div className="flex h-full items-center justify-center gap-3 text-foreground"><Loader2 className="h-5 w-5 animate-spin text-primary" />Opening PDF…</div>;
   if (error || !pdf || !document) return <div className="flex h-full flex-col items-center justify-center gap-3"><FileText className="h-10 w-10 text-muted-foreground" /><p className="text-sm font-semibold text-foreground">Unable to open PDF</p><p className="max-w-md text-center text-xs text-foreground">{error}</p></div>;
 
@@ -1238,7 +1268,53 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     <div className="flex h-full min-h-0 flex-col bg-background">
       <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void handleImageFile(file); }} />
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
-        <div className="min-w-0 text-[10px] text-foreground">Version {document.current_version}</div>
+        <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className="-ml-2 gap-1.5 text-xs font-medium">
+              <History />
+              Version {document.current_version}
+              <ChevronDown className={cn('transition-transform', historyOpen && 'rotate-180')} />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-[380px] p-0">
+            <div className="border-b border-border px-3 py-2">
+              <p className="text-xs font-semibold text-foreground">History of changes</p>
+              <p className="text-[11px] text-foreground">{historyEntries.length} change{historyEntries.length === 1 ? '' : 's'} · click one to jump to it</p>
+            </div>
+            <ScrollArea className="max-h-[320px]">
+              <div className="p-2">
+                {historyEntries.length === 0 && <p className="px-2 py-6 text-center text-xs text-foreground">No changes yet.</p>}
+                {historyEntries.map((entry) => {
+                  const KindIcon = KIND_ICONS[entry.kind] ?? MousePointer2;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => goToHistoryEntry(entry)}
+                      className="flex w-full items-start gap-2.5 rounded-[8px] px-2 py-2 text-left hover:bg-muted"
+                    >
+                      <span
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                        style={{ backgroundColor: entry.color }}
+                      >
+                        {initialsOf(entry.author)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <KindIcon className="h-3 w-3 shrink-0" style={{ color: entry.color }} />
+                          <span className="truncate text-xs font-semibold text-foreground">{entry.title}</span>
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] text-foreground">
+                          {entry.author} · Page {entry.page} · {new Date(entry.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
         <div className="flex items-center gap-2">
           {editing ? <>
             <Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button>
