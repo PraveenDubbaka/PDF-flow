@@ -356,15 +356,34 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const panelContent = useMemo(() => {
     if (activePanel === 'pages') return (
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-foreground">{visiblePages.length} pages</p>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelectedPages(selectedPages.length === visiblePages.length ? [] : visiblePages.map((_, index) => index))}
-          >
-            {selectedPages.length === visiblePages.length ? 'Clear' : 'Select all'}
-          </Button>
+        <div className="sticky -top-3 z-10 -mx-3 space-y-2 border-b border-border bg-card px-3 pb-2 pt-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-foreground">{visiblePages.length} pages{selectedPages.length ? ` · ${selectedPages.length} selected` : ''}</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedPages(selectedPages.length === visiblePages.length ? [] : visiblePages.map((_, index) => index))}
+            >
+              {selectedPages.length === visiblePages.length ? 'Clear' : 'Select all'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-1">
+            {([
+              { label: 'Move up', icon: ArrowUp, action: () => movePages(-1) },
+              { label: 'Move down', icon: ArrowDown, action: () => movePages(1) },
+              { label: 'Rotate left', icon: RotateCcw, action: () => rotatePages(-1) },
+              { label: 'Rotate right', icon: RotateCw, action: () => rotatePages(1) },
+              { label: 'Duplicate', icon: Copy, action: duplicatePages },
+              { label: 'Delete', icon: Trash2, action: deletePages },
+            ]).map(({ label, icon: Icon, action }) => (
+              <Tooltip key={label}>
+                <TooltipTrigger asChild>
+                  <Button variant="secondary" size="icon-sm" onClick={action} aria-label={label}><Icon /></Button>
+                </TooltipTrigger>
+                <TooltipContent>{label}</TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
         </div>
         <p className="text-[11px] text-foreground">{selectedPages.length ? `${selectedPages.length} selected` : 'Actions apply to the current page unless pages are selected.'}</p>
         <div className="grid grid-cols-2 gap-2">
