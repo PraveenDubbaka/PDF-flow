@@ -352,7 +352,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [ocrRunning, setOcrRunning] = useState(false);
   const [calcTitle, setCalcTitle] = useState('');
   const [calcColor, setCalcColor] = useState(COLORS[0]);
-  const [calcRows, setCalcRows] = useState<{ value: string; operator: '+' | '-' | '×' | '÷' }[]>([{ value: '', operator: '+' }]);
+  const [calcRows, setCalcRows] = useState<{ value: string; operator: '+' | '-' | '×' | '÷'; comment: string }[]>([{ value: '', operator: '+', comment: '' }]);
+  const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
   const [lukaQuestion, setLukaQuestion] = useState('');
   const [lukaAnswer, setLukaAnswer] = useState('');
   const [lukaLoading, setLukaLoading] = useState(false);
@@ -675,30 +676,68 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     } finally { setOcrRunning(false); }
   }, [document?.name, extractPageText, pdf, renderPageImage, visiblePages]);
 
-  const calculationResult = useMemo(() => calcRows.reduce((result, row, index) => {
-    const value = Number(row.value) || 0;
-    if (index === 0) return value;
-    if (row.operator === '-') return result - value;
-    if (row.operator === '×') return result * value;
-    if (row.operator === '÷') return value === 0 ? result : result / value;
-    return result + value;
-  }, 0), [calcRows]);
+  const calculationResult = useMemo(() => {
+    const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
+    if (rows.length === 0) return 0;
+    // Multiplication and division bind tighter than addition and subtraction.
+    const terms: number[] = [Number(rows[0].value) || 0];
+    for (let index = 1; index < rows.length; index += 1) {
+      const value = Number(rows[index].value) || 0;
+      const operator = rows[index].operator;
+      if (operator === '×') terms[terms.length - 1] *= value;
+      else if (operator === '÷') terms[terms.length - 1] = value === 0 ? terms[terms.length - 1] : terms[terms.length - 1] / value;
+      else terms.push(operator === '-' ? -value : value);
+    }
+    const total = terms.reduce((sum, term) => sum + term, 0);
+    return Number.isFinite(total) ? Math.round(total * 100) / 100 : 0;
+  }, [calcRows]);
+
+  const resetCalculator = useCallback(() => {
+    setEditingCalcId(null);
+    setCalcTitle('');
+    setCalcRows([{ value: '', operator: '+', comment: '' }]);
+  }, []);
+
+  const startEditCalculation = useCallback((calculation: PdfCalculation) => {
+    setEditingCalcId(calculation.id);
+    setCalcTitle(calculation.title);
+    setCalcColor(calculation.color);
+    setCalcRows(calculation.values.map((value, index) => ({
+      value: String(value),
+      operator: calculation.operators?.[index] ?? '+',
+      comment: calculation.comments?.[index] ?? '',
+    })));
+  }, []);
 
   const addCalculation = useCallback(() => {
-    const calculation: PdfCalculation = {
-      id: crypto.randomUUID(), title: calcTitle.trim() || 'Calculation', page: currentSourcePage,
-      values: calcRows.map((row) => Number(row.value) || 0), operators: calcRows.map((row) => row.operator),
-      result: calculationResult, color: calcColor,
+    const title = calcTitle.trim() || 'Calculation';
+    const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
+    const base = {
+      title,
+      values: rows.map((row) => Number(row.value) || 0),
+      operators: rows.map((row) => row.operator),
+      comments: rows.map((row) => row.comment),
+      result: calculationResult,
+      color: calcColor,
     };
-    setEditState((current) => ({
-      ...current,
-      calculations: [...(current.calculations ?? []), calculation],
-      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: currentSourcePage, x: 30, y: 30, width: 25, height: 6, color: calcColor, label: `${calculation.title}: ${calculationResult}` }],
-    }));
-    setCalcTitle('');
-    setCalcRows([{ value: '', operator: '+' }]);
-    toast.success('Calculation added to the document.');
-  }, [calcColor, calcRows, calcTitle, calculationResult, currentSourcePage]);
+    if (editingCalcId) {
+      setEditState((current) => ({
+        ...current,
+        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, ...base } : item),
+        annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${calculationResult}` } : item),
+      }));
+      toast.success('Calculation updated.');
+    } else {
+      const calculation: PdfCalculation = { id: crypto.randomUUID(), page: currentSourcePage, ...base };
+      setEditState((current) => ({
+        ...current,
+        calculations: [...(current.calculations ?? []), calculation],
+        annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: currentSourcePage, x: 30, y: 30, width: 25, height: 6, color: calcColor, label: `${title}: ${calculationResult}` }],
+      }));
+      toast.success('Calculation added to the document.');
+    }
+    resetCalculator();
+  }, [calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, editingCalcId, resetCalculator]);
 
   const askLuka = useCallback(async (question: string) => {
     const prompt = question.trim();
@@ -1100,18 +1139,40 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     );
     if (activePanel === 'calculations') return (
       <div className="space-y-3">
-        <p className="text-xs font-semibold text-foreground">BUILD A CALCULATION</p>
-        <div className="flex gap-2"><Input value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="Header (optional)" /><input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-10 rounded-[6px] border border-border bg-background p-1" /></div>
-        <div className="space-y-2">{calcRows.map((row, index) => <div key={index} className="grid grid-cols-[28px_72px_1fr_28px] items-center gap-2"><span className="text-center text-xs text-foreground">{index + 1}</span><select value={row.operator} disabled={index === 0} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 rounded-[8px] border border-border bg-background px-2 text-xs text-foreground"><option>+</option><option>-</option><option>×</option><option>÷</option></select><Input type="number" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" /><Button variant="ghost" size="icon-sm" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label="Remove calculation row"><X /></Button></div>)}</div>
-        <div className="flex gap-2"><Button variant="secondary" className="flex-1" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+' }])}><Plus />Add</Button><Button variant="secondary" onClick={() => setCalcRows([{ value: '', operator: '+' }])}><X />Clear</Button></div>
-        <div className="flex items-center justify-between rounded-[8px] bg-primary/15 px-3 py-2 text-sm font-semibold text-foreground"><span>Result</span><span>{Number.isFinite(calculationResult) ? calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}</span></div>
-        <Button className="w-full" onClick={addCalculation}><Plus />Add to document</Button>
-        <div className="border-t border-border pt-3"><p className="mb-2 text-xs font-semibold text-foreground">PLACED CALCULATIONS</p><div className="space-y-2">{(editState.calculations ?? []).map((calculation) => <div key={calculation.id} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-2 py-2"><Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start" onClick={() => setPage(Math.max(1, visiblePages.indexOf(calculation.page) + 1))}><span className="truncate">{calculation.title}<br /><span className="font-normal">Result = {calculation.result}</span></span></Button><Button variant="ghost" size="icon-sm" aria-label="Delete calculation" onClick={() => setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) }))}><Trash2 /></Button></div>)}</div></div>
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><Calculator className="h-3.5 w-3.5" />{editingCalcId ? 'EDIT CALCULATION' : 'BUILD A CALCULATION'}</p>
+        <div className="space-y-1.5">
+          <Label htmlFor="calc-header">Header (optional)</Label>
+          <div className="flex gap-2">
+            <Input id="calc-header" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
+            <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-10 rounded-[6px] border border-border bg-background p-1" />
+          </div>
+        </div>
+        <div className="grid grid-cols-[22px_1fr_60px_96px_24px] items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-foreground">
+          <span className="text-center">#</span><span>Comment</span><span>Op</span><span className="text-right">Amount</span><span />
+        </div>
+        <div className="space-y-2">{calcRows.map((row, index) => (
+          <div key={index} className="grid grid-cols-[22px_1fr_60px_96px_24px] items-center gap-2">
+            <span className="text-center text-xs text-foreground">{index + 1}</span>
+            <Input aria-label={`Comment ${index + 1}`} value={row.comment} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, comment: event.target.value } : item))} placeholder={`Value ${index + 1}`} />
+            {index === 0 ? <span /> : (
+              <select value={row.operator} aria-label={`Operator ${index + 1}`} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 rounded-[8px] border border-border bg-background px-2 text-xs text-foreground"><option>+</option><option>-</option><option>×</option><option>÷</option></select>
+            )}
+            <Input aria-label={`Amount ${index + 1}`} type="number" inputMode="decimal" className="text-right" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" />
+            <Button variant="ghost" size="icon-sm" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove row ${index + 1}`}><X /></Button>
+          </div>
+        ))}</div>
+        <div className="flex gap-2"><Button variant="secondary" className="flex-1" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+', comment: '' }])}><Plus />Add</Button><Button variant="secondary" onClick={() => setCalcRows([{ value: '', operator: '+', comment: '' }])}><X />Clear</Button></div>
+        <div className="flex items-center justify-between rounded-[8px] bg-primary/15 px-3 py-2 text-sm font-semibold text-foreground"><span className="truncate">{calcTitle.trim() || 'Result'}</span><span>{calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+        <div className="flex gap-2">
+          {editingCalcId && <Button variant="ghost" onClick={resetCalculator}>Cancel</Button>}
+          <Button className="flex-1" onClick={addCalculation}>{editingCalcId ? <Save /> : <Plus />}{editingCalcId ? 'Update' : 'Add to document'}</Button>
+        </div>
+        <div className="border-t border-border pt-3"><p className="mb-2 text-xs font-semibold text-foreground">PLACED CALCULATIONS</p><div className="space-y-2">{(editState.calculations ?? []).map((calculation) => <div key={calculation.id} className="flex items-center gap-1 rounded-[8px] border border-border bg-background px-2 py-2"><button type="button" className="min-w-0 flex-1 text-center" onClick={() => setPage(Math.max(1, visiblePages.indexOf(calculation.page) + 1))}><span className="block truncate text-xs font-semibold text-foreground">{calculation.title}</span><span className="block truncate text-xs text-foreground">Result = {calculation.result.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></button><Button variant="ghost" size="icon-sm" aria-label="Edit calculation" onClick={() => startEditCalculation(calculation)}><Pencil /></Button><Button variant="ghost" size="icon-sm" aria-label="Go to calculation" onClick={() => setPage(Math.max(1, visiblePages.indexOf(calculation.page) + 1))}><Calculator /></Button><Button variant="ghost" size="icon-sm" aria-label="Delete calculation" className="text-destructive hover:bg-destructive/10" onClick={() => { if (editingCalcId === calculation.id) resetCalculator(); setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) })); }}><Trash2 /></Button></div>)}</div></div>
       </div>
     );
     if (activePanel === 'luka') return (
       <div className="flex h-full min-h-0 flex-col">
-        <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-3 py-5 text-center"><LukaIcon size={44} className="mb-3" animated={lukaLoading} /><p className="text-sm font-semibold text-foreground">Ask Luka about this document</p><p className="mt-2 max-w-xs text-xs text-foreground">Luka uses the page you are viewing and can place an answer as a note or calculation.</p><div className="mt-4 flex flex-wrap justify-center gap-2">{['Summarize this page', 'Extract the figures on this page', 'Check these totals'].map((prompt) => <Button key={prompt} variant="secondary" size="sm" onClick={() => void askLuka(prompt)}>{prompt}</Button>)}</div>{lukaLoading && <Loader2 className="mt-5 h-5 w-5 animate-spin text-primary" />}{lukaAnswer && <div className="mt-5 w-full rounded-[8px] border border-border bg-background p-3 text-left text-xs text-foreground"><p>{lukaAnswer}</p><div className="mt-3 flex gap-2"><Button size="sm" variant="secondary" onClick={() => addAnnotation({ id: crypto.randomUUID(), kind: 'comment', page: currentSourcePage, x: 80, y: 8, width: 4, height: 4, color: '#f59e0b', label: lukaAnswer })}>Add note</Button><Button size="sm" variant="secondary" onClick={() => { const numeric = Number(lukaAnswer.match(/-?[\d,]+(?:\.\d+)?/)?.[0]?.replace(/,/g, '')); if (!Number.isFinite(numeric)) return toast.error('This answer does not contain a calculation result.'); setCalcTitle(lukaQuestion); setCalcRows([{ value: String(numeric), operator: '+' }]); setActivePanel('calculations'); }}>Use result</Button></div></div>}</div>
+        <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-3 py-5 text-center"><LukaIcon size={44} className="mb-3" animated={lukaLoading} /><p className="text-sm font-semibold text-foreground">Ask Luka about this document</p><p className="mt-2 max-w-xs text-xs text-foreground">Luka uses the page you are viewing and can place an answer as a note or calculation.</p><div className="mt-4 flex flex-wrap justify-center gap-2">{['Summarize this page', 'Extract the figures on this page', 'Check these totals'].map((prompt) => <Button key={prompt} variant="secondary" size="sm" onClick={() => void askLuka(prompt)}>{prompt}</Button>)}</div>{lukaLoading && <Loader2 className="mt-5 h-5 w-5 animate-spin text-primary" />}{lukaAnswer && <div className="mt-5 w-full rounded-[8px] border border-border bg-background p-3 text-left text-xs text-foreground"><p>{lukaAnswer}</p><div className="mt-3 flex gap-2"><Button size="sm" variant="secondary" onClick={() => addAnnotation({ id: crypto.randomUUID(), kind: 'comment', page: currentSourcePage, x: 80, y: 8, width: 4, height: 4, color: '#f59e0b', label: lukaAnswer })}>Add note</Button><Button size="sm" variant="secondary" onClick={() => { const numeric = Number(lukaAnswer.match(/-?[\d,]+(?:\.\d+)?/)?.[0]?.replace(/,/g, '')); if (!Number.isFinite(numeric)) return toast.error('This answer does not contain a calculation result.'); setCalcTitle(lukaQuestion); setCalcRows([{ value: String(numeric), operator: '+', comment: lukaQuestion.slice(0, 40) }]); setActivePanel('calculations'); }}>Use result</Button></div></div>}</div>
         <div className="shrink-0 border-t border-border bg-card p-3"><Textarea size="default" className="min-h-[76px] p-3 text-xs" value={lukaQuestion} onChange={(event) => setLukaQuestion(event.target.value)} placeholder="Ask Luka about this document…" /><Button className="mt-2 w-full" disabled={lukaLoading || !lukaQuestion.trim()} onClick={() => void askLuka(lukaQuestion)}>{lukaLoading ? <Loader2 className="animate-spin" /> : <ArrowRight />}Send</Button></div>
       </div>
     );
@@ -1144,7 +1205,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
     );
-  }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, decryptPassword, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeKind, activePanel, addCalculation, askLuka, bookmarkTitle, calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   if (loading) return <div className="flex h-full items-center justify-center gap-3 text-foreground"><Loader2 className="h-5 w-5 animate-spin text-primary" />Opening PDF…</div>;
   if (error || !pdf || !document) return <div className="flex h-full flex-col items-center justify-center gap-3"><FileText className="h-10 w-10 text-muted-foreground" /><p className="text-sm font-semibold text-foreground">Unable to open PDF</p><p className="max-w-md text-center text-xs text-foreground">{error}</p></div>;
