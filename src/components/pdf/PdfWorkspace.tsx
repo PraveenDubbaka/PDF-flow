@@ -59,7 +59,7 @@ const hexToRgb = (hex: string) => {
   return rgb(((int >> 16) & 255) / 255, ((int >> 8) & 255) / 255, (int & 255) / 255);
 };
 
-function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId }: {
+function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight }: {
   pdf: pdfjs.PDFDocumentProxy;
   pageNumber: number;
   zoom: number;
@@ -70,10 +70,18 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   onAdd: (annotation: PdfAnnotation) => void;
   onSelect: (id: string | null) => void;
   selectedId: string | null;
+  highlight?: { id: string; page: number; x: number; y: number; width: number; height: number } | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 612, height: 792 });
   const [drawing, setDrawing] = useState<{ x: number; y: number }[] | null>(null);
+
+  useEffect(() => {
+    if (!highlight || highlight.page !== pageNumber) return;
+    const timer = window.setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
+    return () => window.clearTimeout(timer);
+  }, [highlight, pageNumber]);
 
   useEffect(() => {
     let cancelled = false;
