@@ -58,10 +58,14 @@ export const emptyPdfEditState = (): PdfEditState => ({
   },
 });
 
-const requireUser = async () => {
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) throw new Error('Sign in is required to store engagement PDFs.');
-  return data.user;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const requireUser = async () => {
+  const { data } = await supabase.auth.getUser();
+  if (data.user) return data.user;
+  const { data: anon, error: anonError } = await supabase.auth.signInAnonymously();
+  if (anonError || !anon.user) throw new Error('Secure storage is unavailable right now. Please try again.');
+  return anon.user;
 };
 
 export async function uploadEngagementPdf(file: File, engagementId: string, nodeId: string, displayName: string) {
@@ -106,8 +110,13 @@ export async function uploadEngagementPdf(file: File, engagementId: string, node
 }
 
 export async function getPdfDocument(documentId: string) {
-  const { data, error } = await supabase.from('engagement_pdf_documents').select('*').eq('id', documentId).single();
+  if (!UUID_PATTERN.test(documentId)) {
+    throw new Error('This file was added before secure storage was set up, so its contents are not stored. Please upload the PDF again.');
+  }
+  await requireUser();
+  const { data, error } = await supabase.from('engagement_pdf_documents').select('*').eq('id', documentId).maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error('This PDF is no longer available. Please upload it again.');
   return data as unknown as PdfDocumentRecord;
 }
 
