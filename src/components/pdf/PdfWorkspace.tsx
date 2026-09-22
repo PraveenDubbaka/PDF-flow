@@ -499,6 +499,79 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     return canvas.toDataURL('image/jpeg', 0.78);
   }, [pdf]);
 
+  const scanDocumentImages = useCallback(async () => {
+    if (!pdf) return;
+    setScanningImages(true);
+    try {
+      const found: DocImage[] = [];
+      for (const sourcePage of visiblePages) {
+        const target = await pdf.getPage(sourcePage);
+        const operators = await target.getOperatorList();
+        const viewport = target.getViewport({ scale: 1 });
+        let matrix = [1, 0, 0, 1, 0, 0];
+        const stack: number[][] = [];
+        const rects: { x: number; y: number; width: number; height: number }[] = [];
+        operators.fnArray.forEach((fn, index) => {
+          const args = operators.argsArray[index] as number[] | undefined;
+          if (fn === pdfjs.OPS.save) { stack.push(matrix.slice()); return; }
+          if (fn === pdfjs.OPS.restore) { matrix = stack.pop() ?? [1, 0, 0, 1, 0, 0]; return; }
+          if (fn === pdfjs.OPS.transform && args) { matrix = multiply(matrix, args); return; }
+          if (fn !== pdfjs.OPS.paintImageXObject && fn !== pdfjs.OPS.paintInlineImageXObject && fn !== pdfjs.OPS.paintImageMaskXObject) return;
+          const w = Math.abs(matrix[0]);
+          const h = Math.abs(matrix[3]);
+          if (w < 4 || h < 4) return;
+          const x0 = matrix[4] - (matrix[0] < 0 ? w : 0);
+          const y0 = matrix[5] - (matrix[3] < 0 ? h : 0);
+          const [vx1, vy1] = viewport.convertToViewportPoint(x0, y0);
+          const [vx2, vy2] = viewport.convertToViewportPoint(x0 + w, y0 + h);
+          const left = Math.min(vx1, vx2), top = Math.min(vy1, vy2);
+          rects.push({
+            x: (left / viewport.width) * 100,
+            y: (top / viewport.height) * 100,
+            width: (Math.abs(vx2 - vx1) / viewport.width) * 100,
+            height: (Math.abs(vy2 - vy1) / viewport.height) * 100,
+          });
+        });
+        if (!rects.length) continue;
+        const scale = 1.5;
+        const rendered = target.getViewport({ scale });
+        const canvas = window.document.createElement('canvas');
+        canvas.width = rendered.width;
+        canvas.height = rendered.height;
+        const context = canvas.getContext('2d');
+        if (!context) continue;
+        await target.render({ canvas, canvasContext: context, viewport: rendered }).promise;
+        rects.forEach((rect, index) => {
+          const sx = (rect.x / 100) * canvas.width;
+          const sy = (rect.y / 100) * canvas.height;
+          const sw = Math.max(1, (rect.width / 100) * canvas.width);
+          const sh = Math.max(1, (rect.height / 100) * canvas.height);
+          const crop = window.document.createElement('canvas');
+          crop.width = Math.min(160, Math.round(sw));
+          crop.height = Math.max(1, Math.round((sh / sw) * Math.min(160, Math.round(sw))));
+          const cropContext = crop.getContext('2d');
+          cropContext?.drawImage(canvas, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
+          found.push({
+            id: `img-${sourcePage}-${index}`, page: sourcePage, index: index + 1,
+            ...rect,
+            pixelWidth: Math.round(sw / scale), pixelHeight: Math.round(sh / scale),
+            thumb: cropContext ? crop.toDataURL('image/jpeg', 0.7) : '',
+          });
+        });
+      }
+      setDocImages(found);
+    } catch {
+      setDocImages([]);
+    } finally { setScanningImages(false); }
+  }, [pdf, visiblePages]);
+
+  const goToImage = useCallback((item: DocImage) => {
+    const position = visiblePages.indexOf(item.page);
+    setPage(Math.max(1, position + 1));
+    setSearchHighlight({ id: `${item.id}-${Date.now()}`, page: item.page, x: item.x, y: item.y, width: item.width, height: item.height });
+  }, [visiblePages]);
+
+
   const runOcr = useCallback(async () => {
     if (!pdf) return;
     setOcrRunning(true);
