@@ -271,26 +271,44 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
 
   useEffect(() => {
     let currentUrl: string | null = null;
-    setLoading(true);
-    setError('');
-    void getPdfDocument(documentId).then(async (record) => {
-      const url = await getPdfBlobUrl(record.storage_path);
-      currentUrl = url;
-      const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
-      const loadedPdf = await pdfjs.getDocument({ data: bytes.slice() }).promise;
-      const state = { ...emptyPdfEditState(), ...(record.edit_state ?? {}) } as PdfEditState;
-      if (!state.pageOrder.length) state.pageOrder = Array.from({ length: loadedPdf.numPages }, (_, index) => index + 1);
-      setDocument(record);
-      setBlobUrl(url);
-      setSourceBytes(bytes);
-      setPdf(loadedPdf);
-      setEditState(state);
-      setSavedState(structuredClone(state));
-      setProperties(state.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
-      setUserPassword(state.passwords?.user ?? '');
-      setOwnerPassword(state.passwords?.owner ?? '');
-    }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to open this PDF.')).finally(() => setLoading(false));
-    return () => { if (currentUrl) URL.revokeObjectURL(currentUrl); };
+    let cancelled = false;
+    const load = async (attempt: number): Promise<void> => {
+      setLoading(true);
+      setError('');
+      try {
+        const record = await getPdfDocument(documentId);
+        const url = await getPdfBlobUrl(record.storage_path);
+        currentUrl = url;
+        const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+        const loadedPdf = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+        const state = { ...emptyPdfEditState(), ...(record.edit_state ?? {}) } as PdfEditState;
+        if (!state.pageOrder.length) state.pageOrder = Array.from({ length: loadedPdf.numPages }, (_, index) => index + 1);
+        if (cancelled) { URL.revokeObjectURL(url); return; }
+        setDocument(record);
+        setBlobUrl(url);
+        setSourceBytes(bytes);
+        setPdf(loadedPdf);
+        setEditState(state);
+        setSavedState(structuredClone(state));
+        setProperties(state.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
+        setUserPassword(state.passwords?.user ?? '');
+        setOwnerPassword(state.passwords?.owner ?? '');
+        setLoading(false);
+      } catch (reason) {
+        if (cancelled) return;
+        if (attempt < 2) {
+          if (currentUrl) { URL.revokeObjectURL(currentUrl); currentUrl = null; }
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          void load(attempt + 1);
+          return;
+        }
+        console.error('PDF open failed:', reason);
+        setError(reason instanceof Error ? reason.message : 'Unable to open this PDF.');
+        setLoading(false);
+      }
+    };
+    void load(0);
+    return () => { cancelled = true; if (currentUrl) URL.revokeObjectURL(currentUrl); };
   }, [documentId]);
 
   const visiblePages = editState.pageOrder.length ? editState.pageOrder : pdf ? Array.from({ length: pdf.numPages }, (_, index) => index + 1) : [];
@@ -831,7 +849,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <div className="min-h-0 flex-1 overflow-auto bg-muted/30 p-5"><div className="mx-auto w-fit"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} /></div></div>
         </section>
         {editing && <aside className="flex w-[340px] min-h-0 shrink-0 border-l border-border bg-card">
-          <ScrollArea className="w-12 shrink-0 border-r border-border"><div className="flex min-h-full flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? <LukaIcon size={18} bare inverted /> : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
+          <ScrollArea className="w-12 shrink-0 border-r border-border"><div className="flex min-h-full flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? <LukaIcon size={18} bare inverted={activePanel !== 'luka'} /> : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
           {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full flex-1"><div className="p-3">{panelContent}</div></ScrollArea>}
         </aside>}
       </div>
