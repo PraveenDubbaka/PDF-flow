@@ -388,20 +388,25 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   }, []);
 
   const addAnnotation = useCallback((annotation: PdfAnnotation) => {
-    if (annotation.kind === 'link') {
-      const value = window.prompt('Web address or page number')?.trim();
-      if (!value) return;
-      annotation.value = value;
-      annotation.label = value;
-    }
-    if (annotation.kind === 'trial-balance') {
-      const value = window.prompt('Trial balance account')?.trim();
-      if (!value) return;
-      annotation.value = value;
-      annotation.label = value;
+    const needsValue = (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'comment' || annotation.kind === 'text') && !annotation.label && !annotation.value;
+    if (needsValue) {
+      setPendingAnnotation(annotation);
+      setPendingValue('');
+      return;
     }
     setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
   }, []);
+
+  const confirmPendingAnnotation = useCallback(() => {
+    const value = pendingValue.trim();
+    if (!pendingAnnotation || !value) return;
+    const annotation: PdfAnnotation = { ...pendingAnnotation, value, label: value };
+    setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+    setPendingAnnotation(null);
+    setPendingValue('');
+    setSelectedAnnotationId(annotation.id);
+  }, [pendingAnnotation, pendingValue]);
+
 
   const handleImageFile = async (file: File) => {
     const dataUrl = await new Promise<string>((resolve, reject) => {
