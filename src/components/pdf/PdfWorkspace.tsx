@@ -192,7 +192,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             activeKind ? 'pointer-events-none' : 'cursor-pointer',
             selectedId === annotation.id && 'ring-2 ring-primary ring-offset-1',
             annotation.kind === 'comment' && 'flex items-center justify-center rounded-sm border-none bg-warning text-warning-foreground',
-            annotation.kind === 'link' && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
+            (annotation.kind === 'link' || annotation.kind === 'trial-balance') && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
             annotation.kind === 'underline' && 'border-x-0 border-t-0',
             annotation.kind === 'strikeout' && 'border-x-0 border-b-0 top-auto',
             annotation.kind === 'highlight' && 'border-none opacity-40',
@@ -201,8 +201,8 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           )}
           style={{
             left: `${annotation.x}%`, top: `${annotation.y}%`,
-            width: annotation.kind === 'link' ? 'auto' : `${annotation.width}%`,
-            height: annotation.kind === 'link' ? 'auto' : `${annotation.height}%`,
+            width: annotation.kind === 'link' || annotation.kind === 'trial-balance' ? 'auto' : `${annotation.width}%`,
+            height: annotation.kind === 'link' || annotation.kind === 'trial-balance' ? 'auto' : `${annotation.height}%`,
             borderColor: annotation.color,
             backgroundColor: annotation.kind === 'highlight' ? annotation.color : undefined,
           }}
@@ -213,6 +213,12 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             <>
               <Link2 className="h-3 w-3 shrink-0" style={{ color: annotation.color }} />
               <span className="truncate text-[10px] font-medium underline" style={{ color: annotation.color }}>{annotation.value ?? annotation.label}</span>
+            </>
+          )}
+          {annotation.kind === 'trial-balance' && (
+            <>
+              <Landmark className="h-3 w-3 shrink-0" style={{ color: annotation.color }} />
+              <span className="truncate text-[10px] font-medium" style={{ color: annotation.color }}>{annotation.label ?? annotation.value}</span>
             </>
           )}
           {annotation.kind === 'image' && annotation.value && <img src={annotation.value} alt={annotation.label ?? 'Inserted image'} className="h-full w-full object-contain" />}
