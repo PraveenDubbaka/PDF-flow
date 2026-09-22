@@ -1238,7 +1238,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     <div className="flex h-full min-h-0 flex-col bg-background">
       <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void handleImageFile(file); }} />
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
-        <div className="min-w-0"><h1 className="truncate text-sm font-semibold text-foreground">{document.name}</h1><p className="text-[10px] text-foreground">Version {document.current_version}</p></div>
+        <div className="min-w-0 text-[10px] text-foreground">Version {document.current_version}</div>
         <div className="flex items-center gap-2">
           {editing ? <>
             <Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button>
