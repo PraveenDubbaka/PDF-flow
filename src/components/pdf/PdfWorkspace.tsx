@@ -290,6 +290,9 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [activeKind, setActiveKind] = useState<PdfAnnotationKind | null>(null);
   const [activeColor, setActiveColor] = useState(COLORS[1]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [pendingAnnotation, setPendingAnnotation] = useState<PdfAnnotation | null>(null);
+  const [pendingValue, setPendingValue] = useState('');
+
   const [editState, setEditState] = useState<PdfEditState>(emptyPdfEditState());
   const [savedState, setSavedState] = useState<PdfEditState>(emptyPdfEditState());
   const [search, setSearch] = useState('');
