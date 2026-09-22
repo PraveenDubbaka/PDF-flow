@@ -1,26 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, ChevronLeft, ChevronRight, Circle,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronLeft, ChevronRight, Circle,
   Copy, Download, ExternalLink, FileText, Highlighter, Image, Link2, Loader2, LockKeyhole,
-  MessageSquare, MousePointer2, Pen, Pencil, RotateCcw, RotateCw, Save, Search, ShieldCheck, Square,
+  MessageSquare, MousePointer2, Pen, Pencil, Plus, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Sparkles, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
-  emptyPdfEditState, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind,
+  emptyPdfEditState, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfDocumentProperties,
   PdfDocumentRecord, PdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
 import { toast } from 'sonner';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
-type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'trial-balance' | 'comments' | 'redact' | 'security';
+type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'trial-balance' | 'comments' | 'redact' | 'security' | 'details' | 'ocr' | 'calculations' | 'luka';
 const TOOLS: { id: ToolId; label: string; icon: React.ElementType }[] = [
   { id: 'pages', label: 'Pages', icon: BookOpen },
   { id: 'search', label: 'Search', icon: Search },
@@ -31,6 +32,10 @@ const TOOLS: { id: ToolId; label: string; icon: React.ElementType }[] = [
   { id: 'comments', label: 'Comments', icon: MessageSquare },
   { id: 'redact', label: 'Redact and watermark', icon: ShieldCheck },
   { id: 'security', label: 'Security and optimize', icon: LockKeyhole },
+  { id: 'details', label: 'Bookmarks and properties', icon: Bookmark },
+  { id: 'ocr', label: 'Make searchable', icon: ScanText },
+  { id: 'calculations', label: 'Calculations', icon: Calculator },
+  { id: 'luka', label: 'Ask Luka', icon: Sparkles },
 ];
 
 const ANNOTATION_TOOLS: { kind: PdfAnnotationKind | 'select'; label: string; icon: React.ElementType }[] = [
@@ -251,6 +256,16 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
   const [userPassword, setUserPassword] = useState('');
   const [ownerPassword, setOwnerPassword] = useState('');
+  const [bookmarkTitle, setBookmarkTitle] = useState('');
+  const [properties, setProperties] = useState<PdfDocumentProperties>(emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
+  const [detectedFonts, setDetectedFonts] = useState<string[]>([]);
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const [calcTitle, setCalcTitle] = useState('');
+  const [calcColor, setCalcColor] = useState(COLORS[0]);
+  const [calcRows, setCalcRows] = useState<{ value: string; operator: '+' | '-' | '×' | '÷' }[]>([{ value: '', operator: '+' }]);
+  const [lukaQuestion, setLukaQuestion] = useState('');
+  const [lukaAnswer, setLukaAnswer] = useState('');
+  const [lukaLoading, setLukaLoading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -270,6 +285,9 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       setPdf(loadedPdf);
       setEditState(state);
       setSavedState(structuredClone(state));
+      setProperties(state.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
+      setUserPassword(state.passwords?.user ?? '');
+      setOwnerPassword(state.passwords?.owner ?? '');
     }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to open this PDF.')).finally(() => setLoading(false));
     return () => { if (currentUrl) URL.revokeObjectURL(currentUrl); };
   }, [documentId]);
@@ -293,6 +311,17 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       });
       if (!cancelled) setPageImages(found);
     }).catch(() => setPageImages([]));
+    return () => { cancelled = true; };
+  }, [pdf, currentSourcePage]);
+
+  useEffect(() => {
+    if (!pdf) return;
+    let cancelled = false;
+    void pdf.getPage(currentSourcePage).then(async (target) => {
+      const operators = await target.getOperatorList();
+      const fonts = operators.fnArray.flatMap((fn, index) => fn === pdfjs.OPS.setFont ? [String(operators.argsArray[index]?.[0] ?? '')] : []).filter(Boolean);
+      if (!cancelled) setDetectedFonts([...new Set(fonts)]);
+    }).catch(() => setDetectedFonts([]));
     return () => { cancelled = true; };
   }, [pdf, currentSourcePage]);
 
@@ -359,6 +388,67 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setSearchIndex(next);
     setPage(Math.max(1, visiblePages.indexOf(searchResults[next]) + 1));
   }, [searchIndex, searchResults, visiblePages]);
+
+  const extractPageText = useCallback(async (sourcePage = currentSourcePage) => {
+    if (!pdf) return '';
+    const content = await (await pdf.getPage(sourcePage)).getTextContent();
+    return content.items.map((item) => 'str' in item ? item.str : '').join(' ').replace(/\s+/g, ' ').trim();
+  }, [currentSourcePage, pdf]);
+
+  const runOcr = useCallback(async () => {
+    if (!pdf) return;
+    setOcrRunning(true);
+    try {
+      const extracted: Record<string, string> = {};
+      for (const sourcePage of visiblePages) extracted[String(sourcePage)] = await extractPageText(sourcePage);
+      setEditState((current) => ({ ...current, ocrText: { ...(current.ocrText ?? {}), ...extracted } }));
+      toast.success(`Made ${visiblePages.length} page${visiblePages.length === 1 ? '' : 's'} searchable.`);
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Unable to recognize document text.');
+    } finally { setOcrRunning(false); }
+  }, [extractPageText, pdf, visiblePages]);
+
+  const calculationResult = useMemo(() => calcRows.reduce((result, row, index) => {
+    const value = Number(row.value) || 0;
+    if (index === 0) return value;
+    if (row.operator === '-') return result - value;
+    if (row.operator === '×') return result * value;
+    if (row.operator === '÷') return value === 0 ? result : result / value;
+    return result + value;
+  }, 0), [calcRows]);
+
+  const addCalculation = useCallback(() => {
+    const calculation: PdfCalculation = {
+      id: crypto.randomUUID(), title: calcTitle.trim() || 'Calculation', page: currentSourcePage,
+      values: calcRows.map((row) => Number(row.value) || 0), operators: calcRows.map((row) => row.operator),
+      result: calculationResult, color: calcColor,
+    };
+    setEditState((current) => ({
+      ...current,
+      calculations: [...(current.calculations ?? []), calculation],
+      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: currentSourcePage, x: 30, y: 30, width: 25, height: 6, color: calcColor, label: `${calculation.title}: ${calculationResult}` }],
+    }));
+    setCalcTitle('');
+    setCalcRows([{ value: '', operator: '+' }]);
+    toast.success('Calculation added to the document.');
+  }, [calcColor, calcRows, calcTitle, calculationResult, currentSourcePage]);
+
+  const askLuka = useCallback(async (question: string) => {
+    const prompt = question.trim();
+    if (!prompt) return;
+    setLukaQuestion(prompt);
+    setLukaLoading(true);
+    setLukaAnswer('');
+    try {
+      const pageText = editState.ocrText?.[String(currentSourcePage)] || await extractPageText();
+      const { data, error: invokeError } = await import('@/integrations/supabase/client').then(({ supabase }) => supabase.functions.invoke('pdf-ask-luka', { body: { question: prompt, pageText, documentName: document?.name, pageNumber: page } }));
+      if (invokeError) throw invokeError;
+      if (data?.error) throw new Error(data.error);
+      setLukaAnswer(data?.result ?? 'No answer was returned.');
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Ask Luka could not answer this question.');
+    } finally { setLukaLoading(false); }
+  }, [currentSourcePage, document?.name, editState.ocrText, extractPageText, page]);
 
   const createSavedBytes = async () => {
     if (!sourceBytes) throw new Error('The source PDF is unavailable.');
