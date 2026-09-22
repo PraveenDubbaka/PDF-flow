@@ -768,15 +768,52 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     );
     if (activePanel === 'search') return (
       <div className="space-y-3">
-        <div className="flex gap-2"><Input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void runSearch()} placeholder="Search document text…" /><Button size="icon-sm" onClick={() => void runSearch()}><Search /></Button></div>
+        <div className="relative">
+          {searching
+            ? <Loader2 className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary" />
+            : <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground" />}
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && void runSearch()}
+            placeholder="Search document text…"
+            className="pl-8 pr-8"
+          />
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground"
+              onClick={() => { setSearch(''); setSearchResults([]); setSearchHighlight(null); }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
         <div className="flex items-center justify-between">
-          <p className="text-xs text-foreground">{search ? `${searchResults.length ? searchIndex + 1 : 0} of ${searchResults.length} matching page${searchResults.length === 1 ? '' : 's'}` : 'Search the document text to see matches here.'}</p>
+          <p className="text-xs text-foreground">{search ? `${searchResults.length ? searchIndex + 1 : 0} of ${searchResults.length}` : 'Search the document text to see matches here.'}</p>
           <div className="flex gap-1">
-            <Button variant="secondary" size="icon-sm" disabled={!searchResults.length} onClick={() => jumpToMatch(-1)} aria-label="Previous match"><ArrowLeft /></Button>
-            <Button variant="secondary" size="icon-sm" disabled={!searchResults.length} onClick={() => jumpToMatch(1)} aria-label="Next match"><ArrowRight /></Button>
+            <Button variant="ghost" size="icon-sm" disabled={!searchResults.length} onClick={() => jumpToMatch(-1)} aria-label="Previous match"><ChevronUp /></Button>
+            <Button variant="ghost" size="icon-sm" disabled={!searchResults.length} onClick={() => jumpToMatch(1)} aria-label="Next match"><ChevronDown /></Button>
           </div>
         </div>
-        {searchResults.map((result, index) => <Button key={result} variant={index === searchIndex ? 'default' : 'secondary'} size="sm" className="w-full justify-start" onClick={() => { setSearchIndex(index); setPage(Math.max(1, visiblePages.indexOf(result) + 1)); }}>Page {result}</Button>)}
+        <div className="space-y-2">
+          {searchResults.map((result, index) => (
+            <button
+              key={result.id}
+              type="button"
+              onClick={() => goToMatch(result, index)}
+              className={cn(
+                'w-full rounded-[8px] border bg-background p-2 text-left',
+                index === searchIndex ? 'border-primary bg-primary/5' : 'border-border',
+              )}
+            >
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><FileText className="h-3.5 w-3.5" />Page {result.page}</span>
+              <span className="mt-1 block text-[11px] leading-snug text-foreground">{result.snippet}</span>
+            </button>
+          ))}
+          {!!search && !searchResults.length && !searching && <p className="text-xs text-foreground">No matches found.</p>}
+        </div>
       </div>
     );
     if (activePanel === 'images') return (
