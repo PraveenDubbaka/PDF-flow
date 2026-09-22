@@ -1178,18 +1178,18 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-10 rounded-[6px] border border-border bg-background p-1" />
           </div>
         </div>
-        <div className="grid grid-cols-[22px_1fr_60px_96px_24px] items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-foreground">
+        <div className="grid grid-cols-[20px_minmax(0,1fr)_44px_76px_20px] items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
           <span className="text-center">#</span><span>Comment</span><span>Op</span><span className="text-right">Amount</span><span />
         </div>
         <div className="space-y-2">{calcRows.map((row, index) => (
-          <div key={index} className="grid grid-cols-[22px_1fr_60px_96px_24px] items-center gap-2">
+          <div key={index} className="grid grid-cols-[20px_minmax(0,1fr)_44px_76px_20px] items-center gap-1.5">
             <span className="text-center text-xs text-foreground">{index + 1}</span>
-            <Input aria-label={`Comment ${index + 1}`} value={row.comment} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, comment: event.target.value } : item))} placeholder={`Value ${index + 1}`} />
+            <Input aria-label={`Comment ${index + 1}`} className="min-w-0 px-2" value={row.comment} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, comment: event.target.value } : item))} placeholder={`Value ${index + 1}`} />
             {index === 0 ? <span /> : (
-              <select value={row.operator} aria-label={`Operator ${index + 1}`} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 rounded-[8px] border border-border bg-background px-2 text-xs text-foreground"><option>+</option><option>-</option><option>×</option><option>÷</option></select>
+              <select value={row.operator} aria-label={`Operator ${index + 1}`} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 w-full rounded-[8px] border border-border bg-background px-1.5 text-xs text-foreground"><option>+</option><option>-</option><option>×</option><option>÷</option></select>
             )}
-            <Input aria-label={`Amount ${index + 1}`} type="number" inputMode="decimal" className="text-right" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" />
-            <Button variant="ghost" size="icon-sm" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove row ${index + 1}`}><X /></Button>
+            <Input aria-label={`Amount ${index + 1}`} type="number" inputMode="decimal" className="min-w-0 px-2 text-right" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" />
+            <Button variant="ghost" size="icon-sm" className="shrink-0" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove row ${index + 1}`}><X /></Button>
           </div>
         ))}</div>
         <div className="flex gap-2"><Button variant="secondary" className="flex-1" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+', comment: '' }])}><Plus />Add</Button><Button variant="secondary" onClick={() => setCalcRows([{ value: '', operator: '+', comment: '' }])}><X />Clear</Button></div>
