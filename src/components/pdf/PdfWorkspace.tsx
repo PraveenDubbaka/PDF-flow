@@ -1062,7 +1062,30 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full flex-1"><div className="p-3">{panelContent}</div></ScrollArea>}
         </aside>}
       </div>
+      <Dialog open={!!pendingAnnotation} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {pendingAnnotation?.kind === 'link' ? 'Link to web URL' : pendingAnnotation?.kind === 'trial-balance' ? 'Trial balance account' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
+            </DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={pendingValue}
+            placeholder={pendingAnnotation?.kind === 'link' ? 'https://example.com' : ''}
+            onChange={(event) => setPendingValue(event.target.value)}
+            onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); confirmPendingAnnotation(); } }}
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setPendingAnnotation(null); setPendingValue(''); }}>Cancel</Button>
+            <Button disabled={!pendingValue.trim()} onClick={confirmPendingAnnotation}>
+              {pendingAnnotation?.kind === 'link' ? 'Add link' : 'Add'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
 
