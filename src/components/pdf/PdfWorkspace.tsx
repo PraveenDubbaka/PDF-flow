@@ -176,7 +176,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
         >
           {annotation.kind === 'comment' && <MessageSquare className="h-3 w-3" />}
           {annotation.kind === 'image' && annotation.value && <img src={annotation.value} alt={annotation.label ?? 'Inserted image'} className="h-full w-full object-contain" />}
-          {annotation.kind === 'text' && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
+          {(annotation.kind === 'text' || annotation.kind === 'calculation') && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
         </div>
       ))}
     </div>
@@ -704,7 +704,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       <div className="space-y-3">
         <div className="grid grid-cols-5 gap-2">{ANNOTATION_TOOLS.map(({ kind, label, icon: Icon }) => <Tooltip key={kind}><TooltipTrigger asChild><Button variant={(kind === 'select' ? activeKind === null : activeKind === kind) ? 'default' : 'secondary'} size="icon" onClick={() => setActiveKind(kind === 'select' ? null : kind as PdfAnnotationKind)} aria-label={label}><Icon /></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>)}</div>
         <div className="flex gap-2">{COLORS.map((color) => <button key={color} type="button" aria-label={`Colour ${color}`} onClick={() => { setActiveColor(color); if (selectedAnnotationId) updateAnnotation(selectedAnnotationId, { color }); }} className={cn('h-6 w-6 rounded-[6px] border', activeColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}</div>
-        <div className="space-y-2">{editState.annotations.filter((item) => !['comment', 'link', 'trial-balance', 'image'].includes(item.kind)).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => setSelectedAnnotationId(item.id)} onRename={(label) => updateAnnotation(item.id, { label })} onDelete={() => deleteAnnotation(item.id)} />)}</div>
+        <div className="space-y-2">{editState.annotations.filter((item) => !['comment', 'link', 'trial-balance', 'image', 'calculation'].includes(item.kind)).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => setSelectedAnnotationId(item.id)} onRename={(label) => updateAnnotation(item.id, { label })} onDelete={() => deleteAnnotation(item.id)} />)}</div>
       </div>
     );
     if (activePanel === 'links' || activePanel === 'trial-balance' || activePanel === 'comments') {
