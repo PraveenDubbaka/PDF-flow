@@ -262,8 +262,10 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [editState, setEditState] = useState<PdfEditState>(emptyPdfEditState());
   const [savedState, setSavedState] = useState<PdfEditState>(emptyPdfEditState());
   const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<number[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchMatch[]>([]);
   const [searchIndex, setSearchIndex] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [searchHighlight, setSearchHighlight] = useState<{ id: string; page: number; x: number; y: number; width: number; height: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.3);
