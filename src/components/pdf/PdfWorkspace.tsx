@@ -1040,9 +1040,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                 className={cn('cursor-pointer rounded-[8px] border bg-background p-2.5', selectedAnnotationId === item.id ? 'border-primary' : 'border-border')}
               >
                 <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-warning-foreground" style={{ backgroundColor: item.color }}>{initialsOf(item.author ?? currentMentionUser.name)}</span>
-                  <span className="flex-1 truncate text-xs font-semibold text-foreground">{item.author ?? currentMentionUser.name}</span>
-                  <span className="text-[10px] text-muted-foreground">p.{item.page}</span>
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white" style={{ backgroundColor: item.color }}>{initialsOf(item.author ?? currentMentionUser.name)}</span>
+                  <span className="flex min-w-0 items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5">
+                    <MessageSquare className="h-3 w-3 shrink-0" style={{ color: item.color }} />
+                    <span className="truncate text-xs font-semibold text-foreground">{item.author ?? currentMentionUser.name}</span>
+                  </span>
+                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">p.{item.page}</span>
                   <button type="button" aria-label="Change colour" onClick={(event) => { event.stopPropagation(); const next = COLORS[(COLORS.indexOf(item.color) + 1) % COLORS.length]; updateAnnotation(item.id, { color: next }); }} className="h-4 w-4 shrink-0 rounded-[4px] border border-border" style={{ backgroundColor: item.color }} />
                   <Button variant="ghost" size="icon-sm" aria-label="Delete comment" onClick={(event) => { event.stopPropagation(); deleteAnnotation(item.id); }}><Trash2 /></Button>
                 </div>
