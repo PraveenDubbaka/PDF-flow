@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle,
-  Copy, Download, ExternalLink, FileText, Highlighter, Image, Link2, Loader2, LockKeyhole,
+  Copy, Download, ExternalLink, FileText, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
   MessageSquare, MousePointer2, Pen, Pencil, Plus, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Sparkles, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
@@ -21,6 +21,7 @@ import {
   emptyPdfEditState, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfDocumentProperties,
   PdfDocumentRecord, PdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
+import { trialBalanceAccounts } from '@/data/trialBalanceAccounts';
 import { toast } from 'sonner';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
