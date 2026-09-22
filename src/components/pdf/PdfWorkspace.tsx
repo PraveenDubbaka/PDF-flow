@@ -861,11 +861,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     try {
       await deletePdfDocument(document);
       toast.success('PDF deleted.');
-      navigate(engagementId ? `/engagements/${engagementId}` : -1 as never);
+      if (engagementId) navigate(`/engagements/${engagementId}`);
+      else navigate(-1);
     } catch (reason) {
       console.error('PDF delete failed:', reason);
       toast.error(reason instanceof Error ? reason.message : 'Unable to delete this PDF.');
-:     setDeleting(false);
+      setDeleting(false);
     }
   };
 
