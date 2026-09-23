@@ -1381,7 +1381,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                           <span className="truncate text-xs font-semibold text-foreground">{entry.title}</span>
                         </span>
                         <span className="mt-0.5 block truncate text-[11px] text-foreground">
-                          {entry.author} · Page {entry.page} · {new Date(entry.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          {entry.author}{entry.page > 0 ? ` · Page ${entry.page}` : ''} · {new Date(entry.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                         </span>
                       </span>
                     </button>
