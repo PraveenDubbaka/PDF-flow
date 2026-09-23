@@ -1848,7 +1848,7 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
   } catch { return DEFAULT_FIRMS; }
  });
  const [activeFirmId, setActiveFirmId] = useState<string>(() => localStorage.getItem("activeFirmId") ?? "firm-ca-1");
- const activeFirm = firmProfiles.find(f => f.id === activeFirmId) ?? firmProfiles[0];
+
 
  const [registerFirmOpen, setRegisterFirmOpen] = useState(false);
  const [newFirmStep, setNewFirmStep] = useState<1 | 2 | 3>(1);
@@ -1860,12 +1860,6 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
   newGroupName: "",
   isMainOffice: false,
  });
-
- const [firmPopoverOpen, setFirmPopoverOpen] = useState(false);
- const [switchingFirm, setSwitchingFirm] = useState<{ name: string; region: "ca" | "us" } | null>(null);
- const firmCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
- const openFirmPopover = () => { if (firmCloseTimer.current) clearTimeout(firmCloseTimer.current); setFirmPopoverOpen(true); };
- const scheduleFirmClose = () => { firmCloseTimer.current = setTimeout(() => setFirmPopoverOpen(false), 180); };
 
  // Sync with SettingsPanel when firm data changes there
  useEffect(() => {
@@ -4804,14 +4798,6 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
    </DialogFooter>
   </DialogContent>
  </Dialog>
- {switchingFirm && (
-  <div className="fixed inset-0 z-[200] bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
-   <div className="w-10 h-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-   <p className="text-sm font-medium text-foreground">
-    Switching to {switchingFirm.region === "ca" ? "🇨🇦 CA" : "🇺🇸 US"} workspace…
-   </p>
-   <p className="text-xs text-muted-foreground">{switchingFirm.name}</p>
-  </div>
- )}
+ 
  </div>;
 }
