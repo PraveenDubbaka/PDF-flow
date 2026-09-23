@@ -488,7 +488,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         mentions: annotation.mentions ?? [],
         replies: annotation.replies ?? [],
       };
-      setEditState((current) => ({ ...current, annotations: [...current.annotations, note] }));
+      setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, note] }, { kind: 'comment', title: note.label || note.value || 'Comment added', page: note.page, color: note.color, targetId: note.id }));
       setSelectedAnnotationId(note.id);
       setActiveKind(null);
       return;
@@ -504,14 +504,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       author: annotation.author ?? currentMentionUser.name,
       createdAt: annotation.createdAt ?? new Date().toISOString(),
     };
-    setEditState((current) => ({ ...current, annotations: [...current.annotations, stamped] }));
+    setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, stamped] }, { kind: stamped.kind, title: stamped.label || stamped.value || `${stamped.kind.replace('-', ' ')} added`, page: stamped.page, color: stamped.color, targetId: stamped.id }));
   }, []);
 
   const confirmTrialBalanceAccount = useCallback((label: string) => {
     setPendingAnnotation((pending) => {
       if (pending) {
         const annotation: PdfAnnotation = { ...pending, value: label, label };
-        setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+        setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, annotation] }, { kind: annotation.kind, title: annotation.label || annotation.value || `${annotation.kind.replace('-', ' ')} added`, page: annotation.page, color: annotation.color, targetId: annotation.id }));
         setSelectedAnnotationId(annotation.id);
       }
       return null;
@@ -523,7 +523,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     const value = pendingValue.trim();
     if (!pendingAnnotation || !value) return;
     const annotation: PdfAnnotation = { ...pendingAnnotation, value, label: value };
-    setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+    setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, annotation] }, { kind: annotation.kind, title: annotation.label || annotation.value || `${annotation.kind.replace('-', ' ')} added`, page: annotation.page, color: annotation.color, targetId: annotation.id }));
     setPendingAnnotation(null);
     setPendingValue('');
     setSelectedAnnotationId(annotation.id);
