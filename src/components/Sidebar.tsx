@@ -32,7 +32,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LukaIcon } from "@/components/LukaIcon";
@@ -1848,7 +1847,7 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
   } catch { return DEFAULT_FIRMS; }
  });
  const [activeFirmId, setActiveFirmId] = useState<string>(() => localStorage.getItem("activeFirmId") ?? "firm-ca-1");
- const activeFirm = firmProfiles.find(f => f.id === activeFirmId) ?? firmProfiles[0];
+
 
  const [registerFirmOpen, setRegisterFirmOpen] = useState(false);
  const [newFirmStep, setNewFirmStep] = useState<1 | 2 | 3>(1);
@@ -1860,12 +1859,6 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
   newGroupName: "",
   isMainOffice: false,
  });
-
- const [firmPopoverOpen, setFirmPopoverOpen] = useState(false);
- const [switchingFirm, setSwitchingFirm] = useState<{ name: string; region: "ca" | "us" } | null>(null);
- const firmCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
- const openFirmPopover = () => { if (firmCloseTimer.current) clearTimeout(firmCloseTimer.current); setFirmPopoverOpen(true); };
- const scheduleFirmClose = () => { firmCloseTimer.current = setTimeout(() => setFirmPopoverOpen(false), 180); };
 
  // Sync with SettingsPanel when firm data changes there
  useEffect(() => {
@@ -2217,110 +2210,6 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
  {!isNavExpanded && <TooltipContent side="right">Support</TooltipContent>}
  </Tooltip>
 
- {/* Firm badge — icon-only, always at bottom */}
- <div className={cn("pb-3 pt-1", isNavExpanded ? "px-2" : "flex justify-center")}>
-  <Popover open={firmPopoverOpen} onOpenChange={setFirmPopoverOpen}>
-   <PopoverTrigger asChild>
-    <button
-     onMouseEnter={openFirmPopover}
-     onMouseLeave={scheduleFirmClose}
-     onClick={() => setFirmPopoverOpen(v => !v)}
-     className={cn(
-      "relative w-7 h-7 rounded-md flex items-center justify-center text-white text-[10px] font-bold transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-white/30",
-      activeFirm.color
-     )}
-     title={activeFirm.name}
-    >
-     {activeFirm.initials}
-     <span className="absolute -bottom-2 -right-2 text-[12px] leading-none pointer-events-none">
-      {activeFirm.region === "ca" ? "🇨🇦" : "🇺🇸"}
-     </span>
-    </button>
-   </PopoverTrigger>
-   <PopoverContent
-    side="right"
-    align="end"
-    sideOffset={8}
-    className="w-64 p-2"
-    onMouseEnter={openFirmPopover}
-    onMouseLeave={scheduleFirmClose}
-   >
-    {(() => {
-     const groups = new Map<string, FirmProfile[]>();
-     firmProfiles.forEach(f => {
-      const gid = (f as any).firmGroupId ?? "default";
-      if (!groups.has(gid)) groups.set(gid, []);
-      groups.get(gid)!.push(f);
-     });
-     const groupCount = groups.size;
-     return (
-      <>
-       <div className="px-2 pb-2">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Your Offices</p>
-        {firmProfiles.length > 1 && (
-         <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-          {groupCount} group{groupCount !== 1 ? "s" : ""} · {firmProfiles.length} offices
-         </p>
-        )}
-       </div>
-       {Array.from(groups.entries()).map(([gid, firms]) => {
-        const groupName = (firms[0] as any).firmGroupName ?? firms[0].name;
-        return (
-         <div key={gid}>
-          <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">{groupName}</p>
-          {firms.map(firm => (
-           <button
-            key={firm.id}
-            onClick={() => {
-             if (firm.id === activeFirmId) return;
-             setSwitchingFirm({ name: firm.name, region: firm.region });
-             setTimeout(() => {
-              setActiveFirmId(firm.id);
-              localStorage.setItem("activeFirmId", firm.id);
-              localStorage.setItem("firmProfiles", JSON.stringify(firmProfiles));
-              window.dispatchEvent(new CustomEvent("firmSwitched"));
-              setSwitchingFirm(null);
-             }, 900);
-            }}
-            className={cn(
-             "w-full flex items-center gap-2.5 px-2 py-2 rounded-md cursor-pointer hover:bg-muted/50 transition-colors text-left",
-             activeFirmId === firm.id && "bg-primary/10"
-            )}
-           >
-            <div className={cn("w-8 h-8 rounded-md flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0", firm.color)}>
-             {firm.initials}
-            </div>
-            <div className="flex-1 min-w-0">
-             <p className="text-sm font-medium text-foreground truncate">
-              {firm.region === "ca" ? "🇨🇦" : "🇺🇸"} {firm.city}
-             </p>
-            </div>
-            {(firm as any).isMainOffice && (
-             <span className="text-[10px] font-semibold px-1.5 py-px rounded-full bg-primary/10 text-primary">Main</span>
-            )}
-            {activeFirmId === firm.id && <Check className="h-4 w-4 text-primary flex-shrink-0" />}
-           </button>
-          ))}
-         </div>
-        );
-       })}
-      </>
-     );
-    })()}
-    <div className="border-t border-border my-1" />
-    <button
-     className="w-full flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-muted/50 transition-colors text-primary text-left"
-     onClick={() => {
-      setFirmPopoverOpen(false);
-      window.dispatchEvent(new CustomEvent("open-settings-firm-info", { detail: { showAddOffice: true } }));
-     }}
-    >
-     <Plus className="h-4 w-4" />
-     <span className="text-sm font-medium">Add Office</span>
-    </button>
-   </PopoverContent>
-  </Popover>
- </div>
 
  </div>
 
@@ -4908,14 +4797,6 @@ export function Sidebar({ pageTitle, showBackButton, onBack }: SidebarProps) {
    </DialogFooter>
   </DialogContent>
  </Dialog>
- {switchingFirm && (
-  <div className="fixed inset-0 z-[200] bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
-   <div className="w-10 h-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-   <p className="text-sm font-medium text-foreground">
-    Switching to {switchingFirm.region === "ca" ? "🇨🇦 CA" : "🇺🇸 US"} workspace…
-   </p>
-   <p className="text-xs text-muted-foreground">{switchingFirm.name}</p>
-  </div>
- )}
+ 
  </div>;
 }
