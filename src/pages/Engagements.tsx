@@ -29,7 +29,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Layout } from "@/components/Layout";
 import { StyledCard } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 
 function getActiveFirm() {
   try {
