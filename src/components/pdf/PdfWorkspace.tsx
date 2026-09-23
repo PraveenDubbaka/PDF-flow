@@ -26,7 +26,7 @@ import { LukaIcon } from '@/components/LukaIcon';
 import { cn } from '@/lib/utils';
 import {
   emptyPdfEditState, deletePdfDocument, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfDocumentProperties,
-  PdfDocumentRecord, PdfEditState, savePdfVersion,
+  PdfDocumentRecord, PdfEditState, PdfHistoryEntry, persistPdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
 import { trialBalanceAccounts } from '@/data/trialBalanceAccounts';
 import { PdfCommentNote, MentionText } from '@/components/pdf/PdfCommentNote';
