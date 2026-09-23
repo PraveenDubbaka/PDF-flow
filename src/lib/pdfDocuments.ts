@@ -57,7 +57,19 @@ export interface PdfAnnotation {
   resolved?: boolean;
 }
 
+export interface PdfHistoryEntry {
+  id: string;
+  kind: PdfAnnotationKind | 'page' | 'document' | 'version';
+  title: string;
+  page: number;
+  author: string;
+  createdAt: string;
+  color: string;
+  targetId?: string;
+}
+
 export interface PdfEditState {
+  history?: PdfHistoryEntry[];
   annotations: PdfAnnotation[];
   pageOrder: number[];
   rotations: Record<string, number>;
@@ -93,6 +105,7 @@ export interface PdfDocumentRecord {
 }
 
 export const emptyPdfEditState = (): PdfEditState => ({
+  history: [],
   annotations: [],
   pageOrder: [],
   rotations: {},
@@ -211,5 +224,12 @@ export async function deletePdfDocument(document: PdfDocumentRecord) {
   const paths = (versions ?? []).map((version) => version.storage_path);
   if (paths.length) await supabase.storage.from(PDF_BUCKET).remove(paths);
   const { error } = await supabase.from('engagement_pdf_documents').delete().eq('id', document.id);
+  if (error) throw error;
+}
+export async function persistPdfEditState(documentId: string, editState: PdfEditState) {
+  const { error } = await supabase.from('engagement_pdf_documents').update({
+    edit_state: editState as unknown as Json,
+    updated_at: new Date().toISOString(),
+  } as never).eq('id', documentId);
   if (error) throw error;
 }

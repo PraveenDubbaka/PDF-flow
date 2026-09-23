@@ -26,7 +26,7 @@ import { LukaIcon } from '@/components/LukaIcon';
 import { cn } from '@/lib/utils';
 import {
   emptyPdfEditState, deletePdfDocument, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfDocumentProperties,
-  PdfDocumentRecord, PdfEditState, savePdfVersion,
+  PdfDocumentRecord, PdfEditState, PdfHistoryEntry, persistPdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
 import { trialBalanceAccounts } from '@/data/trialBalanceAccounts';
 import { PdfCommentNote, MentionText } from '@/components/pdf/PdfCommentNote';
@@ -38,6 +38,21 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.m
 type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'trial-balance' | 'comments' | 'redact' | 'security' | 'details' | 'ocr' | 'calculations' | 'luka';
 type TextItemLike = { str: string; width: number; height: number; transform: number[] };
 type SearchMatch = { id: string; page: number; snippet: string; x: number; y: number; width: number; height: number };
+const makeHistory = (entry: { kind: PdfHistoryEntry['kind']; title: string; page?: number; color?: string; targetId?: string }): PdfHistoryEntry => ({
+  id: crypto.randomUUID(),
+  kind: entry.kind,
+  title: entry.title,
+  page: entry.page ?? 0,
+  author: currentMentionUser.name,
+  createdAt: new Date().toISOString(),
+  color: entry.color ?? '#1C63A6',
+  targetId: entry.targetId,
+});
+const withHistory = (state: PdfEditState, entry: Parameters<typeof makeHistory>[0]): PdfEditState => ({
+  ...state,
+  history: [...(state.history ?? []), makeHistory(entry)],
+});
+
 const TOOLS: { id: ToolId; label: string; icon: React.ElementType }[] = [
   { id: 'pages', label: 'Pages', icon: BookOpen },
   { id: 'search', label: 'Search', icon: Search },
@@ -390,6 +405,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         setSourceBytes(bytes);
         setPdf(loadedPdf);
         setEditState(state);
+        lastPersisted.current = JSON.stringify(state);
         setSavedState(structuredClone(state));
         setProperties(state.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
         setUserPassword(state.passwords?.user ?? '');
@@ -430,13 +446,54 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     return () => { cancelled = true; };
   }, [pdf, currentSourcePage]);
 
+  const lastPersisted = useRef<string>('');
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!document) return;
+    const serialized = JSON.stringify(editState);
+    if (!lastPersisted.current || serialized === lastPersisted.current) return;
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => {
+      lastPersisted.current = serialized;
+      void persistPdfEditState(document.id, editState).catch((reason) => console.error('PDF state save failed:', reason));
+    }, 700);
+    return () => { if (persistTimer.current) clearTimeout(persistTimer.current); };
+  }, [document, editState]);
+
+  const logHistory = useCallback((entry: Parameters<typeof makeHistory>[0]) => {
+    setEditState((current) => withHistory(current, entry));
+  }, []);
+
   const updateAnnotation = useCallback((id: string, changes: Partial<PdfAnnotation>) => {
-    setEditState((current) => ({ ...current, annotations: current.annotations.map((item) => (item.id === id ? { ...item, ...changes } : item)) }));
+    setEditState((current) => {
+      const target = current.annotations.find((item) => item.id === id);
+      const next = { ...current, annotations: current.annotations.map((item) => (item.id === id ? { ...item, ...changes } : item)) };
+      if (!target) return next;
+      return withHistory(next, {
+        kind: target.kind,
+        title: `${changes.label ?? target.label ?? target.kind.replace('-', ' ')} updated`,
+        page: target.page,
+        color: changes.color ?? target.color,
+        targetId: target.id,
+      });
+    });
   }, []);
 
   const deleteAnnotation = useCallback((id: string) => {
-    setEditState((current) => ({ ...current, annotations: current.annotations.filter((item) => item.id !== id) }));
+    setEditState((current) => {
+      const target = current.annotations.find((item) => item.id === id);
+      const next = { ...current, annotations: current.annotations.filter((item) => item.id !== id) };
+      if (!target) return next;
+      return withHistory(next, {
+        kind: target.kind,
+        title: `${target.label || target.value || target.kind.replace('-', ' ')} deleted`,
+        page: target.page,
+        color: target.color,
+      });
+    });
   }, []);
+
 
   const addAnnotation = useCallback((annotation: PdfAnnotation) => {
     if (annotation.kind === 'comment') {
@@ -447,7 +504,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         mentions: annotation.mentions ?? [],
         replies: annotation.replies ?? [],
       };
-      setEditState((current) => ({ ...current, annotations: [...current.annotations, note] }));
+      setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, note] }, { kind: 'comment', title: note.label || note.value || 'Comment added', page: note.page, color: note.color, targetId: note.id }));
       setSelectedAnnotationId(note.id);
       setActiveKind(null);
       return;
@@ -463,14 +520,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       author: annotation.author ?? currentMentionUser.name,
       createdAt: annotation.createdAt ?? new Date().toISOString(),
     };
-    setEditState((current) => ({ ...current, annotations: [...current.annotations, stamped] }));
+    setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, stamped] }, { kind: stamped.kind, title: stamped.label || stamped.value || `${stamped.kind.replace('-', ' ')} added`, page: stamped.page, color: stamped.color, targetId: stamped.id }));
   }, []);
 
   const confirmTrialBalanceAccount = useCallback((label: string) => {
     setPendingAnnotation((pending) => {
       if (pending) {
         const annotation: PdfAnnotation = { ...pending, value: label, label };
-        setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+        setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, annotation] }, { kind: annotation.kind, title: annotation.label || annotation.value || `${annotation.kind.replace('-', ' ')} added`, page: annotation.page, color: annotation.color, targetId: annotation.id }));
         setSelectedAnnotationId(annotation.id);
       }
       return null;
@@ -482,7 +539,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     const value = pendingValue.trim();
     if (!pendingAnnotation || !value) return;
     const annotation: PdfAnnotation = { ...pendingAnnotation, value, label: value };
-    setEditState((current) => ({ ...current, annotations: [...current.annotations, annotation] }));
+    setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, annotation] }, { kind: annotation.kind, title: annotation.label || annotation.value || `${annotation.kind.replace('-', ' ')} added`, page: annotation.page, color: annotation.color, targetId: annotation.id }));
     setPendingAnnotation(null);
     setPendingValue('');
     setSelectedAnnotationId(annotation.id);
@@ -737,19 +794,19 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       color: calcColor,
     };
     if (editingCalcId) {
-      setEditState((current) => ({
+      setEditState((current) => withHistory({
         ...current,
         calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, ...base } : item),
         annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${calculationResult}` } : item),
-      }));
+      }, { kind: 'calculation', title: `${title} updated`, page: currentSourcePage, color: calcColor, targetId: editingCalcId }));
       toast.success('Calculation updated.');
     } else {
       const calculation: PdfCalculation = { id: crypto.randomUUID(), page: currentSourcePage, ...base };
-      setEditState((current) => ({
+      setEditState((current) => withHistory({
         ...current,
         calculations: [...(current.calculations ?? []), calculation],
         annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: currentSourcePage, x: 30, y: 30, width: 25, height: 6, color: calcColor, label: `${title}: ${calculationResult}` }],
-      }));
+      }, { kind: 'calculation', title: `${title} added`, page: currentSourcePage, color: calcColor, targetId: calculation.id }));
       toast.success('Calculation added to the document.');
     }
     resetCalculator();
@@ -849,7 +906,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setSaving(true);
     try {
       const bytes = await createSavedBytes();
-      const nextState: PdfEditState = { ...editState, passwords: { user: userPassword, owner: ownerPassword } };
+      const nextState: PdfEditState = withHistory({ ...editState, passwords: { user: userPassword, owner: ownerPassword } }, { kind: 'version', title: `Version ${document.current_version + 1} saved` });
       const saved = await savePdfVersion(document, bytes, nextState);
       setDocument(saved);
       setSourceBytes(bytes);
@@ -896,7 +953,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const deletePages = () => {
     const targets = targetPositions();
     if (targets.length >= visiblePages.length) return toast.error('A PDF must keep at least one page.');
-    setEditState((current) => ({ ...current, pageOrder: current.pageOrder.filter((_, index) => !targets.includes(index)) }));
+    setEditState((current) => withHistory({ ...current, pageOrder: current.pageOrder.filter((_, index) => !targets.includes(index)) }, { kind: 'page', title: `Removed ${targets.length} page${targets.length === 1 ? '' : 's'}`, page: targets[0] + 1 }));
     setSelectedPages([]);
     setPage((current) => Math.max(1, Math.min(current, visiblePages.length - targets.length)));
     toast.success(`Removed ${targets.length} page${targets.length === 1 ? '' : 's'}.`);
@@ -910,7 +967,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         next.push(sourcePage);
         if (targets.includes(index)) next.push(sourcePage);
       });
-      return { ...current, pageOrder: next };
+      return withHistory({ ...current, pageOrder: next }, { kind: 'page', title: `Duplicated ${targets.length} page${targets.length === 1 ? '' : 's'}`, page: targets[0] + 1 });
     });
     setSelectedPages([]);
     toast.success(`Duplicated ${targets.length} page${targets.length === 1 ? '' : 's'}.`);
@@ -924,7 +981,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         const sourcePage = String(current.pageOrder[index]);
         rotations[sourcePage] = (((rotations[sourcePage] ?? 0) + direction * 90) % 360 + 360) % 360;
       });
-      return { ...current, rotations };
+      return withHistory({ ...current, rotations }, { kind: 'page', title: `Rotated ${targets.length} page${targets.length === 1 ? '' : 's'} ${direction === 1 ? 'right' : 'left'}`, page: targets[0] + 1 });
     });
   };
 
@@ -1142,20 +1199,20 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (activePanel === 'redact') return (
       <div className="space-y-4">
         <div><p className="text-xs font-semibold text-foreground">REDACT</p><p className="mt-1 text-xs text-foreground">Draws a region and permanently removes the underlying page content in that area — not just a visual cover. The redacted page becomes a flattened image, so its text is no longer selectable or extractable.</p><Button variant={activeKind === 'redaction' ? 'default' : 'secondary'} className="mt-2 w-full" onClick={() => setActiveKind('redaction')}>Draw redaction region</Button></div>
-        <div className="border-t border-border pt-4 space-y-2"><p className="text-xs font-semibold text-foreground">WATERMARK</p><div className="space-y-1.5"><Label htmlFor="watermark-text">Text</Label><Input id="watermark-text" value={watermarkText} onChange={(event) => setWatermarkText(event.target.value)} /></div><div className="grid grid-cols-2 gap-2"><div className="space-y-1.5"><Label htmlFor="watermark-opacity">Opacity</Label><Input id="watermark-opacity" type="number" min="0.1" max="1" step="0.1" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /></div><div className="space-y-1.5"><Label htmlFor="watermark-rotation">Rotation°</Label><Input id="watermark-rotation" type="number" value={watermarkRotation} onChange={(event) => setWatermarkRotation(Number(event.target.value))} /></div></div><Button className="w-full" onClick={() => setEditState((current) => ({ ...current, watermark: { text: watermarkText, opacity: watermarkOpacity, rotation: watermarkRotation, applied: true } }))}><Save />Apply to all pages</Button>{editState.watermark?.applied && <Button variant="secondary" className="w-full" onClick={() => setEditState((current) => ({ ...current, watermark: undefined }))}>Remove watermark</Button>}</div>
+        <div className="border-t border-border pt-4 space-y-2"><p className="text-xs font-semibold text-foreground">WATERMARK</p><div className="space-y-1.5"><Label htmlFor="watermark-text">Text</Label><Input id="watermark-text" value={watermarkText} onChange={(event) => setWatermarkText(event.target.value)} /></div><div className="grid grid-cols-2 gap-2"><div className="space-y-1.5"><Label htmlFor="watermark-opacity">Opacity</Label><Input id="watermark-opacity" type="number" min="0.1" max="1" step="0.1" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /></div><div className="space-y-1.5"><Label htmlFor="watermark-rotation">Rotation°</Label><Input id="watermark-rotation" type="number" value={watermarkRotation} onChange={(event) => setWatermarkRotation(Number(event.target.value))} /></div></div><Button className="w-full" onClick={() => setEditState((current) => withHistory({ ...current, watermark: { text: watermarkText, opacity: watermarkOpacity, rotation: watermarkRotation, applied: true } }, { kind: 'document', title: `Watermark "${watermarkText}" applied` }))}><Save />Apply to all pages</Button>{editState.watermark?.applied && <Button variant="secondary" className="w-full" onClick={() => setEditState((current) => withHistory({ ...current, watermark: undefined }, { kind: 'document', title: 'Watermark removed' }))}>Remove watermark</Button>}</div>
       </div>
     );
     if (activePanel === 'details') return (
       <div className="space-y-4">
         <div>
           <p className="text-xs font-semibold text-foreground">BOOKMARKS</p>
-          <div className="mt-2 flex gap-2"><Input value={bookmarkTitle} onChange={(event) => setBookmarkTitle(event.target.value)} placeholder="Bookmark title" /><Input className="w-16" type="number" min={1} max={visiblePages.length} value={page} readOnly /><Button size="icon-sm" disabled={!bookmarkTitle.trim()} onClick={() => { setEditState((current) => ({ ...current, bookmarks: [...(current.bookmarks ?? []), { id: crypto.randomUUID(), title: bookmarkTitle.trim(), page }] })); setBookmarkTitle(''); }} aria-label="Add bookmark"><Plus /></Button></div>
+          <div className="mt-2 flex gap-2"><Input value={bookmarkTitle} onChange={(event) => setBookmarkTitle(event.target.value)} placeholder="Bookmark title" /><Input className="w-16" type="number" min={1} max={visiblePages.length} value={page} readOnly /><Button size="icon-sm" disabled={!bookmarkTitle.trim()} onClick={() => { setEditState((current) => withHistory({ ...current, bookmarks: [...(current.bookmarks ?? []), { id: crypto.randomUUID(), title: bookmarkTitle.trim(), page }] }, { kind: 'document', title: `Bookmark "${bookmarkTitle.trim()}" added`, page })); setBookmarkTitle(''); }} aria-label="Add bookmark"><Plus /></Button></div>
           <div className="mt-2 space-y-2">{(editState.bookmarks ?? []).length === 0 && <p className="text-xs text-foreground">No bookmarks yet.</p>}{(editState.bookmarks ?? []).map((bookmark) => <div key={bookmark.id} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-2 py-2"><Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start truncate" onClick={() => setPage(Math.min(visiblePages.length, Math.max(1, bookmark.page)))}>{bookmark.title} · p.{bookmark.page}</Button><Button variant="ghost" size="icon-sm" aria-label="Delete bookmark" onClick={() => setEditState((current) => ({ ...current, bookmarks: (current.bookmarks ?? []).filter((item) => item.id !== bookmark.id) }))}><Trash2 /></Button></div>)}</div>
         </div>
         <div className="space-y-2 border-t border-border pt-4">
           <p className="text-xs font-semibold text-foreground">DOCUMENT PROPERTIES</p>
           {(['title', 'author', 'subject', 'keywords', 'creator'] as const).map((key) => <Input key={key} value={properties[key]} onChange={(event) => setProperties((current) => ({ ...current, [key]: event.target.value }))} placeholder={key.charAt(0).toUpperCase() + key.slice(1)} />)}
-          <Button className="w-full" onClick={() => { setEditState((current) => ({ ...current, properties })); toast.success('Document properties updated.'); }}>Save properties</Button>
+          <Button className="w-full" onClick={() => { setEditState((current) => withHistory({ ...current, properties }, { kind: 'document', title: 'Document properties updated' })); toast.success('Document properties updated.'); }}>Save properties</Button>
         </div>
         <div className="border-t border-border pt-4"><p className="text-xs font-semibold text-foreground">FONTS ON THIS PAGE</p><div className="mt-2 space-y-1">{detectedFonts.length ? detectedFonts.map((font) => <p key={font} className="truncate text-xs text-foreground">{font}</p>) : <p className="text-xs text-foreground">No font names detected.</p>}</div></div>
       </div>
@@ -1240,24 +1297,43 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
 
   const historyEntries = useMemo(() => {
     const fallbackDate = document?.updated_at ?? document?.created_at ?? new Date().toISOString();
-    const entries = editState.annotations.map((item) => ({
-      id: item.id,
-      page: item.page,
-      author: item.author ?? currentMentionUser.name,
-      createdAt: item.createdAt ?? fallbackDate,
-      kind: item.kind,
-      title: item.label || item.value || `${item.kind.replace('-', ' ')} added`,
-      color: item.color,
-      x: item.x, y: item.y, width: item.width, height: item.height,
+    const rectOf = (targetId?: string) => {
+      const match = targetId ? editState.annotations.find((item) => item.id === targetId) : undefined;
+      return match ? { x: match.x, y: match.y, width: match.width, height: match.height } : null;
+    };
+    const stored = (editState.history ?? []).map((entry) => ({
+      id: entry.id,
+      page: entry.page,
+      author: entry.author,
+      createdAt: entry.createdAt,
+      kind: entry.kind as PdfAnnotationKind,
+      title: entry.title,
+      color: entry.color,
+      targetId: entry.targetId,
+      ...(rectOf(entry.targetId) ?? { x: 0, y: 0, width: 0, height: 0 }),
     }));
-    return entries.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  }, [document, editState.annotations]);
+    const entries = stored.length
+      ? stored
+      : editState.annotations.map((item) => ({
+          id: item.id,
+          page: item.page,
+          author: item.author ?? currentMentionUser.name,
+          createdAt: item.createdAt ?? fallbackDate,
+          kind: item.kind,
+          title: item.label || item.value || `${item.kind.replace('-', ' ')} added`,
+          color: item.color,
+          targetId: item.id,
+          x: item.x, y: item.y, width: item.width, height: item.height,
+        }));
+    return [...entries].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }, [document, editState.annotations, editState.history]);
 
-  const goToHistoryEntry = useCallback((entry: { id: string; page: number; x: number; y: number; width: number; height: number }) => {
+  const goToHistoryEntry = useCallback((entry: { id: string; page: number; x: number; y: number; width: number; height: number; targetId?: string }) => {
     const position = visiblePages.indexOf(entry.page);
-    setPage(Math.max(1, position + 1));
-    setSelectedAnnotationId(entry.id);
-    setSearchHighlight({ id: `${entry.id}-${Date.now()}`, page: entry.page, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
+    if (position >= 0) setPage(position + 1);
+    else if (entry.page > 0) setPage(Math.min(visiblePages.length, entry.page));
+    if (entry.targetId) setSelectedAnnotationId(entry.targetId);
+    if (entry.width > 0 || entry.height > 0) setSearchHighlight({ id: `${entry.id}-${Date.now()}`, page: entry.page, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
     setHistoryOpen(false);
   }, [visiblePages]);
 
@@ -1305,7 +1381,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                           <span className="truncate text-xs font-semibold text-foreground">{entry.title}</span>
                         </span>
                         <span className="mt-0.5 block truncate text-[11px] text-foreground">
-                          {entry.author} · Page {entry.page} · {new Date(entry.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          {entry.author}{entry.page > 0 ? ` · Page ${entry.page}` : ''} · {new Date(entry.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                         </span>
                       </span>
                     </button>
