@@ -405,6 +405,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         setSourceBytes(bytes);
         setPdf(loadedPdf);
         setEditState(state);
+        lastPersisted.current = JSON.stringify(state);
         setSavedState(structuredClone(state));
         setProperties(state.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' });
         setUserPassword(state.passwords?.user ?? '');
@@ -444,6 +445,21 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     }).catch(() => setDetectedFonts([]));
     return () => { cancelled = true; };
   }, [pdf, currentSourcePage]);
+
+  const lastPersisted = useRef<string>('');
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!document) return;
+    const serialized = JSON.stringify(editState);
+    if (!lastPersisted.current || serialized === lastPersisted.current) return;
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => {
+      lastPersisted.current = serialized;
+      void persistPdfEditState(document.id, editState).catch((reason) => console.error('PDF state save failed:', reason));
+    }, 700);
+    return () => { if (persistTimer.current) clearTimeout(persistTimer.current); };
+  }, [document, editState]);
 
   const logHistory = useCallback((entry: Parameters<typeof makeHistory>[0]) => {
     setEditState((current) => withHistory(current, entry));
@@ -890,7 +906,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setSaving(true);
     try {
       const bytes = await createSavedBytes();
-      const nextState: PdfEditState = { ...editState, passwords: { user: userPassword, owner: ownerPassword } };
+      const nextState: PdfEditState = withHistory({ ...editState, passwords: { user: userPassword, owner: ownerPassword } }, { kind: 'version', title: `Version ${document.current_version + 1} saved` });
       const saved = await savePdfVersion(document, bytes, nextState);
       setDocument(saved);
       setSourceBytes(bytes);
@@ -937,7 +953,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const deletePages = () => {
     const targets = targetPositions();
     if (targets.length >= visiblePages.length) return toast.error('A PDF must keep at least one page.');
-    setEditState((current) => withHistory({ ...current, pageOrder: current.pageOrder.filter((_, index) => !targets.includes(index)) }, { kind: 'page', title: `Removed ${targets.length} page${targets.length === 1 ? '' : 's'}`, page: (current0 => current0)(targets[0] + 1) }));
+    setEditState((current) => withHistory({ ...current, pageOrder: current.pageOrder.filter((_, index) => !targets.includes(index)) }, { kind: 'page', title: `Removed ${targets.length} page${targets.length === 1 ? '' : 's'}`, page: targets[0] + 1 }));
     setSelectedPages([]);
     setPage((current) => Math.max(1, Math.min(current, visiblePages.length - targets.length)));
     toast.success(`Removed ${targets.length} page${targets.length === 1 ? '' : 's'}.`);
@@ -1281,24 +1297,43 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
 
   const historyEntries = useMemo(() => {
     const fallbackDate = document?.updated_at ?? document?.created_at ?? new Date().toISOString();
-    const entries = editState.annotations.map((item) => ({
-      id: item.id,
-      page: item.page,
-      author: item.author ?? currentMentionUser.name,
-      createdAt: item.createdAt ?? fallbackDate,
-      kind: item.kind,
-      title: item.label || item.value || `${item.kind.replace('-', ' ')} added`,
-      color: item.color,
-      x: item.x, y: item.y, width: item.width, height: item.height,
+    const rectOf = (targetId?: string) => {
+      const match = targetId ? editState.annotations.find((item) => item.id === targetId) : undefined;
+      return match ? { x: match.x, y: match.y, width: match.width, height: match.height } : null;
+    };
+    const stored = (editState.history ?? []).map((entry) => ({
+      id: entry.id,
+      page: entry.page,
+      author: entry.author,
+      createdAt: entry.createdAt,
+      kind: entry.kind as PdfAnnotationKind,
+      title: entry.title,
+      color: entry.color,
+      targetId: entry.targetId,
+      ...(rectOf(entry.targetId) ?? { x: 0, y: 0, width: 0, height: 0 }),
     }));
-    return entries.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  }, [document, editState.annotations]);
+    const entries = stored.length
+      ? stored
+      : editState.annotations.map((item) => ({
+          id: item.id,
+          page: item.page,
+          author: item.author ?? currentMentionUser.name,
+          createdAt: item.createdAt ?? fallbackDate,
+          kind: item.kind,
+          title: item.label || item.value || `${item.kind.replace('-', ' ')} added`,
+          color: item.color,
+          targetId: item.id,
+          x: item.x, y: item.y, width: item.width, height: item.height,
+        }));
+    return [...entries].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }, [document, editState.annotations, editState.history]);
 
-  const goToHistoryEntry = useCallback((entry: { id: string; page: number; x: number; y: number; width: number; height: number }) => {
+  const goToHistoryEntry = useCallback((entry: { id: string; page: number; x: number; y: number; width: number; height: number; targetId?: string }) => {
     const position = visiblePages.indexOf(entry.page);
-    setPage(Math.max(1, position + 1));
-    setSelectedAnnotationId(entry.id);
-    setSearchHighlight({ id: `${entry.id}-${Date.now()}`, page: entry.page, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
+    if (position >= 0) setPage(position + 1);
+    else if (entry.page > 0) setPage(Math.min(visiblePages.length, entry.page));
+    if (entry.targetId) setSelectedAnnotationId(entry.targetId);
+    if (entry.width > 0 || entry.height > 0) setSearchHighlight({ id: `${entry.id}-${Date.now()}`, page: entry.page, x: entry.x, y: entry.y, width: entry.width, height: entry.height });
     setHistoryOpen(false);
   }, [visiblePages]);
 
