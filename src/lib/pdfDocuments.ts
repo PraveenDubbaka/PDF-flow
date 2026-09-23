@@ -105,6 +105,7 @@ export interface PdfDocumentRecord {
 }
 
 export const emptyPdfEditState = (): PdfEditState => ({
+  history: [],
   annotations: [],
   pageOrder: [],
   rotations: {},
