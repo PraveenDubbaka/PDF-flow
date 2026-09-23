@@ -2327,14 +2327,6 @@ export default function EngagementDetail() {
  {status}
  </Badge>
 
- {/* Jurisdiction Badge */}
- {engagement?.jurisdiction && (
-  <div className="ml-1 inline-flex items-center gap-1 h-7 px-2 bg-muted border border-border rounded-sm">
-   <span className="text-[11px] font-semibold text-muted-foreground">
-    {engagement.region === "ca" ? "🇨🇦" : "🇺🇸"} {engagement.jurisdiction}
-   </span>
-  </div>
- )}
 
  {/* Xero Integration Badge — shown when Xero is connected */}
  {connectedApps.has("xero") && (
