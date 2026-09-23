@@ -215,10 +215,6 @@ export default function Engagements() {
  })}
  </div>
 
- <p className="text-sm text-muted-foreground mt-1">
-  {activeFirm.region === "ca" ? "🇨🇦" : "🇺🇸"} {activeFirm.name} · {activeFirm.region === "ca" ? "CA-cell" : "US-cell"}
- </p>
-
  {/* Filter, Search, Export and Create Row - Enhanced spacing */}
  <div className="flex items-center justify-between">
  <DropdownMenu>
