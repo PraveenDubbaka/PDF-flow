@@ -504,13 +504,9 @@ export default function Dashboard() {
  <div>
  <h2 className="text-lg font-semibold text-foreground">Engagements</h2>
  <p className="text-sm text-muted-foreground mt-1">Active engagements from last 6 months</p>
- {showGroupView ? (
-  <p className="text-sm text-muted-foreground mt-1">Aggregated across all offices · Switch to an office to view client records</p>
- ) : (
-  <p className="text-sm text-muted-foreground mt-1">
-   {activeFirm.region === "ca" ? "🇨🇦" : "🇺🇸"} {activeFirm.name} · {activeFirm.region === "ca" ? "CA-cell" : "US-cell"}
-  </p>
- )}
+  {showGroupView && (
+   <p className="text-sm text-muted-foreground mt-1">Aggregated across all offices · Switch to an office to view client records</p>
+  )}
  </div>
  <div className="relative">
  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground icon-search" />
