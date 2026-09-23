@@ -778,19 +778,19 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       color: calcColor,
     };
     if (editingCalcId) {
-      setEditState((current) => ({
+      setEditState((current) => withHistory({
         ...current,
         calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, ...base } : item),
         annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${calculationResult}` } : item),
-      }));
+      }, { kind: 'calculation', title: `${title} updated`, page: currentSourcePage, color: calcColor, targetId: editingCalcId }));
       toast.success('Calculation updated.');
     } else {
       const calculation: PdfCalculation = { id: crypto.randomUUID(), page: currentSourcePage, ...base };
-      setEditState((current) => ({
+      setEditState((current) => withHistory({
         ...current,
         calculations: [...(current.calculations ?? []), calculation],
         annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: currentSourcePage, x: 30, y: 30, width: 25, height: 6, color: calcColor, label: `${title}: ${calculationResult}` }],
-      }));
+      }, { kind: 'calculation', title: `${title} added`, page: currentSourcePage, color: calcColor, targetId: calculation.id }));
       toast.success('Calculation added to the document.');
     }
     resetCalculator();
@@ -937,7 +937,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const deletePages = () => {
     const targets = targetPositions();
     if (targets.length >= visiblePages.length) return toast.error('A PDF must keep at least one page.');
-    setEditState((current) => ({ ...current, pageOrder: current.pageOrder.filter((_, index) => !targets.includes(index)) }));
+    setEditState((current) => withHistory({ ...current, pageOrder: current.pageOrder.filter((_, index) => !targets.includes(index)) }, { kind: 'page', title: `Removed ${targets.length} page${targets.length === 1 ? '' : 's'}`, page: (current0 => current0)(targets[0] + 1) }));
     setSelectedPages([]);
     setPage((current) => Math.max(1, Math.min(current, visiblePages.length - targets.length)));
     toast.success(`Removed ${targets.length} page${targets.length === 1 ? '' : 's'}.`);
@@ -951,7 +951,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         next.push(sourcePage);
         if (targets.includes(index)) next.push(sourcePage);
       });
-      return { ...current, pageOrder: next };
+      return withHistory({ ...current, pageOrder: next }, { kind: 'page', title: `Duplicated ${targets.length} page${targets.length === 1 ? '' : 's'}`, page: targets[0] + 1 });
     });
     setSelectedPages([]);
     toast.success(`Duplicated ${targets.length} page${targets.length === 1 ? '' : 's'}.`);
@@ -965,7 +965,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         const sourcePage = String(current.pageOrder[index]);
         rotations[sourcePage] = (((rotations[sourcePage] ?? 0) + direction * 90) % 360 + 360) % 360;
       });
-      return { ...current, rotations };
+      return withHistory({ ...current, rotations }, { kind: 'page', title: `Rotated ${targets.length} page${targets.length === 1 ? '' : 's'} ${direction === 1 ? 'right' : 'left'}`, page: targets[0] + 1 });
     });
   };
 
@@ -1183,20 +1183,20 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (activePanel === 'redact') return (
       <div className="space-y-4">
         <div><p className="text-xs font-semibold text-foreground">REDACT</p><p className="mt-1 text-xs text-foreground">Draws a region and permanently removes the underlying page content in that area — not just a visual cover. The redacted page becomes a flattened image, so its text is no longer selectable or extractable.</p><Button variant={activeKind === 'redaction' ? 'default' : 'secondary'} className="mt-2 w-full" onClick={() => setActiveKind('redaction')}>Draw redaction region</Button></div>
-        <div className="border-t border-border pt-4 space-y-2"><p className="text-xs font-semibold text-foreground">WATERMARK</p><div className="space-y-1.5"><Label htmlFor="watermark-text">Text</Label><Input id="watermark-text" value={watermarkText} onChange={(event) => setWatermarkText(event.target.value)} /></div><div className="grid grid-cols-2 gap-2"><div className="space-y-1.5"><Label htmlFor="watermark-opacity">Opacity</Label><Input id="watermark-opacity" type="number" min="0.1" max="1" step="0.1" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /></div><div className="space-y-1.5"><Label htmlFor="watermark-rotation">Rotation°</Label><Input id="watermark-rotation" type="number" value={watermarkRotation} onChange={(event) => setWatermarkRotation(Number(event.target.value))} /></div></div><Button className="w-full" onClick={() => setEditState((current) => ({ ...current, watermark: { text: watermarkText, opacity: watermarkOpacity, rotation: watermarkRotation, applied: true } }))}><Save />Apply to all pages</Button>{editState.watermark?.applied && <Button variant="secondary" className="w-full" onClick={() => setEditState((current) => ({ ...current, watermark: undefined }))}>Remove watermark</Button>}</div>
+        <div className="border-t border-border pt-4 space-y-2"><p className="text-xs font-semibold text-foreground">WATERMARK</p><div className="space-y-1.5"><Label htmlFor="watermark-text">Text</Label><Input id="watermark-text" value={watermarkText} onChange={(event) => setWatermarkText(event.target.value)} /></div><div className="grid grid-cols-2 gap-2"><div className="space-y-1.5"><Label htmlFor="watermark-opacity">Opacity</Label><Input id="watermark-opacity" type="number" min="0.1" max="1" step="0.1" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /></div><div className="space-y-1.5"><Label htmlFor="watermark-rotation">Rotation°</Label><Input id="watermark-rotation" type="number" value={watermarkRotation} onChange={(event) => setWatermarkRotation(Number(event.target.value))} /></div></div><Button className="w-full" onClick={() => setEditState((current) => withHistory({ ...current, watermark: { text: watermarkText, opacity: watermarkOpacity, rotation: watermarkRotation, applied: true } }, { kind: 'document', title: `Watermark "${watermarkText}" applied` }))}><Save />Apply to all pages</Button>{editState.watermark?.applied && <Button variant="secondary" className="w-full" onClick={() => setEditState((current) => withHistory({ ...current, watermark: undefined }, { kind: 'document', title: 'Watermark removed' }))}>Remove watermark</Button>}</div>
       </div>
     );
     if (activePanel === 'details') return (
       <div className="space-y-4">
         <div>
           <p className="text-xs font-semibold text-foreground">BOOKMARKS</p>
-          <div className="mt-2 flex gap-2"><Input value={bookmarkTitle} onChange={(event) => setBookmarkTitle(event.target.value)} placeholder="Bookmark title" /><Input className="w-16" type="number" min={1} max={visiblePages.length} value={page} readOnly /><Button size="icon-sm" disabled={!bookmarkTitle.trim()} onClick={() => { setEditState((current) => ({ ...current, bookmarks: [...(current.bookmarks ?? []), { id: crypto.randomUUID(), title: bookmarkTitle.trim(), page }] })); setBookmarkTitle(''); }} aria-label="Add bookmark"><Plus /></Button></div>
+          <div className="mt-2 flex gap-2"><Input value={bookmarkTitle} onChange={(event) => setBookmarkTitle(event.target.value)} placeholder="Bookmark title" /><Input className="w-16" type="number" min={1} max={visiblePages.length} value={page} readOnly /><Button size="icon-sm" disabled={!bookmarkTitle.trim()} onClick={() => { setEditState((current) => withHistory({ ...current, bookmarks: [...(current.bookmarks ?? []), { id: crypto.randomUUID(), title: bookmarkTitle.trim(), page }] }, { kind: 'document', title: `Bookmark "${bookmarkTitle.trim()}" added`, page })); setBookmarkTitle(''); }} aria-label="Add bookmark"><Plus /></Button></div>
           <div className="mt-2 space-y-2">{(editState.bookmarks ?? []).length === 0 && <p className="text-xs text-foreground">No bookmarks yet.</p>}{(editState.bookmarks ?? []).map((bookmark) => <div key={bookmark.id} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-2 py-2"><Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start truncate" onClick={() => setPage(Math.min(visiblePages.length, Math.max(1, bookmark.page)))}>{bookmark.title} · p.{bookmark.page}</Button><Button variant="ghost" size="icon-sm" aria-label="Delete bookmark" onClick={() => setEditState((current) => ({ ...current, bookmarks: (current.bookmarks ?? []).filter((item) => item.id !== bookmark.id) }))}><Trash2 /></Button></div>)}</div>
         </div>
         <div className="space-y-2 border-t border-border pt-4">
           <p className="text-xs font-semibold text-foreground">DOCUMENT PROPERTIES</p>
           {(['title', 'author', 'subject', 'keywords', 'creator'] as const).map((key) => <Input key={key} value={properties[key]} onChange={(event) => setProperties((current) => ({ ...current, [key]: event.target.value }))} placeholder={key.charAt(0).toUpperCase() + key.slice(1)} />)}
-          <Button className="w-full" onClick={() => { setEditState((current) => ({ ...current, properties })); toast.success('Document properties updated.'); }}>Save properties</Button>
+          <Button className="w-full" onClick={() => { setEditState((current) => withHistory({ ...current, properties }, { kind: 'document', title: 'Document properties updated' })); toast.success('Document properties updated.'); }}>Save properties</Button>
         </div>
         <div className="border-t border-border pt-4"><p className="text-xs font-semibold text-foreground">FONTS ON THIS PAGE</p><div className="mt-2 space-y-1">{detectedFonts.length ? detectedFonts.map((font) => <p key={font} className="truncate text-xs text-foreground">{font}</p>) : <p className="text-xs text-foreground">No font names detected.</p>}</div></div>
       </div>
