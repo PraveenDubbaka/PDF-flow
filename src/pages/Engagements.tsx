@@ -29,7 +29,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Layout } from "@/components/Layout";
 import { StyledCard } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 
 function getActiveFirm() {
   try {
@@ -273,9 +272,8 @@ export default function Engagements() {
  <tr className="bg-muted border-b border-border">
  <th className="text-left px-6 py-4 text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Engagement ID</th>
  <th className="text-left px-6 py-4 text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Client Name</th>
- <th className="text-left px-6 py-4 text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Type</th>
- <th className="text-left px-4 py-4 text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Cell</th>
- <th className="text-left px-6 py-4 text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Period/Year End Date</th>
+<th className="text-left px-6 py-4 text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Type</th>
+<th className="text-left px-6 py-4 text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Period/Year End Date</th>
  <th className="text-left px-6 py-4 text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Assigned Team</th>
  <th className="text-left px-6 py-4 text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Status</th>
  <th className="text-left px-6 py-4 text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Date Created</th>
@@ -285,7 +283,7 @@ export default function Engagements() {
  <tbody className="divide-y divide-border">
  {filteredEngagements.length === 0 && searchQuery.trim() && (
  <tr>
- <td colSpan={9} className="px-6 py-16 text-center">
+ <td colSpan={8} className="px-6 py-16 text-center">
  <Search className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
  <p className="text-sm font-medium text-foreground">No results for &ldquo;{searchQuery}&rdquo;</p>
  <p className="text-xs text-muted-foreground mt-1">Try a different search term or clear the filter</p>
@@ -314,23 +312,8 @@ export default function Engagements() {
  )}
  </div>
  </td>
- <td className="px-6 py-2 text-sm text-foreground whitespace-nowrap">{engagement.type}</td>
- <td className="px-4 py-3 whitespace-nowrap">
-  {(() => {
-   const region = engagement.client === "Harbor Freight Logistics LLC" ? "us" : "ca";
-   return (
-    <span className={cn(
-     "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border",
-     region === "us"
-      ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800/40"
-      : "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800/40"
-    )}>
-     {region === "us" ? "🇺🇸 US" : "🇨🇦 CA"}
-    </span>
-   );
-  })()}
- </td>
- <td className="px-6 py-2 text-sm text-muted-foreground whitespace-nowrap">{engagement.yearEnd}</td>
+<td className="px-6 py-2 text-sm text-foreground whitespace-nowrap">{engagement.type}</td>
+<td className="px-6 py-2 text-sm text-muted-foreground whitespace-nowrap">{engagement.yearEnd}</td>
  <td className="px-6 py-2 whitespace-nowrap">
  <button
  className="inline-flex items-center gap-1 text-sm text-link cursor-pointer hover:underline"
@@ -365,7 +348,7 @@ export default function Engagements() {
  </tr>
  {isExpanded && assignees && (
  <tr className="bg-muted/30">
- <td colSpan={9} className="px-6 py-4">
+ <td colSpan={8} className="px-6 py-4">
  <div className="flex gap-10">
  <div className="flex-1">
  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Firm Team</p>
