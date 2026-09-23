@@ -226,3 +226,10 @@ export async function deletePdfDocument(document: PdfDocumentRecord) {
   const { error } = await supabase.from('engagement_pdf_documents').delete().eq('id', document.id);
   if (error) throw error;
 }
+export async function persistPdfEditState(documentId: string, editState: PdfEditState) {
+  const { error } = await supabase.from('engagement_pdf_documents').update({
+    edit_state: editState as unknown as Json,
+    updated_at: new Date().toISOString(),
+  } as never).eq('id', documentId);
+  if (error) throw error;
+}
