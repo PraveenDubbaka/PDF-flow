@@ -57,7 +57,19 @@ export interface PdfAnnotation {
   resolved?: boolean;
 }
 
+export interface PdfHistoryEntry {
+  id: string;
+  kind: PdfAnnotationKind | 'page' | 'document' | 'version';
+  title: string;
+  page: number;
+  author: string;
+  createdAt: string;
+  color: string;
+  targetId?: string;
+}
+
 export interface PdfEditState {
+  history?: PdfHistoryEntry[];
   annotations: PdfAnnotation[];
   pageOrder: number[];
   rotations: Record<string, number>;
