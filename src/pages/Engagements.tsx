@@ -253,20 +253,6 @@ export default function Engagements() {
  className="pl-9 w-44 h-9 text-sm"
  />
  </div>
- <Button
- variant="outline"
- className="h-9 px-4 text-sm font-medium bg-card border-border hover:bg-muted"
- >
- <Download className="mr-2 h-4 w-4 icon-download" />
- Export
- </Button>
- <Button
-          variant="outline"
-          className="h-9 px-4 text-sm font-medium bg-card border-border hover:bg-muted"
-          onClick={() => navigate("/engagements/create-new")}
-        >
-          Create New Engagement
-        </Button>
         <Button
           onClick={() => { setSelectedClient(""); setSelectedEngType(""); setCreateModalOpen(true); }}
           className="bg-[#1C63A6] hover:bg-[#1a5a9e] text-white h-9 px-4 text-sm font-medium"
