@@ -445,13 +445,39 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     return () => { cancelled = true; };
   }, [pdf, currentSourcePage]);
 
+  const logHistory = useCallback((entry: Parameters<typeof makeHistory>[0]) => {
+    setEditState((current) => withHistory(current, entry));
+  }, []);
+
   const updateAnnotation = useCallback((id: string, changes: Partial<PdfAnnotation>) => {
-    setEditState((current) => ({ ...current, annotations: current.annotations.map((item) => (item.id === id ? { ...item, ...changes } : item)) }));
+    setEditState((current) => {
+      const target = current.annotations.find((item) => item.id === id);
+      const next = { ...current, annotations: current.annotations.map((item) => (item.id === id ? { ...item, ...changes } : item)) };
+      if (!target) return next;
+      return withHistory(next, {
+        kind: target.kind,
+        title: `${changes.label ?? target.label ?? target.kind.replace('-', ' ')} updated`,
+        page: target.page,
+        color: changes.color ?? target.color,
+        targetId: target.id,
+      });
+    });
   }, []);
 
   const deleteAnnotation = useCallback((id: string) => {
-    setEditState((current) => ({ ...current, annotations: current.annotations.filter((item) => item.id !== id) }));
+    setEditState((current) => {
+      const target = current.annotations.find((item) => item.id === id);
+      const next = { ...current, annotations: current.annotations.filter((item) => item.id !== id) };
+      if (!target) return next;
+      return withHistory(next, {
+        kind: target.kind,
+        title: `${target.label || target.value || target.kind.replace('-', ' ')} deleted`,
+        page: target.page,
+        color: target.color,
+      });
+    });
   }, []);
+
 
   const addAnnotation = useCallback((annotation: PdfAnnotation) => {
     if (annotation.kind === 'comment') {
