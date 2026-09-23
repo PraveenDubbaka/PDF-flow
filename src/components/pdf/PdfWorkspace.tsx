@@ -38,6 +38,21 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.m
 type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'trial-balance' | 'comments' | 'redact' | 'security' | 'details' | 'ocr' | 'calculations' | 'luka';
 type TextItemLike = { str: string; width: number; height: number; transform: number[] };
 type SearchMatch = { id: string; page: number; snippet: string; x: number; y: number; width: number; height: number };
+const makeHistory = (entry: { kind: PdfHistoryEntry['kind']; title: string; page?: number; color?: string; targetId?: string }): PdfHistoryEntry => ({
+  id: crypto.randomUUID(),
+  kind: entry.kind,
+  title: entry.title,
+  page: entry.page ?? 0,
+  author: currentMentionUser.name,
+  createdAt: new Date().toISOString(),
+  color: entry.color ?? '#1C63A6',
+  targetId: entry.targetId,
+});
+const withHistory = (state: PdfEditState, entry: Parameters<typeof makeHistory>[0]): PdfEditState => ({
+  ...state,
+  history: [...(state.history ?? []), makeHistory(entry)],
+});
+
 const TOOLS: { id: ToolId; label: string; icon: React.ElementType }[] = [
   { id: 'pages', label: 'Pages', icon: BookOpen },
   { id: 'search', label: 'Search', icon: Search },
