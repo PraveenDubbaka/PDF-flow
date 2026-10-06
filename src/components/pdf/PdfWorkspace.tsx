@@ -389,6 +389,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
   const [showCalcHeader, setShowCalcHeader] = useState(false);
   const [calcPlacement, setCalcPlacement] = useState(false);
+  const [calcResultOverride, setCalcResultOverride] = useState('');
 
   useEffect(() => {
     if (!calcPlacement) return;
@@ -396,6 +397,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [calcPlacement]);
+  useEffect(() => { setCalcResultOverride(''); }, [calcRows]);
   const [lukaQuestion, setLukaQuestion] = useState('');
   const [lukaAnswer, setLukaAnswer] = useState('');
   const [lukaLoading, setLukaLoading] = useState(false);
@@ -781,12 +783,20 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     const total = terms.reduce((sum, term) => sum + term, 0);
     return Number.isFinite(total) ? Math.round(total * 100) / 100 : 0;
   }, [calcRows]);
+  // An manually overridden result wins over the computed one until the lines change.
+  const effectiveCalcResult = useMemo(() => {
+    const trimmed = calcResultOverride.trim();
+    if (trimmed === '') return calculationResult;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : calculationResult;
+  }, [calcResultOverride, calculationResult]);
 
   const resetCalculator = useCallback(() => {
     setEditingCalcId(null);
     setShowCalcHeader(false);
     setCalcPlacement(false);
     setCalcTitle('');
+    setCalcResultOverride('');
     setCalcRows([{ value: '', operator: '+', comment: '' }]);
   }, []);
 
@@ -796,6 +806,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setShowCalcHeader(calculation.title.trim() !== '' && calculation.title !== 'Calculation');
     setCalcTitle(calculation.title);
     setCalcColor(calculation.color);
+    setCalcResultOverride('');
     setCalcRows(calculation.values.map((value, index) => ({
       value: String(value),
       operator: calculation.operators?.[index] ?? '+',
@@ -809,8 +820,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
       setEditState((current) => withHistory({
         ...current,
-        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), result: calculationResult, color: calcColor } : item),
-        annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${calculationResult}` } : item),
+        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), result: effectiveCalcResult, color: calcColor } : item),
+        annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${effectiveCalcResult}` } : item),
       }, { kind: 'calculation', title: `${title} updated`, page: currentSourcePage, color: calcColor, targetId: editingCalcId }));
       toast.success('Calculation updated.');
       resetCalculator();
@@ -819,7 +830,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (calcPlacement) { setCalcPlacement(false); return; }
     setActiveKind(null);
     setCalcPlacement(true);
-  }, [calcColor, calcPlacement, calcRows, calcTitle, calculationResult, currentSourcePage, editingCalcId, resetCalculator]);
+  }, [calcColor, calcPlacement, calcRows, calcTitle, effectiveCalcResult, currentSourcePage, editingCalcId, resetCalculator]);
 
   const placeCalculation = useCallback((pageNumber: number, x: number, y: number) => {
     const title = calcTitle.trim() || 'Calculation';
@@ -831,17 +842,17 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       values: rows.map((row) => Number(row.value) || 0),
       operators: rows.map((row) => row.operator),
       comments: rows.map((row) => row.comment),
-      result: calculationResult,
+      result: effectiveCalcResult,
       color: calcColor,
     };
     setEditState((current) => withHistory({
       ...current,
       calculations: [...(current.calculations ?? []), calculation],
-      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: pageNumber, x, y, width: 25, height: 6, color: calcColor, label: `${title}: ${calculationResult}` }],
+      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: pageNumber, x, y, width: 25, height: 6, color: calcColor, label: `${title}: ${effectiveCalcResult}` }],
     }, { kind: 'calculation', title: `${title} placed on page ${pageNumber}`, page: pageNumber, color: calcColor, targetId: calculation.id }));
     toast.success(`Placed on page ${pageNumber}.`);
     resetCalculator();
-  }, [calcColor, calcRows, calcTitle, calculationResult, resetCalculator]);
+  }, [calcColor, calcRows, calcTitle, effectiveCalcResult, resetCalculator]);
 
   const askLuka = useCallback(async (question: string) => {
     const prompt = question.trim();
@@ -1262,26 +1273,23 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         {showCalcHeader ? (
           <div className="space-y-1.5">
             <Label htmlFor="calc-header">Header (optional)</Label>
-            <div className="flex gap-2">
-              <Input id="calc-header" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
-              <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-10 rounded-[6px] border border-border bg-background p-1" />
-            </div>
+            <Input id="calc-header" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
           </div>
         ) : (
           <button type="button" className="self-start text-xs font-medium text-primary hover:underline" onClick={() => setShowCalcHeader(true)}>+ Header</button>
         )}
-        <div className="grid grid-cols-[16px_44px_minmax(0,1fr)_70px_20px] items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
+        <div className="grid grid-cols-[16px_44px_minmax(0,1fr)_56px_20px] items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
           <span className="text-center">#</span><span>Sign</span><span>Description</span><span className="text-right">Amount</span><span />
         </div>
         <div className="space-y-2">{calcRows.map((row, index) => (
-          <div key={index} className="grid grid-cols-[16px_44px_minmax(0,1fr)_70px_20px] items-center gap-1.5">
+          <div key={index} className="grid grid-cols-[16px_44px_minmax(0,1fr)_56px_20px] items-center gap-1.5">
             <span className="text-center text-xs text-foreground">{index + 1}</span>
             {row.operator === '×' || row.operator === '÷' ? (
               <select value={row.operator} aria-label={`Operator ${index + 1}`} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 w-full rounded-[8px] border border-border bg-background px-1.5 text-xs text-foreground"><option>×</option><option>÷</option></select>
             ) : (
               <div className="grid grid-cols-2 gap-0.5" role="group" aria-label={`Line ${index + 1} sign`}>
-                <button type="button" aria-pressed={row.operator !== '-'} aria-label={`Line ${index + 1} adds`} onClick={() => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: '+' } : item))} className={cn('flex h-9 items-center justify-center rounded-[6px] border border-border text-xs text-foreground transition-opacity', row.operator !== '-' && 'border-primary/40 bg-primary/15 font-semibold')}>+</button>
-                <button type="button" aria-pressed={row.operator === '-'} aria-label={`Line ${index + 1} subtracts`} onClick={() => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: '-' } : item))} className={cn('flex h-9 items-center justify-center rounded-[6px] border border-border text-xs text-foreground transition-opacity', row.operator === '-' && 'border-primary/40 bg-primary/15 font-semibold')}>−</button>
+                <button type="button" aria-pressed={row.operator !== '-'} aria-label={`Line ${index + 1} adds`} onClick={() => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: '+' } : item))} className={cn('flex h-9 items-center justify-center rounded-[6px] border text-xs transition-colors', row.operator !== '-' ? 'border-primary bg-primary font-semibold text-primary-foreground' : 'border-border bg-background text-foreground')}>+</button>
+                <button type="button" aria-pressed={row.operator === '-'} aria-label={`Line ${index + 1} subtracts`} onClick={() => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: '-' } : item))} className={cn('flex h-9 items-center justify-center rounded-[6px] border text-xs transition-colors', row.operator === '-' ? 'border-primary bg-primary font-semibold text-primary-foreground' : 'border-border bg-background text-foreground')}>−</button>
               </div>
             )}
             <Input aria-label={`Description ${index + 1}`} className="min-w-0 px-2" value={row.comment} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, comment: event.target.value } : item))} placeholder="Description (optional)" />
@@ -1289,18 +1297,27 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             <Button variant="ghost" size="icon-sm" className="shrink-0" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove line ${index + 1}`}><X /></Button>
           </div>
         ))}</div>
-        <div className="flex justify-center gap-2">
-          <Button variant="ghost" onClick={() => setCalcRows([{ value: '', operator: '+', comment: '' }])}><X />Clear lines</Button>
+        <div className="flex justify-end">
+          <button type="button" className="text-xs font-medium text-foreground underline-offset-2 hover:underline" onClick={() => setCalcRows([{ value: '', operator: '+', comment: '' }])}>Clear lines</button>
+        </div>
+        <div className="flex justify-center">
           <Button variant="secondary" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+', comment: '' }])}><Plus />Add line</Button>
         </div>
-        <div className="rounded-[8px] bg-muted/60 px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Result — calculated automatically</p>
-          <p className="mt-0.5 truncate text-right text-sm font-semibold text-foreground">{calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+        <div className="rounded-[8px] border border-border bg-background px-3 py-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="calc-result" className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Result</Label>
+            <span className="text-[10px] text-foreground">Editable — type to override</span>
+          </div>
+          <Input id="calc-result" type="number" inputMode="decimal" className="mt-1 h-8 text-right text-sm font-semibold" value={calcResultOverride} placeholder={calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 })} onChange={(event) => setCalcResultOverride(event.target.value)} />
+          <p className="mt-1 text-[10px] text-foreground">Leave blank to use the calculated value.</p>
         </div>
         <div className="rounded-[8px] border bg-background p-2.5" style={{ borderColor: calcColor }}>
-          <p className="text-[9px] font-semibold uppercase tracking-wide text-foreground">Live preview</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[9px] font-semibold uppercase tracking-wide text-foreground">Live preview</p>
+            <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-6 w-9 rounded-[6px] border border-border bg-background p-0.5" />
+          </div>
           <div className="mt-1.5 space-y-0.5">
-            <p className="truncate text-[11px] font-semibold" style={{ color: calcColor }}>{calcTitle.trim() || 'Calculation'}</p>
+            {calcTitle.trim() !== '' && <p className="truncate text-[11px] font-semibold" style={{ color: calcColor }}>{calcTitle}</p>}
             {calcRows.map((row, index) => (
               <div key={index} className="flex items-center justify-between gap-2 text-[11px] text-foreground">
                 <span className="min-w-0 truncate">{row.operator === '-' ? '−' : row.operator} {row.comment || `Line ${index + 1}`}</span>
@@ -1309,7 +1326,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             ))}
             <div className="mt-1 flex items-center justify-between gap-2 border-t border-border pt-1 text-[11px] font-semibold text-foreground">
               <span>Result</span>
-              <span className="shrink-0 tabular-nums" style={{ color: calcColor }}>{calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+              <span className="shrink-0 tabular-nums" style={{ color: calcColor }}>{effectiveCalcResult.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
             </div>
           </div>
         </div>
