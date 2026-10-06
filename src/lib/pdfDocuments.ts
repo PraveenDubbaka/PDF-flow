@@ -20,7 +20,15 @@ export interface PdfCalculation {
   comments?: string[];
   result: number;
   color: string;
+  sources?: (PdfCalcSource | null)[];
+  compareTo?: number | null;
+  compareSource?: PdfCalcSource | null;
+  style?: 'full' | 'result';
+  author?: string;
+  createdAt?: string;
 }
+
+export interface PdfCalcSource { page: number; x: number; y: number; width: number; height: number }
 
 export interface PdfDocumentProperties {
   title: string;

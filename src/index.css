@@ -295,6 +295,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     --accent: var(--m3-tertiary);
     --accent-foreground: var(--m3-on-tertiary);
 
+    --success: 142 71% 30%;
+    --success-foreground: 0 0% 100%;
     --destructive: var(--m3-error);
     --destructive-foreground: var(--m3-on-error);
 
@@ -463,6 +465,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     --accent: var(--m3-tertiary);
     --accent-foreground: var(--m3-on-tertiary);
 
+    --success: 142 71% 30%;
+    --success-foreground: 0 0% 100%;
     --destructive: var(--m3-error);
     --destructive-foreground: var(--m3-on-error);
 
