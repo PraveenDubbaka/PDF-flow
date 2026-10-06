@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle,
-  Copy, Download, ExternalLink, FileText, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
+  Copy, Crosshair, Download, ExternalLink, FileText, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
   History, MessageSquare, MousePointer2, Pen, Pencil, Plus, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Sparkles, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
@@ -14,6 +14,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 import { Input } from '@/components/ui/input';
@@ -25,7 +26,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { LukaIcon } from '@/components/LukaIcon';
 import { cn } from '@/lib/utils';
 import {
-  emptyPdfEditState, deletePdfDocument, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfDocumentProperties,
+  emptyPdfEditState, deletePdfDocument, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfCalcSource, PdfDocumentProperties,
   PdfDocumentRecord, PdfEditState, PdfHistoryEntry, persistPdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
 import { trialBalanceAccounts } from '@/data/trialBalanceAccounts';
@@ -89,7 +90,111 @@ const hexToRgb = (hex: string) => {
   return rgb(((int >> 16) & 255) / 255, ((int >> 8) & 255) / 255, (int & 255) / 255);
 };
 
-function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc }: {
+type CalcOperator = '+' | '-' | '×' | '÷';
+type CalcRow = { value: string; operator: CalcOperator; comment: string; source?: PdfCalcSource | null };
+const OP_LABEL: Record<CalcOperator, string> = { '+': '+', '-': '−', '×': '×', '÷': '÷' };
+const KEY_TO_OP: Record<string, CalcOperator> = { '+': '+', '-': '-', '*': '×', '/': '÷', 'x': '×' };
+const emptyCalcRow = (): CalcRow => ({ value: '', operator: '+', comment: '' });
+
+export function formatAmount(value: number) {
+  const abs = Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return value < 0 ? `(${abs})` : abs;
+}
+
+export function parseAmount(raw: string): number | null {
+  let text = raw.trim().replace(/[$\s€£]/g, '');
+  if (!text || !/\d/.test(text)) return null;
+  let negative = false;
+  if (/^\(.*\)$/.test(text)) { negative = true; text = text.slice(1, -1); }
+  if (text.startsWith('-') || text.startsWith('−')) { negative = !negative; text = text.slice(1); }
+  text = text.replace(/,/g, '');
+  if (!/^(\d+\.?\d*|\.\d+)$/.test(text)) return null;
+  const value = Number(text);
+  return Number.isFinite(value) ? (negative ? -value : value) : null;
+}
+
+function CalcStamp({ title, rows, result, color, style, tie }: {
+  title?: string;
+  rows: { operator: CalcOperator; label: string; value: number; linked?: boolean }[];
+  result: number;
+  color: string;
+  style: 'full' | 'result';
+  tie?: { ties: boolean; difference: number } | null;
+}) {
+  const showTitle = !!title && title.trim() !== '' && title !== 'Calculation';
+  return (
+    <div className="inline-flex min-w-[120px] max-w-[260px] flex-col rounded-[6px] border-2 bg-card px-2 py-1 text-[10px] leading-snug text-foreground" style={{ borderColor: color }}>
+      {showTitle && <span className="truncate text-[11px] font-semibold" style={{ color }}>{title}</span>}
+      {style === 'full' && rows.map((row, index) => (
+        <span key={index} className="flex items-baseline justify-between gap-3">
+          <span className="min-w-0 truncate">{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || `Line ${index + 1}`}</span>
+          <span className="shrink-0 tabular-nums">{formatAmount(row.value)}</span>
+        </span>
+      ))}
+      <span className={cn('flex items-baseline justify-between gap-3 font-semibold', style === 'full' && 'mt-0.5 border-t border-border pt-0.5')}>
+        <span>Result</span><span className="tabular-nums" style={{ color }}>{formatAmount(result)}</span>
+      </span>
+      {tie && <span className={cn('font-semibold', tie.ties ? 'text-success' : 'text-destructive')}>{tie.ties ? '✓ Ties' : `Difference: ${formatAmount(tie.difference)}`}</span>}
+    </div>
+  );
+}
+
+const tieStatus = (result: number, compareTo?: number | null) => {
+  if (compareTo === null || compareTo === undefined) return null;
+  const difference = Math.round((result - compareTo) * 100) / 100;
+  return { ties: Math.abs(difference) < 0.005, difference };
+};
+
+function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, onEnter, onPasteMany, onPick }: {
+  index: number;
+  value: string;
+  linked: boolean;
+  picking: boolean;
+  onValue: (value: string) => void;
+  onOperator: (operator: CalcOperator) => void;
+  onEnter: () => void;
+  onPasteMany: (values: number[]) => void;
+  onPick: () => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState('');
+  const display = focused ? draft : value === '' ? '' : formatAmount(Number(value));
+  return (
+    <div className="group/amount relative min-w-0">
+      <Input
+        data-calc-amount={index}
+        aria-label={`Amount ${index + 1}`}
+        inputMode="decimal"
+        className="min-w-0 pl-6 pr-2 text-right text-xs tabular-nums"
+        value={display}
+        placeholder="0"
+        onFocus={() => { setFocused(true); setDraft(value); }}
+        onBlur={() => setFocused(false)}
+        onChange={(event) => { setDraft(event.target.value); const parsed = parseAmount(event.target.value); onValue(parsed === null ? '' : String(parsed)); }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') { event.preventDefault(); onEnter(); return; }
+          const operator = KEY_TO_OP[event.key];
+          if (index > 0 && operator && event.key !== 'x' && (event.key !== '-' || draft === '')) { event.preventDefault(); onOperator(operator); }
+        }}
+        onPaste={(event) => {
+          const values = event.clipboardData.getData('text').split(/[\r\n\t]+/).map(parseAmount).filter((item): item is number => item !== null);
+          if (values.length > 1) { event.preventDefault(); onPasteMany(values); }
+        }}
+      />
+      <button
+        type="button"
+        onClick={onPick}
+        aria-label={linked ? `Line ${index + 1} picked from page — pick again` : `Pick line ${index + 1} amount from page`}
+        title={linked ? 'Picked from page — click to pick again' : 'Pick from page'}
+        className={cn('absolute left-1.5 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-[4px] text-primary transition-opacity', linked || picking ? 'opacity-100' : 'opacity-0 focus-visible:opacity-100 group-hover/amount:opacity-100', picking && 'bg-primary text-primary-foreground')}
+      >
+        {linked && !picking ? <Link2 className="h-3 w-3" /> : <Crosshair className="h-3 w-3" />}
+      </button>
+    </div>
+  );
+}
+
+function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations }: {
   pdf: pdfjs.PDFDocumentProxy;
   pageNumber: number;
   zoom: number;
@@ -105,6 +210,10 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   onDelete?: (id: string) => void;
   placingCalc?: boolean;
   onPlaceCalc?: (pageNumber: number, x: number, y: number) => void;
+  pickingValue?: boolean;
+  onPickValue?: (pick: { value: number; label: string; source: PdfCalcSource }) => void;
+  sourceHighlight?: PdfCalcSource | null;
+  calculations?: PdfCalculation[];
 }) {
   const selectedComment = annotations.find((item) => item.id === selectedId && item.kind === 'comment');
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -143,7 +252,37 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
     return { x: ((event.clientX - rect.left) / rect.width) * 100, y: ((event.clientY - rect.top) / rect.height) * 100 };
   };
 
+  const pickAt = async (x: number, y: number) => {
+    const page = await pdf.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 1, rotation: (page.rotate + rotation) % 360 });
+    const content = await page.getTextContent();
+    const items = content.items.map((raw) => raw as unknown as TextItemLike).filter((item) => typeof item.str === 'string' && item.str.trim() !== '').map((item) => {
+      const [vx, vy] = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
+      const fontHeight = Math.hypot(item.transform[2], item.transform[3]) || item.height || 10;
+      const height = (fontHeight / viewport.height) * 100;
+      return { str: item.str.trim(), x: (vx / viewport.width) * 100, y: (vy / viewport.height) * 100 - height, width: (item.width / viewport.width) * 100, height };
+    });
+    const numbers = items.map((item) => ({ ...item, value: parseAmount(item.str) })).filter((item) => item.value !== null);
+    const distance = (item: { x: number; y: number; width: number; height: number }) => {
+      const dx = x < item.x ? item.x - x : x > item.x + item.width ? x - item.x - item.width : 0;
+      const dy = y < item.y ? item.y - y : y > item.y + item.height ? y - item.y - item.height : 0;
+      return Math.hypot(dx, dy * 1.5);
+    };
+    const best = numbers.sort((a, b) => distance(a) - distance(b))[0];
+    if (!best || distance(best) > 4) { toast.error('No number found there. Click directly on a figure.'); return; }
+    const centre = best.y + best.height / 2;
+    const label = items
+      .filter((item) => item.x + item.width <= best.x + 0.5 && Math.abs(item.y + item.height / 2 - centre) < best.height * 0.7 && parseAmount(item.str) === null)
+      .sort((a, b) => a.x - b.x).map((item) => item.str).join(' ').replace(/[.\s$]+$/, '').trim();
+    onPickValue?.({ value: best.value as number, label, source: { page: pageNumber, x: best.x, y: best.y, width: best.width, height: best.height } });
+  };
+
   const addAtPoint = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (pickingValue && onPickValue) {
+      const { x, y } = relative(event);
+      void pickAt(x, y).catch(() => toast.error('Unable to read figures on this page.'));
+      return;
+    }
     if (placingCalc && onPlaceCalc) {
       const { x, y } = relative(event);
       onPlaceCalc(pageNumber, x, y);
@@ -188,7 +327,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
 
   return (
     <div
-      className={cn('relative shrink-0 overflow-hidden rounded-[4px] border border-border bg-card shadow-[0_2px_10px_hsl(220_30%_50%/0.12)]', (activeKind || placingCalc) && 'cursor-crosshair')}
+      className={cn('relative shrink-0 overflow-hidden rounded-[4px] border border-border bg-card shadow-[0_2px_10px_hsl(220_30%_50%/0.12)]', (activeKind || placingCalc || pickingValue) && 'cursor-crosshair')}
       style={{ width: size.width, height: size.height }}
       onClick={addAtPoint}
       onMouseDown={startDraw}
@@ -204,6 +343,9 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           className="pointer-events-none absolute animate-pulse rounded-[2px] bg-warning/50 ring-2 ring-warning"
           style={{ left: `${highlight.x}%`, top: `${highlight.y}%`, width: `${highlight.width}%`, height: `${highlight.height}%` }}
         />
+      )}
+      {sourceHighlight && sourceHighlight.page === pageNumber && (
+        <div className="pointer-events-none absolute z-30 rounded-[2px] bg-primary/15 ring-2 ring-primary" style={{ left: `${sourceHighlight.x - 0.4}%`, top: `${sourceHighlight.y - 0.3}%`, width: `${sourceHighlight.width + 0.8}%`, height: `${sourceHighlight.height + 0.6}%` }} />
       )}
       <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
         {annotations.filter((item) => item.kind === 'freehand' && item.points?.length).map((item) => (
@@ -223,7 +365,8 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           }}
           className={cn(
             'absolute border-2',
-            activeKind ? 'pointer-events-none' : 'cursor-pointer',
+            activeKind || pickingValue ? 'pointer-events-none' : 'cursor-pointer',
+            annotation.kind === 'calculation' && 'border-none',
             selectedId === annotation.id && 'ring-2 ring-primary ring-offset-1',
             annotation.kind === 'comment' && 'flex items-center justify-center rounded-sm border-none bg-warning text-warning-foreground',
             (annotation.kind === 'link' || annotation.kind === 'trial-balance') && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
@@ -235,8 +378,8 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           )}
           style={{
             left: `${annotation.x}%`, top: `${annotation.y}%`,
-            width: annotation.kind === 'link' || annotation.kind === 'trial-balance' ? 'auto' : `${annotation.width}%`,
-            height: annotation.kind === 'link' || annotation.kind === 'trial-balance' ? 'auto' : `${annotation.height}%`,
+            width: annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'calculation' ? 'auto' : `${annotation.width}%`,
+            height: annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'calculation' ? 'auto' : `${annotation.height}%`,
             borderColor: annotation.color,
             backgroundColor: annotation.kind === 'highlight' ? annotation.color : undefined,
           }}
@@ -263,7 +406,12 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             </>
           )}
           {annotation.kind === 'image' && annotation.value && <img src={annotation.value} alt={annotation.label ?? 'Inserted image'} className="h-full w-full object-contain" />}
-          {(annotation.kind === 'text' || annotation.kind === 'calculation') && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
+          {annotation.kind === 'calculation' && (() => {
+            const calc = calculations?.find((item) => item.id === annotation.id);
+            if (!calc) return <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>;
+            return <CalcStamp title={calc.title} color={calc.color} result={calc.result} style={calc.style ?? 'full'} tie={tieStatus(calc.result, calc.compareTo)} rows={calc.values.map((value, index) => ({ value, operator: calc.operators?.[index] ?? '+', label: calc.comments?.[index] ?? '' }))} />;
+          })()}
+          {annotation.kind === 'text' && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
         </div>
       ))}
       {selectedComment && onUpdate && (
@@ -385,18 +533,22 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [ocrRunning, setOcrRunning] = useState(false);
   const [calcTitle, setCalcTitle] = useState('');
   const [calcColor, setCalcColor] = useState(COLORS[0]);
-  const [calcRows, setCalcRows] = useState<{ value: string; operator: '+' | '-' | '×' | '÷'; comment: string }[]>([{ value: '', operator: '+', comment: '' }]);
+  const [calcRows, setCalcRows] = useState<CalcRow[]>([emptyCalcRow()]);
+  const [calcPick, setCalcPick] = useState<{ target: 'row'; index: number } | { target: 'compare' } | null>(null);
+  const [calcHover, setCalcHover] = useState<PdfCalcSource | null>(null);
+  const [calcCompare, setCalcCompare] = useState<{ value: number; source?: PdfCalcSource | null } | null>(null);
+  const [calcStyle, setCalcStyle] = useState<'full' | 'result'>('full');
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
   const [showCalcHeader, setShowCalcHeader] = useState(false);
   const [calcPlacement, setCalcPlacement] = useState(false);
-  const [calcSearch, setCalcSearch] = useState('');
+  const [calcSearch] = useState('');
 
   useEffect(() => {
-    if (!calcPlacement) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setCalcPlacement(false); };
+    if (!calcPlacement && !calcPick) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') { setCalcPlacement(false); setCalcPick(null); } };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [calcPlacement]);
+  }, [calcPlacement, calcPick]);
   const [lukaQuestion, setLukaQuestion] = useState('');
   const [lukaAnswer, setLukaAnswer] = useState('');
   const [lukaLoading, setLukaLoading] = useState(false);
@@ -789,7 +941,11 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setShowCalcHeader(false);
     setCalcPlacement(false);
     setCalcTitle('');
-    setCalcRows([{ value: '', operator: '+', comment: '' }]);
+    setCalcRows([emptyCalcRow()]);
+    setCalcPick(null);
+    setCalcCompare(null);
+    setCalcStyle('full');
+    setCalcHover(null);
   }, []);
 
   const startEditCalculation = useCallback((calculation: PdfCalculation) => {
@@ -802,8 +958,19 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       value: String(value),
       operator: calculation.operators?.[index] ?? '+',
       comment: calculation.comments?.[index] ?? '',
+      source: calculation.sources?.[index] ?? null,
     })));
+    setCalcCompare(calculation.compareTo === null || calculation.compareTo === undefined ? null : { value: calculation.compareTo, source: calculation.compareSource ?? null });
+    setCalcStyle(calculation.style ?? 'full');
+    setCalcPick(null);
   }, []);
+
+  const handlePickValue = useCallback(({ value, label, source }: { value: number; label: string; source: PdfCalcSource }) => {
+    if (!calcPick) return;
+    if (calcPick.target === 'compare') setCalcCompare({ value, source });
+    else setCalcRows((current) => current.map((row, index) => index === calcPick.index ? { ...row, value: String(value), source, comment: row.comment.trim() ? row.comment : label } : row));
+    setCalcPick(null);
+  }, [calcPick]);
 
   const armCalcPlacement = useCallback(() => {
     if (editingCalcId) {
@@ -811,7 +978,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
       setEditState((current) => withHistory({
         ...current,
-        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), result: effectiveCalcResult, color: calcColor } : item),
+        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), sources: rows.map((row) => row.source ?? null), compareTo: calcCompare?.value ?? null, compareSource: calcCompare?.source ?? null, style: calcStyle, result: effectiveCalcResult, color: calcColor } : item),
         annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${effectiveCalcResult}` } : item),
       }, { kind: 'calculation', title: `${title} updated`, page: currentSourcePage, color: calcColor, targetId: editingCalcId }));
       toast.success('Calculation updated.');
@@ -821,7 +988,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (calcPlacement) { setCalcPlacement(false); return; }
     setActiveKind(null);
     setCalcPlacement(true);
-  }, [calcColor, calcPlacement, calcRows, calcTitle, effectiveCalcResult, currentSourcePage, editingCalcId, resetCalculator]);
+  }, [calcColor, calcPlacement, calcRows, calcTitle, calcCompare, calcStyle, effectiveCalcResult, currentSourcePage, editingCalcId, resetCalculator]);
 
   const placeCalculation = useCallback((pageNumber: number, x: number, y: number) => {
     const title = calcTitle.trim() || 'Calculation';
@@ -835,6 +1002,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       comments: rows.map((row) => row.comment),
       result: effectiveCalcResult,
       color: calcColor,
+      sources: rows.map((row) => row.source ?? null),
+      compareTo: calcCompare?.value ?? null,
+      compareSource: calcCompare?.source ?? null,
+      style: calcStyle,
+      author: currentMentionUser.name,
+      createdAt: new Date().toISOString(),
     };
     setEditState((current) => withHistory({
       ...current,
@@ -843,7 +1016,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     }, { kind: 'calculation', title: `${title} placed on page ${pageNumber}`, page: pageNumber, color: calcColor, targetId: calculation.id }));
     toast.success(`Placed on page ${pageNumber}.`);
     resetCalculator();
-  }, [calcColor, calcRows, calcTitle, effectiveCalcResult, resetCalculator]);
+  }, [calcColor, calcRows, calcTitle, calcCompare, calcStyle, effectiveCalcResult, resetCalculator]);
 
   const askLuka = useCallback(async (question: string) => {
     const prompt = question.trim();
@@ -1258,77 +1431,127 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         <div className="border-t border-border pt-3"><p className="text-xs font-semibold text-foreground">PAGE {page} TEXT</p><div className="mt-2 max-h-72 overflow-auto rounded-[8px] border border-border bg-background p-2 text-xs text-foreground">{editState.ocrText?.[String(currentSourcePage)] || 'Run OCR to extract searchable text.'}</div></div>
       </div>
     );
-    if (activePanel === 'calculations') return (
+    if (activePanel === 'calculations') {
+      const setRow = (index: number, changes: Partial<CalcRow>) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, ...changes } : item));
+      const focusAmount = (index: number) => window.setTimeout(() => (window.document.querySelector(`[data-calc-amount="${index}"]`) as HTMLInputElement | null)?.focus(), 0);
+      const addLine = () => { setCalcRows((current) => [...current, emptyCalcRow()]); focusAmount(calcRows.length); };
+      const tie = tieStatus(calculationResult, calcCompare?.value);
+      const pickHint = calcPick ? (calcPick.target === 'compare' ? 'Click the figure to compare against. Press Esc to cancel.' : `Click a number on the page for line ${calcPick.index + 1}. Press Esc to cancel.`) : null;
+      return (
       <div className="space-y-3">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><Calculator className="h-3.5 w-3.5" />{editingCalcId ? 'EDIT CALCULATION' : 'BUILD A CALCULATION'}</p>
         {showCalcHeader ? (
           <div className="space-y-1.5">
-            <Label htmlFor="calc-header">Header (optional)</Label>
+            <div className="flex items-center justify-between"><Label htmlFor="calc-header">Header</Label><button type="button" className="text-xs font-medium text-foreground hover:underline" onClick={() => { setCalcTitle(''); setShowCalcHeader(false); }}>Remove</button></div>
             <Input id="calc-header" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
           </div>
         ) : (
-          <button type="button" className="self-start text-xs font-medium text-primary hover:underline" onClick={() => setShowCalcHeader(true)}>+ Header</button>
+          <button type="button" className="block text-xs font-medium text-primary hover:underline" onClick={() => setShowCalcHeader(true)}>+ Header</button>
         )}
-        <div className="grid grid-cols-[16px_44px_minmax(0,1fr)_48px_20px] items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
-          <span className="text-center">#</span><span>Op</span><span>Description</span><span className="text-right">Amount</span><span />
+        <div className="grid grid-cols-[28px_minmax(0,1fr)_132px_20px] items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
+          <span /><span>Description</span><span className="text-right">Amount</span><span />
         </div>
-        <div className="space-y-2">{calcRows.map((row, index) => (
-          <div key={index} className="grid grid-cols-[16px_44px_minmax(0,1fr)_48px_20px] items-center gap-1.5">
-            <span className="text-center text-xs text-foreground">{index + 1}</span>
-            {index === 0 ? (
-              <span aria-hidden="true" />
-            ) : (
-              <div className="grid grid-cols-2 gap-0.5" role="group" aria-label={`Line ${index + 1} operator`}>
-                {(['+', '-', '×', '÷'] as const).map((operator) => (
-                  <button key={operator} type="button" aria-pressed={row.operator === operator} aria-label={`Line ${index + 1} operator ${operator}`} onClick={() => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator } : item))} className={cn('flex h-[17px] items-center justify-center rounded-[5px] border text-[11px] leading-none transition-colors', row.operator === operator ? 'border-primary bg-primary font-semibold text-primary-foreground' : 'border-border bg-background text-foreground')}>{operator === '-' ? '−' : operator}</button>
-                ))}
-              </div>
+        <div className="space-y-1.5">{calcRows.map((row, index) => (
+          <div key={index} className="grid grid-cols-[28px_minmax(0,1fr)_132px_20px] items-center gap-1.5" onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
+            {index === 0 ? <span aria-hidden="true" /> : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" aria-label={`Line ${index + 1} operator ${OP_LABEL[row.operator]}`} onKeyDown={(event) => { const operator = KEY_TO_OP[event.key]; if (operator) { event.preventDefault(); setRow(index, { operator }); } }} className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-primary bg-primary/10 text-sm font-semibold text-primary">{OP_LABEL[row.operator]}</button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-[120px]">
+                  {(['+', '-', '×', '÷'] as const).map((operator) => (
+                    <DropdownMenuItem key={operator} onSelect={() => setRow(index, { operator })} className={cn('gap-2', row.operator === operator && 'font-semibold text-primary')}>
+                      <span className="w-4 text-center">{OP_LABEL[operator]}</span>{operator === '+' ? 'Add' : operator === '-' ? 'Subtract' : operator === '×' ? 'Multiply' : 'Divide'}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
-            <Input aria-label={`Description ${index + 1}`} className="min-w-0 px-2" value={row.comment} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, comment: event.target.value } : item))} placeholder="Description" />
-            <Input aria-label={`Amount ${index + 1}`} type="number" inputMode="decimal" className="min-w-0 px-1.5 text-right" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" />
+            <Input aria-label={`Description ${index + 1}`} className="min-w-0 px-2 text-xs" value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
+            <CalcAmountInput
+              index={index}
+              value={row.value}
+              linked={!!row.source}
+              picking={calcPick?.target === 'row' && calcPick.index === index}
+              onValue={(value) => setRow(index, { value, source: null })}
+              onOperator={(operator) => setRow(index, { operator })}
+              onEnter={() => { if (index === calcRows.length - 1) addLine(); else focusAmount(index + 1); }}
+              onPasteMany={(values) => setCalcRows((current) => [...current.slice(0, index), ...values.map((value, offset) => ({ ...(offset === 0 ? current[index] : emptyCalcRow()), value: String(value), source: null })), ...current.slice(index + 1)])}
+              onPick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'row' && current.index === index ? null : { target: 'row', index }); }}
+            />
             <Button variant="ghost" size="icon-sm" className="shrink-0" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove line ${index + 1}`}><X /></Button>
           </div>
         ))}</div>
-        <div className="flex justify-end">
-          <button type="button" className="text-xs font-medium text-foreground underline-offset-2 hover:underline" onClick={() => setCalcRows([{ value: '', operator: '+', comment: '' }])}>Clear lines</button>
-        </div>
-        <div className="flex justify-center">
-          <Button variant="secondary" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+', comment: '' }])}>+ Add line</Button>
+        {pickHint && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-xs font-medium text-primary">{pickHint}</p>}
+        <div className="relative flex items-center justify-center">
+          <Button variant="secondary" size="sm" onClick={addLine}>+ Add line</Button>
+          <button type="button" className="absolute right-0 text-xs font-medium text-foreground underline-offset-2 hover:underline" onClick={() => setCalcRows([emptyCalcRow()])}>Clear lines</button>
         </div>
         <div className="rounded-[8px] border border-border bg-muted/60 px-3 py-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Result</span>
             <span className="text-[10px] text-foreground">Calculated automatically</span>
           </div>
-          <p className="mt-1 text-right text-sm font-semibold tabular-nums text-foreground">{calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-        </div>
-        <div className="rounded-[8px] border bg-background p-2.5" style={{ borderColor: calcColor }}>
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[9px] font-semibold uppercase tracking-wide text-foreground">Live preview</p>
-            <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-6 w-9 rounded-[6px] border border-border bg-background p-0.5" />
-          </div>
-          <div className="mt-1.5 space-y-0.5">
-            {calcTitle.trim() !== '' && <p className="truncate text-[11px] font-semibold" style={{ color: calcColor }}>{calcTitle}</p>}
-            {calcRows.map((row, index) => (
-              <div key={index} className="flex items-center justify-between gap-2 text-[11px] text-foreground">
-                <span className="min-w-0 truncate">{row.operator === '-' ? '−' : row.operator} {row.comment || `Line ${index + 1}`}</span>
-                <span className="shrink-0 tabular-nums">{row.value || '0'}</span>
-              </div>
-            ))}
-            <div className="mt-1 flex items-center justify-between gap-2 border-t border-border pt-1 text-[11px] font-semibold text-foreground">
-              <span>Result</span>
-              <span className="shrink-0 tabular-nums" style={{ color: calcColor }}>{effectiveCalcResult.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+          <p className="mt-1 text-right text-xl font-semibold tabular-nums text-foreground">{formatAmount(calculationResult)}</p>
+          {calcCompare ? (
+            <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-border pt-1.5 text-xs">
+              <span className="text-foreground">Compared to <span className="tabular-nums">{formatAmount(calcCompare.value)}</span></span>
+              <span className="flex items-center gap-1">
+                <span className={cn('font-semibold', tie?.ties ? 'text-success' : 'text-destructive')}>{tie?.ties ? '✓ Ties' : `Difference: ${formatAmount(tie?.difference ?? 0)}`}</span>
+                <Button variant="ghost" size="icon-sm" aria-label="Remove comparison" onClick={() => setCalcCompare(null)}><X /></Button>
+              </span>
             </div>
+          ) : (
+            <button type="button" className="mt-1 text-xs font-medium text-primary hover:underline" onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}>Compare to…</button>
+          )}
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Live preview</p>
+            <div className="flex items-center gap-1.5">
+              <div className="flex rounded-[8px] border border-border p-0.5" role="group" aria-label="Stamp style">
+                {(['full', 'result'] as const).map((style) => <button key={style} type="button" aria-pressed={calcStyle === style} onClick={() => setCalcStyle(style)} className={cn('rounded-[6px] px-1.5 py-0.5 text-[10px] font-medium', calcStyle === style ? 'bg-primary text-primary-foreground' : 'text-foreground')}>{style === 'full' ? 'Full breakdown' : 'Result only'}</button>)}
+              </div>
+              <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-6 w-8 rounded-[6px] border border-border bg-background p-0.5" />
+            </div>
+          </div>
+          <div className="flex justify-center rounded-[8px] bg-muted/40 p-3">
+            <CalcStamp title={calcTitle} color={calcColor} result={calculationResult} style={calcStyle} tie={tie} rows={calcRows.map((row) => ({ operator: row.operator, label: row.comment, value: Number(row.value) || 0 }))} />
           </div>
         </div>
         {calcPlacement && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-xs font-medium text-primary">Click on the page to place. Press Esc to cancel.</p>}
         <div className="flex gap-2">
           {editingCalcId && <Button variant="ghost" onClick={resetCalculator}>Cancel</Button>}
-          <Button className="flex-1" onClick={armCalcPlacement}>{editingCalcId ? <Save /> : calcPlacement ? <X /> : <Plus />}{editingCalcId ? 'Update' : calcPlacement ? 'Click the page… click again to cancel' : 'Place on page'}</Button>
+          <Button className="flex-1" onClick={() => { setCalcPick(null); armCalcPlacement(); }}>{editingCalcId ? <Save /> : calcPlacement ? <X /> : <Plus />}{editingCalcId ? 'Update stamp' : calcPlacement ? 'Cancel placing' : 'Place on page'}</Button>
         </div>
-        <div className="border-t border-border pt-3"><p className="mb-2 text-xs font-semibold text-foreground">PLACED CALCULATIONS</p><div className="relative mb-2"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground" /><Input value={calcSearch} onChange={(event) => setCalcSearch(event.target.value)} placeholder="Search calculations…" className="pl-8" aria-label="Search placed calculations" /></div><div className="space-y-2">{(editState.calculations ?? []).length === 0 && <p className="text-xs text-foreground">No calculations placed on the document yet.</p>}{(editState.calculations ?? []).filter((calculation) => !calcSearch.trim() || calculation.title.toLowerCase().includes(calcSearch.trim().toLowerCase())).map((calculation) => <div key={calculation.id} className="flex items-center gap-1 rounded-[8px] border border-border bg-background px-2 py-2"><button type="button" className="min-w-0 flex-1 text-left" onClick={() => setPage(Math.max(1, visiblePages.indexOf(calculation.page) + 1))}><span className="block truncate text-xs font-semibold text-foreground">{calculation.title}</span><span className="block truncate text-xs text-foreground">Result = {calculation.result.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span><span className="mt-1 inline-block rounded-full bg-muted px-1.5 py-px text-[10px] font-medium text-foreground">Page {Math.max(1, visiblePages.indexOf(calculation.page) + 1)}</span></button><Button variant="ghost" size="icon-sm" aria-label="Edit calculation" onClick={() => startEditCalculation(calculation)}><Pencil /></Button><Button variant="ghost" size="icon-sm" aria-label="Delete calculation" className="text-destructive hover:bg-destructive/10" onClick={() => { if (editingCalcId === calculation.id) resetCalculator(); setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) })); }}><Trash2 /></Button></div>)}</div></div>
+        <div className="border-t border-border pt-3">
+          <p className="mb-2 text-xs font-semibold text-foreground">PLACED CALCULATIONS</p>
+          <div className="space-y-2">
+            {(editState.calculations ?? []).length === 0 && <p className="text-xs text-foreground">No calculations placed on the document yet.</p>}
+            {(editState.calculations ?? []).map((calculation) => {
+              const pageLabel = Math.max(1, visiblePages.indexOf(calculation.page) + 1);
+              return (
+                <div key={calculation.id} className={cn('flex items-center gap-1 rounded-[8px] border bg-background px-2 py-2', editingCalcId === calculation.id ? 'border-primary' : 'border-border')}>
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { const annotation = editState.annotations.find((item) => item.id === calculation.id); setPage(pageLabel); setSelectedAnnotationId(calculation.id); if (annotation) setSearchHighlight({ id: crypto.randomUUID(), page: annotation.page, x: annotation.x, y: annotation.y, width: 18, height: 5 }); }}>
+                    <span className="flex items-center gap-1.5"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: calculation.color }} /><span className="truncate text-xs font-semibold text-foreground">{calculation.title || 'Calculation'}</span></span>
+                    <span className="block truncate text-xs tabular-nums text-foreground">Result = {formatAmount(calculation.result)}{tieStatus(calculation.result, calculation.compareTo) && <span className={cn('ml-1 font-semibold', tieStatus(calculation.result, calculation.compareTo)?.ties ? 'text-success' : 'text-destructive')}>{tieStatus(calculation.result, calculation.compareTo)?.ties ? '✓ Ties' : '≠'}</span>}</span>
+                    <span className="mt-1 flex items-center gap-1.5 text-[10px] text-foreground"><span className="rounded-full bg-muted px-1.5 py-px font-medium">Page {pageLabel}</span>{calculation.author && <span className="truncate">{calculation.author.split(' ')[0]}{calculation.createdAt ? ` · ${new Date(calculation.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}</span>}</span>
+                  </button>
+                  <Button variant="ghost" size="icon-sm" aria-label="Edit calculation" onClick={() => startEditCalculation(calculation)}><Pencil /></Button>
+                  <Button variant="ghost" size="icon-sm" aria-label="Delete calculation" className="text-destructive hover:bg-destructive/10" onClick={() => { if (editingCalcId === calculation.id) resetCalculator(); setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) })); }}><Trash2 /></Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="border-t border-border pt-3">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-foreground"><Search className="h-3.5 w-3.5" />SEARCH</p>
+          <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void runSearch(); }} placeholder="Search document…" className="pl-8" aria-label="Search document" /></div>
+          {searchResults.length > 0 && <p className="mt-1.5 text-xs text-foreground">{searchResults.length} match{searchResults.length === 1 ? '' : 'es'} — use the Search panel to step through them.</p>}
+        </div>
       </div>
-    );
+      );
+    }
     if (activePanel === 'luka') return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-3 py-5 text-center"><LukaIcon size={44} className="mb-3" animated={lukaLoading} /><p className="text-sm font-semibold text-foreground">Ask Luka about this document</p><p className="mt-2 max-w-xs text-xs text-foreground">Luka uses the page you are viewing and can place an answer as a note or calculation.</p><div className="mt-4 flex flex-wrap justify-center gap-2">{['Summarize this page', 'Extract the figures on this page', 'Check these totals'].map((prompt) => <Button key={prompt} variant="secondary" size="sm" onClick={() => void askLuka(prompt)}>{prompt}</Button>)}</div>{lukaLoading && <Loader2 className="mt-5 h-5 w-5 animate-spin text-primary" />}{lukaAnswer && <div className="mt-5 w-full rounded-[8px] border border-border bg-background p-3 text-left text-xs text-foreground"><p>{lukaAnswer}</p><div className="mt-3 flex gap-2"><Button size="sm" variant="secondary" onClick={() => addAnnotation({ id: crypto.randomUUID(), kind: 'comment', page: currentSourcePage, x: 80, y: 8, width: 4, height: 4, color: '#f59e0b', label: lukaAnswer })}>Add note</Button><Button size="sm" variant="secondary" onClick={() => { const numeric = Number(lukaAnswer.match(/-?[\d,]+(?:\.\d+)?/)?.[0]?.replace(/,/g, '')); if (!Number.isFinite(numeric)) return toast.error('This answer does not contain a calculation result.'); setCalcTitle(lukaQuestion); setCalcRows([{ value: String(numeric), operator: '+', comment: lukaQuestion.slice(0, 40) }]); setActivePanel('calculations'); }}>Use result</Button></div></div>}</div>
@@ -1364,7 +1587,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
     );
-  }, [activeColor, activeKind, activePanel, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcSearch, calcTitle, calculationResult, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeKind, activePanel, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcSearch, calcTitle, calcPick, calcCompare, calcStyle, setSearch, calculationResult, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   const historyEntries = useMemo(() => {
     const fallbackDate = document?.updated_at ?? document?.created_at ?? new Date().toISOString();
@@ -1481,9 +1704,9 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button></div>
             <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(zoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto bg-muted/30"><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} /></div></div>
+          <div className="min-h-0 flex-1 overflow-auto bg-muted/30"><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} /></div></div>
         </section>
-        {editing && <aside className="flex w-[340px] min-h-0 shrink-0 border-l border-border bg-card">
+        {editing && <aside className={cn("flex min-h-0", activePanel === 'calculations' ? "w-[400px]" : "w-[340px]", "shrink-0 border-l border-border bg-card")}>
           <ScrollArea className="w-12 shrink-0 border-r border-border"><div className="flex min-h-full flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? (activePanel === 'luka' ? <LukaIcon size={22} bare /> : <LukaIcon size={22} />) : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
           {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full min-w-0 flex-1"><div className="min-w-0 p-3">{panelContent}</div></ScrollArea>}
         </aside>}
