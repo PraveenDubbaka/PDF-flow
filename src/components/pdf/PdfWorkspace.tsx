@@ -380,6 +380,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [calcColor, setCalcColor] = useState(COLORS[0]);
   const [calcRows, setCalcRows] = useState<{ value: string; operator: '+' | '-' | '×' | '÷'; comment: string }[]>([{ value: '', operator: '+', comment: '' }]);
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
+  const [showCalcHeader, setShowCalcHeader] = useState(false);
   const [lukaQuestion, setLukaQuestion] = useState('');
   const [lukaAnswer, setLukaAnswer] = useState('');
   const [lukaLoading, setLukaLoading] = useState(false);
@@ -754,6 +755,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (rows.length === 0) return 0;
     // Multiplication and division bind tighter than addition and subtraction.
     const terms: number[] = [Number(rows[0].value) || 0];
+    if (rows[0].operator === '-') terms[0] = -terms[0];
     for (let index = 1; index < rows.length; index += 1) {
       const value = Number(rows[index].value) || 0;
       const operator = rows[index].operator;
@@ -767,12 +769,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
 
   const resetCalculator = useCallback(() => {
     setEditingCalcId(null);
+    setShowCalcHeader(false);
     setCalcTitle('');
     setCalcRows([{ value: '', operator: '+', comment: '' }]);
   }, []);
 
   const startEditCalculation = useCallback((calculation: PdfCalculation) => {
     setEditingCalcId(calculation.id);
+    setShowCalcHeader(calculation.title.trim() !== '' && calculation.title !== 'Calculation');
     setCalcTitle(calculation.title);
     setCalcColor(calculation.color);
     setCalcRows(calculation.values.map((value, index) => ({
