@@ -538,11 +538,15 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [calcRows, setCalcRows] = useState<CalcRow[]>([emptyCalcRow()]);
   const [calcPick, setCalcPick] = useState<{ target: 'row'; index: number } | { target: 'compare' } | null>(null);
   const [calcHover, setCalcHover] = useState<PdfCalcSource | null>(null);
+  const wasPickingCalc = useRef(false);
 
   // Pick overlays must never outlive pick mode (including Escape and toggle cancellation).
   useEffect(() => {
-    setCalcHover(null);
-    setSearchHighlight(null);
+    if (calcPick || wasPickingCalc.current) {
+      setCalcHover(null);
+      setSearchHighlight(null);
+    }
+    wasPickingCalc.current = !!calcPick;
   }, [calcPick]);
   const [calcCompare, setCalcCompare] = useState<{ value: number; source?: PdfCalcSource | null } | null>(null);
   const [calcStyle, setCalcStyle] = useState<'full' | 'result'>('full');
