@@ -123,7 +123,7 @@ function CalcStamp({ title, rows, result, color, style, tie }: {
 }) {
   const showTitle = !!title && title.trim() !== '' && title !== 'Calculation';
   return (
-    <div className="inline-flex min-w-[120px] max-w-[260px] flex-col rounded-[4px] border bg-card px-2 py-1.5 text-[10px] leading-snug text-foreground" style={{ borderColor: color }}>
+    <div data-calc-stamp className="inline-flex min-w-[120px] max-w-[260px] flex-col rounded-[4px] border bg-card px-2 py-1.5 text-[10px] leading-snug text-foreground" style={{ borderColor: color }}>
       {showTitle && <span className="truncate text-[11px] font-semibold" style={{ color }}>{title}</span>}
       {style === 'full' && rows.map((row, index) => (
         <span key={index} className="flex items-baseline justify-between gap-3">
@@ -166,7 +166,7 @@ function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, o
         data-calc-amount={index}
         aria-label={`Amount ${index + 1}`}
         inputMode="decimal"
-        className={cn("h-9 min-w-0 pr-2.5 text-right text-sm tabular-nums", prefix ? "pl-[52px]" : "pl-7")}
+        className={cn("h-8 min-w-0 pr-2.5 text-right text-[13px] tabular-nums", prefix ? "pl-[52px]" : "pl-7")}
         value={display}
         placeholder="0"
         onFocus={() => { setFocused(true); setDraft(value); }}
@@ -538,6 +538,16 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [calcRows, setCalcRows] = useState<CalcRow[]>([emptyCalcRow()]);
   const [calcPick, setCalcPick] = useState<{ target: 'row'; index: number } | { target: 'compare' } | null>(null);
   const [calcHover, setCalcHover] = useState<PdfCalcSource | null>(null);
+  const wasPickingCalc = useRef(false);
+
+  // Pick overlays must never outlive pick mode (including Escape and toggle cancellation).
+  useEffect(() => {
+    if (calcPick || wasPickingCalc.current) {
+      setCalcHover(null);
+      setSearchHighlight(null);
+    }
+    wasPickingCalc.current = !!calcPick;
+  }, [calcPick]);
   const [calcCompare, setCalcCompare] = useState<{ value: number; source?: PdfCalcSource | null } | null>(null);
   const [calcStyle, setCalcStyle] = useState<'full' | 'result'>('full');
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
@@ -972,6 +982,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (calcPick.target === 'compare') setCalcCompare({ value, source });
     else setCalcRows((current) => current.map((row, index) => index === calcPick.index ? { ...row, value: String(value), source, comment: row.comment.trim() ? row.comment : label } : row));
     setCalcPick(null);
+    setCalcHover(null);
+    setSearchHighlight(null);
   }, [calcPick]);
 
   const armCalcPlacement = useCallback(() => {
@@ -1439,26 +1451,26 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       const addLine = () => { setCalcRows((current) => [...current, emptyCalcRow()]); focusAmount(calcRows.length); };
       const tie = tieStatus(calculationResult, calcCompare?.value);
       const pickHint = calcPick ? (calcPick.target === 'compare' ? 'Click the figure to compare against. Press Esc to cancel.' : `Click a number on the page for line ${calcPick.index + 1}. Press Esc to cancel.`) : null;
-      const sectionLabel = 'text-[11px] font-semibold uppercase tracking-[0.04em] text-foreground';
+      const sectionLabel = 'calc-section-label text-[11px] font-semibold uppercase tracking-normal text-muted-foreground';
       const lineGrid = 'grid grid-cols-[minmax(0,1fr)_120px_24px] items-center gap-2';
       const card = 'rounded-[8px] border border-border bg-card p-4';
       return (
-      <div className="flex flex-col gap-4 pb-4 text-sm">
-        <p className={cn(sectionLabel, 'flex items-center gap-1.5')}><Calculator className="h-3.5 w-3.5" />{editingCalcId ? 'Edit calculation' : 'Build a calculation'}</p>
+      <div className="pdf-calculator-panel flex flex-col gap-4 pb-4 text-[13px]">
+        <p className="flex items-center gap-1.5 text-[13px] font-semibold"><Calculator className="h-3.5 w-3.5" />{editingCalcId ? 'Edit calculation' : 'Build a calculation'}</p>
         <div className={card}>
           <div className="flex flex-col gap-2">
             {showCalcHeader ? (
               <div className="mb-2 flex flex-col gap-2">
-                <div className="flex items-center justify-between"><Label htmlFor="calc-header" className={sectionLabel}>Header</Label><button type="button" className="text-sm font-medium text-foreground hover:underline" onClick={() => { setCalcTitle(''); setShowCalcHeader(false); }}>Remove</button></div>
-                <Input id="calc-header" className="h-9 text-sm" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
+                <div className="flex items-center justify-between"><Label htmlFor="calc-header" className={sectionLabel}>Header</Label><button type="button" className="text-[13px] font-medium text-muted-foreground hover:underline" onClick={() => { setCalcTitle(''); setShowCalcHeader(false); }}>Remove</button></div>
+                <Input id="calc-header" className="h-8 text-[13px]" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
               </div>
             ) : (
-              <button type="button" className="mb-1 self-start text-sm font-medium text-primary hover:underline" onClick={() => setShowCalcHeader(true)}>+ Add header</button>
+              <button type="button" className="mb-1 self-start text-[13px] font-medium text-primary hover:underline" onClick={() => setShowCalcHeader(true)}>+ Add header</button>
             )}
             <div className={cn(lineGrid, sectionLabel)}><span>Description</span><span className="text-right">Amount</span><span /></div>
             {calcRows.map((row, index) => (
               <div key={index} className={lineGrid} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
-                <Input aria-label={`Description ${index + 1}`} className="h-9 min-w-0 px-2.5 text-sm" value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
+                <Input aria-label={`Description ${index + 1}`} className="h-8 min-w-0 px-2.5 text-[13px]" value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
                 <CalcAmountInput
                   index={index}
                   value={row.value}
@@ -1472,11 +1484,11 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                   prefix={index === 0 ? undefined : (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button type="button" aria-label={`Line ${index + 1} operator ${OP_LABEL[row.operator]}`} onKeyDown={(event) => { const operator = KEY_TO_OP[event.key]; if (operator) { event.preventDefault(); setRow(index, { operator }); } }} className="flex h-7 w-6 items-center justify-center rounded-[6px] bg-primary/10 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{OP_LABEL[row.operator]}</button>
+                        <button type="button" aria-label={`Line ${index + 1} operator ${OP_LABEL[row.operator]}`} onKeyDown={(event) => { const operator = KEY_TO_OP[event.key]; if (operator) { event.preventDefault(); setRow(index, { operator }); } }} className="flex h-7 w-6 items-center justify-center rounded-[6px] bg-primary/10 text-[13px] font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{OP_LABEL[row.operator]}</button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="min-w-[120px]">
                         {(['+', '-', '×', '÷'] as const).map((operator) => (
-                          <DropdownMenuItem key={operator} onSelect={() => setRow(index, { operator })} className={cn('gap-2', row.operator === operator && 'font-semibold text-primary')}>
+                          <DropdownMenuItem key={operator} onSelect={() => setRow(index, { operator })} className={cn('h-8 gap-2 text-[13px]', row.operator === operator && 'font-semibold text-primary')}>
                             <span className="w-4 text-center">{OP_LABEL[operator]}</span>{operator === '+' ? 'Add' : operator === '-' ? 'Subtract' : operator === '×' ? 'Multiply' : 'Divide'}
                           </DropdownMenuItem>
                         ))}
@@ -1484,78 +1496,78 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                     </DropdownMenu>
                   )}
                 />
-                <Button variant="ghost" size="icon-sm" className="h-6 w-6 text-foreground/60 hover:text-foreground" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove line ${index + 1}`}><X /></Button>
+                <Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove line ${index + 1}`}><X /></Button>
               </div>
             ))}
-            {pickHint && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-sm font-medium text-primary">{pickHint}</p>}
-            <div className="flex h-9 items-center justify-between">
-              <Button variant="ghost" className="h-9 px-2 text-sm" onClick={addLine}><Plus />Add line</Button>
-              <button type="button" className="mr-8 text-sm font-medium text-foreground underline-offset-2 hover:underline" onClick={() => setCalcRows([emptyCalcRow()])}>Clear all</button>
+            {pickHint && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-[13px] font-medium text-primary">{pickHint}</p>}
+            <div className="flex h-8 items-center justify-between">
+              <Button variant="ghost" className="h-8 px-2 text-[13px] font-medium text-primary" onClick={addLine}><Plus />Add line</Button>
+              <button type="button" className="mr-8 text-[13px] font-medium text-muted-foreground underline-offset-2 hover:underline" onClick={() => setCalcRows([emptyCalcRow()])}>Clear all</button>
             </div>
           </div>
           <div className="-mx-4 my-4 border-t border-border" />
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col">
-              <span className="text-sm font-semibold text-foreground">Result</span>
-              <span className="text-xs text-foreground">Calculated automatically</span>
+              <span className="text-[13px] font-semibold text-foreground">Result</span>
+              <span className="text-[13px] text-foreground">Calculated automatically</span>
             </div>
-            <p className="text-xl font-semibold tabular-nums text-foreground">{formatAmount(calculationResult)}</p>
+            <p className="calc-result-value text-[20px] font-semibold tabular-nums text-foreground">{formatAmount(calculationResult)}</p>
           </div>
           {calcCompare ? (
-            <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+            <div className="mt-2 flex items-center justify-between gap-2 text-[13px]">
               <span className="text-foreground">Compared to <span className="tabular-nums">{formatAmount(calcCompare.value)}</span></span>
               <span className="flex items-center gap-1">
                 <span className={cn('font-semibold', tie?.ties ? 'text-success' : 'text-destructive')}>{tie?.ties ? '✓ Ties' : `Difference: ${formatAmount(tie?.difference ?? 0)}`}</span>
-                <Button variant="ghost" size="icon-sm" className="h-6 w-6" aria-label="Remove comparison" onClick={() => setCalcCompare(null)}><X /></Button>
+                <Button variant="ghost" size="icon-sm" className="h-8 w-6" aria-label="Remove comparison" onClick={() => setCalcCompare(null)}><X /></Button>
               </span>
             </div>
           ) : (
-            <button type="button" className="mt-2 text-sm font-medium text-primary hover:underline" onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}>Compare to…</button>
+            <button type="button" className="mt-2 text-[13px] font-medium text-primary hover:underline" onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}>Compare to…</button>
           )}
         </div>
-        <div className={cn(card, 'flex flex-col gap-3')}>
+        <div className={cn(card, 'calc-preview flex flex-col gap-3 !p-3')}>
           <div className="flex items-center justify-between gap-2">
             <p className={sectionLabel}>Preview</p>
             <div className="flex items-center gap-2">
-              <div className="flex h-9 items-center rounded-[10px] border border-input p-0.5" role="group" aria-label="Stamp style">
-                {(['full', 'result'] as const).map((style) => <button key={style} type="button" aria-pressed={calcStyle === style} onClick={() => setCalcStyle(style)} className={cn('h-full rounded-[8px] px-2.5 text-sm font-medium', calcStyle === style ? 'bg-primary text-primary-foreground' : 'text-foreground')}>{style === 'full' ? 'Full' : 'Result'}</button>)}
+              <div className="calc-style-toggle flex h-7 items-center rounded-[10px] border border-input p-0.5" role="group" aria-label="Stamp style">
+                {(['full', 'result'] as const).map((style) => <button key={style} type="button" aria-pressed={calcStyle === style} onClick={() => setCalcStyle(style)} className={cn('h-full rounded-[8px] px-1.5 text-[12px] font-medium', calcStyle === style ? 'bg-primary text-primary-foreground' : 'text-foreground')}>{style === 'full' ? 'Full breakdown' : 'Result only'}</button>)}
               </div>
-              <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-9 cursor-pointer rounded-[10px] border border-input bg-background p-1" />
+              <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-8 w-8 cursor-pointer rounded-[10px] border border-input bg-background p-1" />
             </div>
           </div>
           <div className="flex justify-center rounded-[8px] bg-muted/40 p-3">
             <CalcStamp title={calcTitle} color={calcColor} result={calculationResult} style={calcStyle} tie={tie} rows={calcRows.map((row) => ({ operator: row.operator, label: row.comment, value: Number(row.value) || 0 }))} />
           </div>
-          {calcPlacement && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-sm font-medium text-primary">Click on the page to place. Press Esc to cancel.</p>}
+          {calcPlacement && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-[13px] font-medium text-primary">Click on the page to place. Press Esc to cancel.</p>}
           <div className="flex gap-2">
-            {editingCalcId && <Button variant="outline" className="h-9 flex-1 text-sm" onClick={resetCalculator}>Discard changes</Button>}
-            <Button className="h-9 flex-1 text-sm" onClick={() => { setCalcPick(null); armCalcPlacement(); }}>{editingCalcId ? <Save /> : calcPlacement ? <X /> : <Plus />}{editingCalcId ? 'Update stamp' : calcPlacement ? 'Cancel placing' : 'Place on page'}</Button>
+            {editingCalcId && <Button variant="outline" className="h-8 flex-1 text-[13px]" onClick={resetCalculator}>Discard changes</Button>}
+            <Button className="h-9 flex-1 text-[13px]" onClick={() => { setCalcPick(null); armCalcPlacement(); }}>{editingCalcId ? <Save /> : calcPlacement ? <X /> : <Plus />}{editingCalcId ? 'Update stamp' : calcPlacement ? 'Cancel placing' : 'Place on page'}</Button>
           </div>
         </div>
         <div className="flex flex-col gap-2">
           <p className={sectionLabel}>Placed calculations</p>
-          {(editState.calculations ?? []).length === 0 && <p className="text-sm text-foreground">No calculations placed on the document yet.</p>}
+          {(editState.calculations ?? []).length === 0 && <p className="text-[13px] text-foreground">No calculations placed on the document yet.</p>}
           {(editState.calculations ?? []).map((calculation) => {
             const pageLabel = Math.max(1, visiblePages.indexOf(calculation.page) + 1);
             const status = tieStatus(calculation.result, calculation.compareTo);
             return (
               <div key={calculation.id} className={cn('flex items-start gap-1 rounded-[8px] border bg-card p-3', editingCalcId === calculation.id ? 'border-primary' : 'border-border')}>
                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { const annotation = editState.annotations.find((item) => item.id === calculation.id); setPage(pageLabel); setSelectedAnnotationId(calculation.id); if (annotation) setSearchHighlight({ id: crypto.randomUUID(), page: annotation.page, x: annotation.x, y: annotation.y, width: 18, height: 5 }); }}>
-                  <span className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: calculation.color }} /><span className="truncate text-sm font-semibold text-foreground">{calculation.title || 'Calculation'}</span></span>
-                  <span className="mt-0.5 block truncate pl-4 text-sm tabular-nums text-foreground">Result = {formatAmount(calculation.result)}{status && <span className={cn('ml-1.5 font-semibold', status.ties ? 'text-success' : 'text-destructive')}>{status.ties ? '✓' : '≠'}</span>}</span>
-                  {calculation.author && <span className="block truncate pl-4 text-xs text-foreground">{calculation.author.split(' ')[0]}{calculation.createdAt ? ` · ${new Date(calculation.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}</span>}
+                  <span className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: calculation.color }} /><span className="truncate text-[13px] font-semibold text-foreground">{calculation.title || 'Calculation'}</span></span>
+                  <span className="mt-0.5 block truncate pl-4 text-[13px] tabular-nums text-foreground">Result = {formatAmount(calculation.result)}{status && <span className={cn('ml-1.5 font-semibold', status.ties ? 'text-success' : 'text-destructive')}>{status.ties ? '✓' : '≠'}</span>}</span>
+                  {calculation.author && <span className="block truncate pl-4 text-[13px] text-foreground">{calculation.author.split(' ')[0]}{calculation.createdAt ? ` · ${new Date(calculation.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}</span>}
                 </button>
-                <span className="mt-0.5 shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">Page {pageLabel}</span>
-                <Button variant="ghost" size="icon-sm" className="h-7 w-7 shrink-0 text-foreground/60 hover:text-foreground" aria-label="Edit calculation" onClick={() => startEditCalculation(calculation)}><Pencil /></Button>
-                <Button variant="ghost" size="icon-sm" className="h-7 w-7 shrink-0 text-foreground/60 hover:bg-destructive/10 hover:text-destructive" aria-label="Delete calculation" onClick={() => { if (editingCalcId === calculation.id) resetCalculator(); setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) })); }}><Trash2 /></Button>
+                <span className="mt-0.5 shrink-0 rounded-full bg-muted px-2 py-0.5 text-[13px] font-medium text-foreground">Page {pageLabel}</span>
+                <Button variant="ghost" size="icon-sm" className="h-8 w-7 shrink-0 text-foreground/60 hover:text-foreground" aria-label="Edit calculation" onClick={() => startEditCalculation(calculation)}><Pencil /></Button>
+                <Button variant="ghost" size="icon-sm" className="h-8 w-7 shrink-0 text-foreground/60 hover:bg-destructive/10 hover:text-destructive" aria-label="Delete calculation" onClick={() => { if (editingCalcId === calculation.id) resetCalculator(); setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) })); }}><Trash2 /></Button>
               </div>
             );
           })}
         </div>
         <div className="flex flex-col gap-2">
           <p className={cn(sectionLabel, 'flex items-center gap-1.5')}><Search className="h-3.5 w-3.5" />Search</p>
-          <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void runSearch(); }} placeholder="Search document…" className="h-9 pl-8 text-sm" aria-label="Search document" /></div>
-          {searchResults.length > 0 && <p className="text-sm text-foreground">{searchResults.length} match{searchResults.length === 1 ? '' : 'es'} — use the Search panel to step through them.</p>}
+          <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void runSearch(); }} placeholder="Search document…" className="h-8 pl-8 text-[13px]" aria-label="Search document" /></div>
+          {searchResults.length > 0 && <p className="text-[13px] text-foreground">{searchResults.length} match{searchResults.length === 1 ? '' : 'es'} — use the Search panel to step through them.</p>}
         </div>
       </div>
       );

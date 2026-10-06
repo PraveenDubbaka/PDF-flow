@@ -4,6 +4,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Calculator-only sizing; the shared PDF stamp retains its native 100% scale. */
+.pdf-calculator-panel {
+  --calculator-muted: 220 9% 46%;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+.dark .pdf-calculator-panel {
+  --calculator-muted: 220 10% 70%;
+}
+.pdf-calculator-panel :where(p, span, label, input, button):not([data-calc-stamp], [data-calc-stamp] *) {
+  font-size: 13px !important;
+  letter-spacing: 0;
+}
+.pdf-calculator-panel .calc-section-label,
+.pdf-calculator-panel .calc-section-label span {
+  font-size: 11px !important;
+  font-weight: 600;
+  color: hsl(var(--calculator-muted));
+}
+.pdf-calculator-panel button.text-muted-foreground {
+  color: hsl(var(--calculator-muted));
+}
+.pdf-calculator-panel .calc-result-value {
+  font-size: 20px !important;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.pdf-calculator-panel .calc-style-toggle button {
+  font-size: 12px !important;
+}
+
 /* Global link text styling */
 .text-link {
   font-weight: 600 !important;
