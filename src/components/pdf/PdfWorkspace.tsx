@@ -541,7 +541,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
   const [showCalcHeader, setShowCalcHeader] = useState(false);
   const [calcPlacement, setCalcPlacement] = useState(false);
-  const [calcSearch, setCalcSearch] = useState('');
+  const [calcSearch] = useState('');
 
   useEffect(() => {
     if (!calcPlacement && !calcPick) return;
@@ -1546,8 +1546,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
         <div className="border-t border-border pt-3">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-foreground"><Search className="h-3.5 w-3.5" />SEARCH</p>
-          <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground" /><Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void runSearch(); }} placeholder="Search document…" className="pl-8" aria-label="Search document" /></div>
-          {searchMatches.length > 0 && <p className="mt-1.5 text-xs text-foreground">{searchMatches.length} match{searchMatches.length === 1 ? '' : 'es'} — use the Search panel to step through them.</p>}
+          <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void runSearch(); }} placeholder="Search document…" className="pl-8" aria-label="Search document" /></div>
+          {searchResults.length > 0 && <p className="mt-1.5 text-xs text-foreground">{searchResults.length} match{searchResults.length === 1 ? '' : 'es'} — use the Search panel to step through them.</p>}
         </div>
       </div>
       );
@@ -1587,7 +1587,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
     );
-  }, [activeColor, activeKind, activePanel, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcSearch, calcTitle, calculationResult, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeKind, activePanel, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcSearch, calcTitle, calcPick, calcCompare, calcStyle, setSearch, calculationResult, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   const historyEntries = useMemo(() => {
     const fallbackDate = document?.updated_at ?? document?.created_at ?? new Date().toISOString();
@@ -1706,7 +1706,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           </div>
           <div className="min-h-0 flex-1 overflow-auto bg-muted/30"><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} /></div></div>
         </section>
-        {editing && <aside className={cn("flex min-h-0", activePanel === 'calculations' ? "w-[400px]" : "w-[340px]")} >
+        {editing && <aside className={cn("flex min-h-0", activePanel === 'calculations' ? "w-[400px]" : "w-[340px]", "shrink-0 border-l border-border bg-card")}>
           <ScrollArea className="w-12 shrink-0 border-r border-border"><div className="flex min-h-full flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? (activePanel === 'luka' ? <LukaIcon size={22} bare /> : <LukaIcon size={22} />) : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
           {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full min-w-0 flex-1"><div className="min-w-0 p-3">{panelContent}</div></ScrollArea>}
         </aside>}
