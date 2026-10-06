@@ -389,7 +389,6 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
   const [showCalcHeader, setShowCalcHeader] = useState(false);
   const [calcPlacement, setCalcPlacement] = useState(false);
-  const [calcResultOverride, setCalcResultOverride] = useState('');
 
   useEffect(() => {
     if (!calcPlacement) return;
@@ -783,13 +782,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     const total = terms.reduce((sum, term) => sum + term, 0);
     return Number.isFinite(total) ? Math.round(total * 100) / 100 : 0;
   }, [calcRows]);
-  // An manually overridden result wins over the computed one until the lines change.
-  const effectiveCalcResult = useMemo(() => {
-    const trimmed = calcResultOverride.trim();
-    if (trimmed === '') return calculationResult;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : calculationResult;
-  }, [calcResultOverride, calculationResult]);
+  const effectiveCalcResult = calculationResult;
 
   const resetCalculator = useCallback(() => {
     setEditingCalcId(null);
