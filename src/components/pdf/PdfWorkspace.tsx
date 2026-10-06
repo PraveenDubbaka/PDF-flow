@@ -397,7 +397,6 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [calcPlacement]);
-  useEffect(() => { setCalcResultOverride(''); }, [calcRows]);
   const [lukaQuestion, setLukaQuestion] = useState('');
   const [lukaAnswer, setLukaAnswer] = useState('');
   const [lukaLoading, setLukaLoading] = useState(false);
@@ -790,7 +789,6 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setShowCalcHeader(false);
     setCalcPlacement(false);
     setCalcTitle('');
-    setCalcResultOverride('');
     setCalcRows([{ value: '', operator: '+', comment: '' }]);
   }, []);
 
@@ -800,7 +798,6 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setShowCalcHeader(calculation.title.trim() !== '' && calculation.title !== 'Calculation');
     setCalcTitle(calculation.title);
     setCalcColor(calculation.color);
-    setCalcResultOverride('');
     setCalcRows(calculation.values.map((value, index) => ({
       value: String(value),
       operator: calculation.operators?.[index] ?? '+',
