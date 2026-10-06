@@ -1302,15 +1302,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <button type="button" className="text-xs font-medium text-foreground underline-offset-2 hover:underline" onClick={() => setCalcRows([{ value: '', operator: '+', comment: '' }])}>Clear lines</button>
         </div>
         <div className="flex justify-center">
-          <Button variant="secondary" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+', comment: '' }])}><Plus />Add line</Button>
+          <Button variant="secondary" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+', comment: '' }])}>+ Add line</Button>
         </div>
-        <div className="rounded-[8px] border border-border bg-background px-3 py-2">
+        <div className="rounded-[8px] border border-border bg-muted/60 px-3 py-2">
           <div className="flex items-center justify-between">
-            <Label htmlFor="calc-result" className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Result</Label>
-            <span className="text-[10px] text-foreground">Editable — type to override</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Result</span>
+            <span className="text-[10px] text-foreground">Calculated automatically</span>
           </div>
-          <Input id="calc-result" type="number" inputMode="decimal" className="mt-1 h-8 text-right text-sm font-semibold" value={calcResultOverride} placeholder={calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 })} onChange={(event) => setCalcResultOverride(event.target.value)} />
-          <p className="mt-1 text-[10px] text-foreground">Leave blank to use the calculated value.</p>
+          <p className="mt-1 text-right text-sm font-semibold tabular-nums text-foreground">{calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
         </div>
         <div className="rounded-[8px] border bg-background p-2.5" style={{ borderColor: calcColor }}>
           <div className="flex items-center justify-between gap-2">
