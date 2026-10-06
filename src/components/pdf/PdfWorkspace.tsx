@@ -389,6 +389,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
   const [showCalcHeader, setShowCalcHeader] = useState(false);
   const [calcPlacement, setCalcPlacement] = useState(false);
+  const [calcResultOverride, setCalcResultOverride] = useState('');
 
   useEffect(() => {
     if (!calcPlacement) return;
@@ -396,6 +397,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [calcPlacement]);
+  useEffect(() => { setCalcResultOverride(''); }, [calcRows]);
   const [lukaQuestion, setLukaQuestion] = useState('');
   const [lukaAnswer, setLukaAnswer] = useState('');
   const [lukaLoading, setLukaLoading] = useState(false);
@@ -781,12 +783,20 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     const total = terms.reduce((sum, term) => sum + term, 0);
     return Number.isFinite(total) ? Math.round(total * 100) / 100 : 0;
   }, [calcRows]);
+  // An manually overridden result wins over the computed one until the lines change.
+  const effectiveCalcResult = useMemo(() => {
+    const trimmed = calcResultOverride.trim();
+    if (trimmed === '') return calculationResult;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : calculationResult;
+  }, [calcResultOverride, calculationResult]);
 
   const resetCalculator = useCallback(() => {
     setEditingCalcId(null);
     setShowCalcHeader(false);
     setCalcPlacement(false);
     setCalcTitle('');
+    setCalcResultOverride('');
     setCalcRows([{ value: '', operator: '+', comment: '' }]);
   }, []);
 
@@ -796,6 +806,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setShowCalcHeader(calculation.title.trim() !== '' && calculation.title !== 'Calculation');
     setCalcTitle(calculation.title);
     setCalcColor(calculation.color);
+    setCalcResultOverride('');
     setCalcRows(calculation.values.map((value, index) => ({
       value: String(value),
       operator: calculation.operators?.[index] ?? '+',
@@ -809,8 +820,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
       setEditState((current) => withHistory({
         ...current,
-        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), result: calculationResult, color: calcColor } : item),
-        annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${calculationResult}` } : item),
+        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), result: effectiveCalcResult, color: calcColor } : item),
+        annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${effectiveCalcResult}` } : item),
       }, { kind: 'calculation', title: `${title} updated`, page: currentSourcePage, color: calcColor, targetId: editingCalcId }));
       toast.success('Calculation updated.');
       resetCalculator();
@@ -819,7 +830,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (calcPlacement) { setCalcPlacement(false); return; }
     setActiveKind(null);
     setCalcPlacement(true);
-  }, [calcColor, calcPlacement, calcRows, calcTitle, calculationResult, currentSourcePage, editingCalcId, resetCalculator]);
+  }, [calcColor, calcPlacement, calcRows, calcTitle, effectiveCalcResult, currentSourcePage, editingCalcId, resetCalculator]);
 
   const placeCalculation = useCallback((pageNumber: number, x: number, y: number) => {
     const title = calcTitle.trim() || 'Calculation';
@@ -831,17 +842,17 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       values: rows.map((row) => Number(row.value) || 0),
       operators: rows.map((row) => row.operator),
       comments: rows.map((row) => row.comment),
-      result: calculationResult,
+      result: effectiveCalcResult,
       color: calcColor,
     };
     setEditState((current) => withHistory({
       ...current,
       calculations: [...(current.calculations ?? []), calculation],
-      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: pageNumber, x, y, width: 25, height: 6, color: calcColor, label: `${title}: ${calculationResult}` }],
+      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: pageNumber, x, y, width: 25, height: 6, color: calcColor, label: `${title}: ${effectiveCalcResult}` }],
     }, { kind: 'calculation', title: `${title} placed on page ${pageNumber}`, page: pageNumber, color: calcColor, targetId: calculation.id }));
     toast.success(`Placed on page ${pageNumber}.`);
     resetCalculator();
-  }, [calcColor, calcRows, calcTitle, calculationResult, resetCalculator]);
+  }, [calcColor, calcRows, calcTitle, effectiveCalcResult, resetCalculator]);
 
   const askLuka = useCallback(async (question: string) => {
     const prompt = question.trim();
