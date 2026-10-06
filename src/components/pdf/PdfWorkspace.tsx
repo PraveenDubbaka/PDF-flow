@@ -89,7 +89,7 @@ const hexToRgb = (hex: string) => {
   return rgb(((int >> 16) & 255) / 255, ((int >> 8) & 255) / 255, (int & 255) / 255);
 };
 
-function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete }: {
+function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc }: {
   pdf: pdfjs.PDFDocumentProxy;
   pageNumber: number;
   zoom: number;
@@ -103,6 +103,8 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   highlight?: { id: string; page: number; x: number; y: number; width: number; height: number } | null;
   onUpdate?: (id: string, changes: Partial<PdfAnnotation>) => void;
   onDelete?: (id: string) => void;
+  placingCalc?: boolean;
+  onPlaceCalc?: (pageNumber: number, x: number, y: number) => void;
 }) {
   const selectedComment = annotations.find((item) => item.id === selectedId && item.kind === 'comment');
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -142,6 +144,11 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   };
 
   const addAtPoint = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (placingCalc && onPlaceCalc) {
+      const { x, y } = relative(event);
+      onPlaceCalc(pageNumber, x, y);
+      return;
+    }
     if (!activeKind) { onSelect(null); return; }
     if (activeKind === 'freehand') return;
     const { x, y } = relative(event);
@@ -181,7 +188,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
 
   return (
     <div
-      className={cn('relative shrink-0 overflow-hidden rounded-[4px] border border-border bg-card shadow-[0_2px_10px_hsl(220_30%_50%/0.12)]', activeKind && 'cursor-crosshair')}
+      className={cn('relative shrink-0 overflow-hidden rounded-[4px] border border-border bg-card shadow-[0_2px_10px_hsl(220_30%_50%/0.12)]', (activeKind || placingCalc) && 'cursor-crosshair')}
       style={{ width: size.width, height: size.height }}
       onClick={addAtPoint}
       onMouseDown={startDraw}
@@ -381,6 +388,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [calcRows, setCalcRows] = useState<{ value: string; operator: '+' | '-' | '×' | '÷'; comment: string }[]>([{ value: '', operator: '+', comment: '' }]);
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
   const [showCalcHeader, setShowCalcHeader] = useState(false);
+  const [calcPlacement, setCalcPlacement] = useState(false);
+
+  useEffect(() => {
+    if (!calcPlacement) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setCalcPlacement(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [calcPlacement]);
   const [lukaQuestion, setLukaQuestion] = useState('');
   const [lukaAnswer, setLukaAnswer] = useState('');
   const [lukaLoading, setLukaLoading] = useState(false);
@@ -770,12 +785,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const resetCalculator = useCallback(() => {
     setEditingCalcId(null);
     setShowCalcHeader(false);
+    setCalcPlacement(false);
     setCalcTitle('');
     setCalcRows([{ value: '', operator: '+', comment: '' }]);
   }, []);
 
   const startEditCalculation = useCallback((calculation: PdfCalculation) => {
     setEditingCalcId(calculation.id);
+    setCalcPlacement(false);
     setShowCalcHeader(calculation.title.trim() !== '' && calculation.title !== 'Calculation');
     setCalcTitle(calculation.title);
     setCalcColor(calculation.color);
@@ -786,10 +803,30 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     })));
   }, []);
 
-  const addCalculation = useCallback(() => {
+  const armCalcPlacement = useCallback(() => {
+    if (editingCalcId) {
+      const title = calcTitle.trim() || 'Calculation';
+      const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
+      setEditState((current) => withHistory({
+        ...current,
+        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), result: calculationResult, color: calcColor } : item),
+        annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${calculationResult}` } : item),
+      }, { kind: 'calculation', title: `${title} updated`, page: currentSourcePage, color: calcColor, targetId: editingCalcId }));
+      toast.success('Calculation updated.');
+      resetCalculator();
+      return;
+    }
+    if (calcPlacement) { setCalcPlacement(false); return; }
+    setActiveKind(null);
+    setCalcPlacement(true);
+  }, [calcColor, calcPlacement, calcRows, calcTitle, calculationResult, currentSourcePage, editingCalcId, resetCalculator]);
+
+  const placeCalculation = useCallback((pageNumber: number, x: number, y: number) => {
     const title = calcTitle.trim() || 'Calculation';
     const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
-    const base = {
+    const calculation: PdfCalculation = {
+      id: crypto.randomUUID(),
+      page: pageNumber,
       title,
       values: rows.map((row) => Number(row.value) || 0),
       operators: rows.map((row) => row.operator),
@@ -797,24 +834,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       result: calculationResult,
       color: calcColor,
     };
-    if (editingCalcId) {
-      setEditState((current) => withHistory({
-        ...current,
-        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, ...base } : item),
-        annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${calculationResult}` } : item),
-      }, { kind: 'calculation', title: `${title} updated`, page: currentSourcePage, color: calcColor, targetId: editingCalcId }));
-      toast.success('Calculation updated.');
-    } else {
-      const calculation: PdfCalculation = { id: crypto.randomUUID(), page: currentSourcePage, ...base };
-      setEditState((current) => withHistory({
-        ...current,
-        calculations: [...(current.calculations ?? []), calculation],
-        annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: currentSourcePage, x: 30, y: 30, width: 25, height: 6, color: calcColor, label: `${title}: ${calculationResult}` }],
-      }, { kind: 'calculation', title: `${title} added`, page: currentSourcePage, color: calcColor, targetId: calculation.id }));
-      toast.success('Calculation added to the document.');
-    }
+    setEditState((current) => withHistory({
+      ...current,
+      calculations: [...(current.calculations ?? []), calculation],
+      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: pageNumber, x, y, width: 25, height: 6, color: calcColor, label: `${title}: ${calculationResult}` }],
+    }, { kind: 'calculation', title: `${title} placed on page ${pageNumber}`, page: pageNumber, color: calcColor, targetId: calculation.id }));
+    toast.success(`Placed on page ${pageNumber}.`);
     resetCalculator();
-  }, [calcColor, calcRows, calcTitle, calculationResult, currentSourcePage, editingCalcId, resetCalculator]);
+  }, [calcColor, calcRows, calcTitle, calculationResult, resetCalculator]);
 
   const askLuka = useCallback(async (question: string) => {
     const prompt = question.trim();
