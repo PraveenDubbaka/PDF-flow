@@ -1,122 +1,101 @@
 import React from "react";
 
 interface LukaIconProps {
- /** Diameter in px (default 28) */
- size?: number;
- /** true = faster pulse (AI generating), false = gentle idle glow */
- animated?: boolean;
- /** When true, renders just the SVG stars with no wrapper div — for use inside already-styled containers */
- bare?: boolean;
- /** When true, inverts colors: white background with gradient-colored stars */
- inverted?: boolean;
- className?: string;
-}
-
-const K = 0.7071; // sin/cos 45°
-
-function starPath(cx: number, cy: number, R: number, r: number): string {
- return [
- `M ${cx},${cy - R}`,
- `L ${cx + r * K},${cy - r * K}`,
- `L ${cx + R},${cy}`,
- `L ${cx + r * K},${cy + r * K}`,
- `L ${cx},${cy + R}`,
- `L ${cx - r * K},${cy + r * K}`,
- `L ${cx - R},${cy}`,
- `L ${cx - r * K},${cy - r * K}`,
- "Z",
- ].join(" ");
+  /** Diameter in px (default 28) */
+  size?: number;
+  /** true = faster pulse (AI generating), false = gentle idle glow */
+  animated?: boolean;
+  /** When true, renders just the sparkle SVG with no wrapper div — for use inside already-styled containers */
+  bare?: boolean;
+  /** When true, keeps the gradient sparkle even inside already-styled containers */
+  inverted?: boolean;
+  className?: string;
 }
 
 let _gradientId = 0;
 
+/**
+ * Luka mark: a single plump four-point diamond sparkle with a soft violet
+ * glow and a small white dot at its center (matches the brand image).
+ */
 export function LukaIcon({ size = 28, animated = false, bare = false, inverted = false, className = "" }: LukaIconProps) {
   const svgSize = bare ? size : size * 0.78;
   const dur = animated ? "1.3s" : "2.6s";
   const gradId = React.useRef(`luka-grad-${++_gradientId}`).current;
+  const glowId = React.useRef(`luka-glow-${++_gradientId}`).current;
 
-  // White stars only for bare usage on dark/navy surfaces; everywhere else the
-  // stars themselves carry the Luka gradient — no filled circle behind them.
-  const gradientStars = !bare || inverted;
-  const starFill = gradientStars ? `url(#${gradId})` : "white";
-  const shadowColor = gradientStars ? "rgba(134,73,241," : "rgba(255,255,255,";
+  // White mono sparkle only for bare usage on dark/navy surfaces; everywhere
+  // else the sparkle carries the Luka violet gradient.
+  const gradientSparkle = !bare || inverted;
+  const sparkleFill = gradientSparkle ? `url(#${gradId})` : "#FFFFFF";
+  const shadowColor = gradientSparkle ? "rgba(139,92,246," : "rgba(255,255,255,";
 
- const stars = (
- <svg
- viewBox="0 0 20 20"
- width={svgSize}
- height={svgSize}
- fill={starFill}
- aria-hidden="true"
- >
- {gradientStars && (
- <defs>
- <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
- <stop offset="0%" stopColor="#8649F1" />
- <stop offset="100%" stopColor="#2355A4" />
- </linearGradient>
- </defs>
- )}
- {/* Large star — lower-right */}
- <path
- d={starPath(13, 12, 5.5, 1.4)}
- style={{
- transformOrigin: "13px 12px",
- animation: `luka-sparkle-${animated ? "active" : "idle"} ${dur} ease-in-out infinite`,
- animationDelay: "0s",
- filter: animated
- ? `drop-shadow(0 0 4px ${shadowColor}1)) drop-shadow(0 0 2px ${shadowColor}.9))`
- : `drop-shadow(0 0 2px ${shadowColor}.8))`,
- }}
- />
- {/* Medium star — upper-left */}
- <path
- d={starPath(5.5, 5.5, 3.4, 0.85)}
- style={{
- transformOrigin: "5.5px 5.5px",
- animation: `luka-sparkle-${animated ? "active" : "idle"} ${dur} ease-in-out infinite`,
- animationDelay: `calc(${dur} * 0.38)`,
- filter: animated
- ? `drop-shadow(0 0 3px ${shadowColor}.95))`
- : `drop-shadow(0 0 1.5px ${shadowColor}.7))`,
- }}
- />
- {/* Small star — lower-left */}
- <path
- d={starPath(5, 15.5, 1.9, 0.48)}
- style={{
- transformOrigin: "5px 15.5px",
- animation: `luka-sparkle-${animated ? "active" : "idle"} ${dur} ease-in-out infinite`,
- animationDelay: `calc(${dur} * 0.70)`,
- filter: animated
- ? `drop-shadow(0 0 2px ${shadowColor}.85))`
- : `drop-shadow(0 0 1px ${shadowColor}.5))`,
- }}
- />
- </svg>
- );
+  const sparkle = (
+    <svg
+      viewBox="0 0 100 100"
+      width={svgSize}
+      height={svgSize}
+      fill={sparkleFill}
+      aria-hidden="true"
+    >
+      {gradientSparkle && (
+        <defs>
+          <radialGradient id={gradId} cx="50%" cy="50%" r="55%">
+            <stop offset="0%" stopColor="#BBA6F9" />
+            <stop offset="55%" stopColor="#A585F6" />
+            <stop offset="100%" stopColor="#7E57E8" />
+          </radialGradient>
+          <filter id={glowId} x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="7" />
+          </filter>
+        </defs>
+      )}
+      <g
+        style={{
+          transformOrigin: "50px 50px",
+          animation: `luka-sparkle-${animated ? "active" : "idle"} ${dur} ease-in-out infinite`,
+          filter: animated
+            ? `drop-shadow(0 0 6px ${shadowColor}1)) drop-shadow(0 0 3px ${shadowColor}.9))`
+            : `drop-shadow(0 0 3px ${shadowColor}.8))`,
+        }}
+      >
+        {/* Soft glow halo behind the sparkle */}
+        {gradientSparkle && (
+          <path
+            d="M50 2 Q61 39 98 50 Q61 61 50 98 Q39 61 2 50 Q39 39 50 2 Z"
+            fill={sparkleFill}
+            opacity={0.65}
+            filter={`url(#${glowId})`}
+          />
+        )}
+        {/* Diamond sparkle body */}
+        <path d="M50 2 Q61 39 98 50 Q61 61 50 98 Q39 61 2 50 Q39 39 50 2 Z" />
+        {/* Small white dot at the center */}
+        {gradientSparkle && <circle cx="50" cy="50" r="4.5" fill="#FFFFFF" opacity={0.95} />}
+      </g>
+    </svg>
+  );
 
- if (bare) return stars;
+  if (bare) return sparkle;
 
- // No circle background — the stars themselves are the logo in Luka colors.
- // `inverted` keeps a subtle white chip for use on tinted banners.
- const wrapperBg = inverted ? "white" : undefined;
+  // No circle background — the sparkle itself is the logo in Luka colors.
+  // `inverted` keeps a subtle white chip for use on tinted banners.
+  const wrapperBg = inverted ? "white" : undefined;
+  const wrapperBorder = inverted
+    ? "1.5px solid rgba(134,73,241,0.25)"
+    : undefined;
 
- const wrapperBorder = inverted
- ? "1.5px solid rgba(134,73,241,0.25)"
- : undefined;
-
- return (
- <div
- className={`inline-flex items-center justify-center rounded-full shrink-0 overflow-hidden ${className}`}
- style={{
- width: size,
- height: size,
- background: wrapperBg,
- border: wrapperBorder,
- }}
- >
- {stars}
- </div>
- );
+  return (
+    <div
+      className={`inline-flex items-center justify-center rounded-full shrink-0 overflow-hidden ${className}`}
+      style={{
+        width: size,
+        height: size,
+        background: wrapperBg,
+        border: wrapperBorder,
+      }}
+    >
+      {sparkle}
+    </div>
+  );
 }
