@@ -380,6 +380,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [calcColor, setCalcColor] = useState(COLORS[0]);
   const [calcRows, setCalcRows] = useState<{ value: string; operator: '+' | '-' | '×' | '÷'; comment: string }[]>([{ value: '', operator: '+', comment: '' }]);
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
+  const [showCalcHeader, setShowCalcHeader] = useState(false);
   const [lukaQuestion, setLukaQuestion] = useState('');
   const [lukaAnswer, setLukaAnswer] = useState('');
   const [lukaLoading, setLukaLoading] = useState(false);
@@ -754,6 +755,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (rows.length === 0) return 0;
     // Multiplication and division bind tighter than addition and subtraction.
     const terms: number[] = [Number(rows[0].value) || 0];
+    if (rows[0].operator === '-') terms[0] = -terms[0];
     for (let index = 1; index < rows.length; index += 1) {
       const value = Number(rows[index].value) || 0;
       const operator = rows[index].operator;
@@ -767,12 +769,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
 
   const resetCalculator = useCallback(() => {
     setEditingCalcId(null);
+    setShowCalcHeader(false);
     setCalcTitle('');
     setCalcRows([{ value: '', operator: '+', comment: '' }]);
   }, []);
 
   const startEditCalculation = useCallback((calculation: PdfCalculation) => {
     setEditingCalcId(calculation.id);
+    setShowCalcHeader(calculation.title.trim() !== '' && calculation.title !== 'Calculation');
     setCalcTitle(calculation.title);
     setCalcColor(calculation.color);
     setCalcRows(calculation.values.map((value, index) => ({
@@ -1228,29 +1232,44 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (activePanel === 'calculations') return (
       <div className="space-y-3">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground"><Calculator className="h-3.5 w-3.5" />{editingCalcId ? 'EDIT CALCULATION' : 'BUILD A CALCULATION'}</p>
-        <div className="space-y-1.5">
-          <Label htmlFor="calc-header">Header (optional)</Label>
-          <div className="flex gap-2">
-            <Input id="calc-header" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
-            <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-10 rounded-[6px] border border-border bg-background p-1" />
+        {showCalcHeader ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="calc-header">Header (optional)</Label>
+            <div className="flex gap-2">
+              <Input id="calc-header" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
+              <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-9 w-10 rounded-[6px] border border-border bg-background p-1" />
+            </div>
           </div>
-        </div>
-        <div className="grid grid-cols-[20px_minmax(0,1fr)_44px_76px_20px] items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
-          <span className="text-center">#</span><span>Comment</span><span>Op</span><span className="text-right">Amount</span><span />
+        ) : (
+          <button type="button" className="self-start text-xs font-medium text-primary hover:underline" onClick={() => setShowCalcHeader(true)}>+ Header</button>
+        )}
+        <div className="grid grid-cols-[16px_44px_minmax(0,1fr)_70px_20px] items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
+          <span className="text-center">#</span><span>Sign</span><span>Description</span><span className="text-right">Amount</span><span />
         </div>
         <div className="space-y-2">{calcRows.map((row, index) => (
-          <div key={index} className="grid grid-cols-[20px_minmax(0,1fr)_44px_76px_20px] items-center gap-1.5">
+          <div key={index} className="grid grid-cols-[16px_44px_minmax(0,1fr)_70px_20px] items-center gap-1.5">
             <span className="text-center text-xs text-foreground">{index + 1}</span>
-            <Input aria-label={`Comment ${index + 1}`} className="min-w-0 px-2" value={row.comment} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, comment: event.target.value } : item))} placeholder={`Value ${index + 1}`} />
-            {index === 0 ? <span /> : (
-              <select value={row.operator} aria-label={`Operator ${index + 1}`} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 w-full rounded-[8px] border border-border bg-background px-1.5 text-xs text-foreground"><option>+</option><option>-</option><option>×</option><option>÷</option></select>
+            {row.operator === '×' || row.operator === '÷' ? (
+              <select value={row.operator} aria-label={`Operator ${index + 1}`} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 w-full rounded-[8px] border border-border bg-background px-1.5 text-xs text-foreground"><option>×</option><option>÷</option></select>
+            ) : (
+              <div className="grid grid-cols-2 gap-0.5" role="group" aria-label={`Line ${index + 1} sign`}>
+                <button type="button" aria-pressed={row.operator !== '-'} aria-label={`Line ${index + 1} adds`} onClick={() => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: '+' } : item))} className={cn('flex h-9 items-center justify-center rounded-[6px] border border-border text-xs text-foreground transition-opacity', row.operator !== '-' && 'border-primary/40 bg-primary/15 font-semibold')}>+</button>
+                <button type="button" aria-pressed={row.operator === '-'} aria-label={`Line ${index + 1} subtracts`} onClick={() => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: '-' } : item))} className={cn('flex h-9 items-center justify-center rounded-[6px] border border-border text-xs text-foreground transition-opacity', row.operator === '-' && 'border-primary/40 bg-primary/15 font-semibold')}>−</button>
+              </div>
             )}
+            <Input aria-label={`Description ${index + 1}`} className="min-w-0 px-2" value={row.comment} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, comment: event.target.value } : item))} placeholder="Description (optional)" />
             <Input aria-label={`Amount ${index + 1}`} type="number" inputMode="decimal" className="min-w-0 px-2 text-right" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" />
-            <Button variant="ghost" size="icon-sm" className="shrink-0" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove row ${index + 1}`}><X /></Button>
+            <Button variant="ghost" size="icon-sm" className="shrink-0" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove line ${index + 1}`}><X /></Button>
           </div>
         ))}</div>
-        <div className="flex gap-2"><Button variant="secondary" className="flex-1" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+', comment: '' }])}><Plus />Add</Button><Button variant="secondary" onClick={() => setCalcRows([{ value: '', operator: '+', comment: '' }])}><X />Clear</Button></div>
-        <div className="flex items-center justify-between rounded-[8px] bg-primary/15 px-3 py-2 text-sm font-semibold text-foreground"><span className="truncate">{calcTitle.trim() || 'Result'}</span><span>{calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+        <div className="flex justify-center gap-2">
+          <Button variant="ghost" onClick={() => setCalcRows([{ value: '', operator: '+', comment: '' }])}><X />Clear lines</Button>
+          <Button variant="secondary" onClick={() => setCalcRows((current) => [...current, { value: '', operator: '+', comment: '' }])}><Plus />Add line</Button>
+        </div>
+        <div className="rounded-[8px] bg-muted/60 px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground">Result — calculated automatically</p>
+          <p className="mt-0.5 truncate text-right text-sm font-semibold text-foreground">{calculationResult.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+        </div>
         <div className="flex gap-2">
           {editingCalcId && <Button variant="ghost" onClick={resetCalculator}>Cancel</Button>}
           <Button className="flex-1" onClick={addCalculation}>{editingCalcId ? <Save /> : <Plus />}{editingCalcId ? 'Update' : 'Add to document'}</Button>
