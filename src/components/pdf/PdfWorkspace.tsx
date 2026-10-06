@@ -389,6 +389,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
   const [showCalcHeader, setShowCalcHeader] = useState(false);
   const [calcPlacement, setCalcPlacement] = useState(false);
+  const [calcSearch, setCalcSearch] = useState('');
 
   useEffect(() => {
     if (!calcPlacement) return;
