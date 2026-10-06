@@ -1278,22 +1278,23 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         ) : (
           <button type="button" className="self-start text-xs font-medium text-primary hover:underline" onClick={() => setShowCalcHeader(true)}>+ Header</button>
         )}
-        <div className="grid grid-cols-[16px_44px_minmax(0,1fr)_56px_20px] items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
-          <span className="text-center">#</span><span>Sign</span><span>Description</span><span className="text-right">Amount</span><span />
+        <div className="grid grid-cols-[16px_44px_minmax(0,1fr)_48px_20px] items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
+          <span className="text-center">#</span><span>Op</span><span>Description</span><span className="text-right">Amount</span><span />
         </div>
         <div className="space-y-2">{calcRows.map((row, index) => (
-          <div key={index} className="grid grid-cols-[16px_44px_minmax(0,1fr)_56px_20px] items-center gap-1.5">
+          <div key={index} className="grid grid-cols-[16px_44px_minmax(0,1fr)_48px_20px] items-center gap-1.5">
             <span className="text-center text-xs text-foreground">{index + 1}</span>
-            {row.operator === '×' || row.operator === '÷' ? (
-              <select value={row.operator} aria-label={`Operator ${index + 1}`} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: event.target.value as '+' | '-' | '×' | '÷' } : item))} className="h-9 w-full rounded-[8px] border border-border bg-background px-1.5 text-xs text-foreground"><option>×</option><option>÷</option></select>
+            {index === 0 ? (
+              <span aria-hidden="true" />
             ) : (
-              <div className="grid grid-cols-2 gap-0.5" role="group" aria-label={`Line ${index + 1} sign`}>
-                <button type="button" aria-pressed={row.operator !== '-'} aria-label={`Line ${index + 1} adds`} onClick={() => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: '+' } : item))} className={cn('flex h-9 items-center justify-center rounded-[6px] border text-xs transition-colors', row.operator !== '-' ? 'border-primary bg-primary font-semibold text-primary-foreground' : 'border-border bg-background text-foreground')}>+</button>
-                <button type="button" aria-pressed={row.operator === '-'} aria-label={`Line ${index + 1} subtracts`} onClick={() => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator: '-' } : item))} className={cn('flex h-9 items-center justify-center rounded-[6px] border text-xs transition-colors', row.operator === '-' ? 'border-primary bg-primary font-semibold text-primary-foreground' : 'border-border bg-background text-foreground')}>−</button>
+              <div className="grid grid-cols-2 gap-0.5" role="group" aria-label={`Line ${index + 1} operator`}>
+                {(['+', '-', '×', '÷'] as const).map((operator) => (
+                  <button key={operator} type="button" aria-pressed={row.operator === operator} aria-label={`Line ${index + 1} operator ${operator}`} onClick={() => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, operator } : item))} className={cn('flex h-[17px] items-center justify-center rounded-[5px] border text-[11px] leading-none transition-colors', row.operator === operator ? 'border-primary bg-primary font-semibold text-primary-foreground' : 'border-border bg-background text-foreground')}>{operator === '-' ? '−' : operator}</button>
+                ))}
               </div>
             )}
-            <Input aria-label={`Description ${index + 1}`} className="min-w-0 px-2" value={row.comment} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, comment: event.target.value } : item))} placeholder="Description (optional)" />
-            <Input aria-label={`Amount ${index + 1}`} type="number" inputMode="decimal" className="min-w-0 px-2 text-right" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" />
+            <Input aria-label={`Description ${index + 1}`} className="min-w-0 px-2" value={row.comment} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, comment: event.target.value } : item))} placeholder="Description" />
+            <Input aria-label={`Amount ${index + 1}`} type="number" inputMode="decimal" className="min-w-0 px-1.5 text-right" value={row.value} onChange={(event) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, value: event.target.value } : item))} placeholder="0.00" />
             <Button variant="ghost" size="icon-sm" className="shrink-0" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove line ${index + 1}`}><X /></Button>
           </div>
         ))}</div>
