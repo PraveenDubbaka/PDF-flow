@@ -969,6 +969,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const effectiveCalcResult = calculationResult;
 
   const resetCalculator = useCallback(() => {
+    setCalcDescError(false);
     setEditingCalcId(null);
     setShowCalcHeader(false);
     setCalcPlacement(false);
