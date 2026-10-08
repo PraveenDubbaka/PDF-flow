@@ -1467,7 +1467,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             ) : (
               <button type="button" className="mb-1 self-start text-[13px] font-medium text-primary hover:underline" onClick={() => setShowCalcHeader(true)}>+ Add header</button>
             )}
-            <div className={cn(lineGrid, sectionLabel)}><span>Description</span><span className="text-right">Amount</span><span /></div>
+            <div className={cn('relative', lineGrid, sectionLabel)}><span>Description</span><span className="pr-2 text-right">Amount</span><span /><button type="button" className="absolute right-0 top-1/2 -translate-y-1/2 whitespace-nowrap text-[13px] font-medium text-muted-foreground underline-offset-2 hover:underline" onClick={resetCalculator}>Reset</button></div>
             {calcRows.map((row, index) => (
               <div key={index} className={lineGrid} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
                 <Input aria-label={`Description ${index + 1}`} className="h-8 min-w-0 px-2.5 text-[13px]" value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
@@ -1500,10 +1500,10 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               </div>
             ))}
             {pickHint && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-[13px] font-medium text-primary">{pickHint}</p>}
-            <div className="flex h-8 items-center justify-between">
+            <div className="flex h-8 items-center justify-center">
               <Button variant="ghost" className="h-8 px-2 text-[13px] font-medium text-primary" onClick={addLine}><Plus />Add line</Button>
-              <button type="button" className="mr-8 text-[13px] font-medium text-muted-foreground underline-offset-2 hover:underline" onClick={() => setCalcRows([emptyCalcRow()])}>Clear all</button>
             </div>
+
           </div>
           <div className="-mx-4 my-4 border-t border-border" />
           <div className="flex items-start justify-between gap-3">
