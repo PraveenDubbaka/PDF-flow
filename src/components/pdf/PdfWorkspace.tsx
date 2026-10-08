@@ -187,7 +187,7 @@ function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, o
         onClick={onPick}
         aria-label={linked ? `Line ${index + 1} picked from page — pick again` : `Pick line ${index + 1} amount from page`}
         title={linked ? 'Picked from page — click to pick again' : 'Pick from page'}
-        className={cn(prefix ? 'absolute left-8 top-1/2 flex h-4 w-4' : 'absolute left-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-[4px] text-foreground/70 transition-opacity hover:text-foreground', linked || picking ? 'opacity-100' : 'opacity-0 focus-visible:opacity-100 group-hover/amount:opacity-100', picking && 'bg-primary text-primary-foreground')}
+        className={cn('absolute top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-[4px] text-foreground/70 transition-opacity hover:text-foreground', prefix ? 'left-8' : 'left-2', linked || picking ? 'opacity-100' : 'opacity-0 focus-visible:opacity-100 group-hover/amount:opacity-100', picking && 'bg-primary text-primary-foreground')}
       >
         {linked && !picking ? <Link2 className="h-3.5 w-3.5" /> : <Crosshair className="h-3.5 w-3.5" />}
       </button>
