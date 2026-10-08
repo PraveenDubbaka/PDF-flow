@@ -196,7 +196,7 @@ function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, o
   );
 }
 
-function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations }: {
+function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations, hoveredCalcId, onHoverCalc, pulseCalc }: {
   pdf: pdfjs.PDFDocumentProxy;
   pageNumber: number;
   zoom: number;
