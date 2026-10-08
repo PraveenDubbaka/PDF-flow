@@ -127,7 +127,7 @@ function CalcStamp({ title, rows, result, color, style, tie }: {
       {showTitle && <span className="truncate text-[11px] font-semibold" style={{ color }}>{title}</span>}
       {style === 'full' && rows.map((row, index) => (
         <span key={index} className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 truncate">{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || `Line ${index + 1}`}</span>
+          <span className="min-w-0 truncate">{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || '\u00a0'}</span>
           <span className="shrink-0 text-right tabular-nums">{formatAmount(row.value)}</span>
         </span>
       ))}
@@ -216,12 +216,24 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   onPickValue?: (pick: { value: number; label: string; source: PdfCalcSource }) => void;
   sourceHighlight?: PdfCalcSource | null;
   calculations?: PdfCalculation[];
+  hoveredCalcId?: string | null;
+  onHoverCalc?: (id: string | null) => void;
+  pulseCalc?: { id: string; key: number } | null;
 }) {
   const selectedComment = annotations.find((item) => item.id === selectedId && item.kind === 'comment');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 612, height: 792 });
   const [drawing, setDrawing] = useState<{ x: number; y: number }[] | null>(null);
+  const [pulsingId, setPulsingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pulseCalc) return;
+    setPulsingId(pulseCalc.id);
+    const scroll = window.setTimeout(() => document.querySelector(`[data-calc-id="${pulseCalc.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+    const clear = window.setTimeout(() => setPulsingId(null), 2150);
+    return () => { window.clearTimeout(scroll); window.clearTimeout(clear); };
+  }, [pulseCalc, pageNumber]);
 
   useEffect(() => {
     if (!highlight || highlight.page !== pageNumber) return;
@@ -358,6 +370,9 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
       {annotations.filter((item) => item.kind !== 'freehand').map((annotation) => (
         <div
           key={annotation.id}
+          data-calc-id={annotation.kind === 'calculation' ? annotation.id : undefined}
+          onMouseEnter={annotation.kind === 'calculation' ? () => onHoverCalc?.(annotation.id) : undefined}
+          onMouseLeave={annotation.kind === 'calculation' ? () => onHoverCalc?.(null) : undefined}
           onClick={(event) => {
             event.stopPropagation();
             onSelect(annotation.id);
@@ -368,7 +383,8 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           className={cn(
             'absolute border-2',
             activeKind || pickingValue ? 'pointer-events-none' : 'cursor-pointer',
-            annotation.kind === 'calculation' && 'border-none',
+            annotation.kind === 'calculation' && 'border-none rounded-[4px]',
+            annotation.kind === 'calculation' && pulsingId === annotation.id && 'animate-pulse',
             selectedId === annotation.id && 'ring-2 ring-primary ring-offset-1',
             annotation.kind === 'comment' && 'flex items-center justify-center rounded-sm border-none bg-warning text-warning-foreground',
             (annotation.kind === 'link' || annotation.kind === 'trial-balance') && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
@@ -384,6 +400,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             height: annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'calculation' ? 'auto' : `${annotation.height}%`,
             borderColor: annotation.color,
             backgroundColor: annotation.kind === 'highlight' ? annotation.color : undefined,
+            boxShadow: annotation.kind === 'calculation' && (pulsingId === annotation.id || hoveredCalcId === annotation.id) ? `0 0 0 3px ${annotation.color}66` : undefined,
           }}
           title={annotation.kind === 'link' ? annotation.value ?? annotation.label : annotation.label}
         >
@@ -538,6 +555,9 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [calcRows, setCalcRows] = useState<CalcRow[]>([emptyCalcRow()]);
   const [calcPick, setCalcPick] = useState<{ target: 'row'; index: number } | { target: 'compare' } | null>(null);
   const [calcHover, setCalcHover] = useState<PdfCalcSource | null>(null);
+  const [hoveredCalcId, setHoveredCalcId] = useState<string | null>(null);
+  const [pulseCalc, setPulseCalc] = useState<{ id: string; key: number } | null>(null);
+  const [calcDescError, setCalcDescError] = useState(false);
   const wasPickingCalc = useRef(false);
 
   // Pick overlays must never outlive pick mode (including Escape and toggle cancellation).
@@ -987,6 +1007,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   }, [calcPick]);
 
   const armCalcPlacement = useCallback(() => {
+    if (!calcPlacement && calcRows.some((row, index) => (index === 0 || row.value.trim() !== '') && !row.comment.trim())) { setCalcDescError(true); return; }
+    setCalcDescError(false);
     if (editingCalcId) {
       const title = calcTitle.trim() || 'Calculation';
       const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
@@ -1473,7 +1495,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             <div className={cn(lineGrid, sectionLabel)}><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
             {calcRows.map((row, index) => (
               <div key={index} className={lineGrid} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
-                <Input aria-label={`Description ${index + 1}`} className="h-8 min-w-0 px-2.5 text-[13px]" value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
+                <Input aria-label={`Description ${index + 1}`} aria-invalid={calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim()} className={cn('h-8 min-w-0 px-2.5 text-[13px]', calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim() && 'border-destructive focus-visible:ring-destructive')} value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
                 <CalcAmountInput
                   index={index}
                   value={row.value}
@@ -1502,6 +1524,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                 <Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove line ${index + 1}`}><X /></Button>
               </div>
             ))}
+            {calcDescError && calcRows.some((row, index) => (index === 0 || row.value.trim() !== '') && !row.comment.trim()) && <p className="text-[13px] text-destructive">Add a description to each line before placing.</p>}
             {pickHint && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-[13px] font-medium text-primary">{pickHint}</p>}
             <div className="flex h-8 items-center justify-center">
               <Button variant="ghost" className="h-8 px-2 text-[13px] font-medium text-primary" onClick={addLine}><Plus />Add line</Button>
@@ -1514,7 +1537,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               <span className="text-[13px] font-semibold text-foreground">Result</span>
               <span className="text-[13px] text-foreground">Calculated automatically</span>
             </div>
-            <p className="calc-result-value text-[20px] font-semibold tabular-nums text-foreground">{formatAmount(calculationResult)}</p>
+            <p className="calc-result-value pr-8 text-[20px] font-semibold tabular-nums text-foreground">{formatAmount(calculationResult)}</p>
           </div>
           {calcCompare ? (
             <div className="mt-2 flex items-center justify-between gap-2 text-[13px]">
@@ -1544,7 +1567,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           {calcPlacement && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-[13px] font-medium text-primary">Click on the page to place. Press Esc to cancel.</p>}
           <div className="flex gap-2">
             {editingCalcId && <Button variant="outline" className="h-8 flex-1 text-[13px]" onClick={resetCalculator}>Discard changes</Button>}
-            <Button className="h-9 flex-1 text-[13px]" onClick={() => { setCalcPick(null); armCalcPlacement(); }}>{editingCalcId ? <Save /> : calcPlacement ? <X /> : <Plus />}{editingCalcId ? 'Update stamp' : calcPlacement ? 'Cancel placing' : 'Place on page'}</Button>
+            <Button className="h-9 flex-1 text-[13px]" disabled={!calcPlacement && !calcRows.some((row) => (Number(row.value) || 0) !== 0)} onClick={() => { setCalcPick(null); armCalcPlacement(); }}>{editingCalcId ? <Save /> : calcPlacement ? <X /> : <Plus />}{editingCalcId ? 'Update stamp' : calcPlacement ? 'Cancel placing' : 'Place on page'}</Button>
           </div>
         </div>
         <div className="flex flex-col gap-2">
@@ -1554,8 +1577,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             const pageLabel = Math.max(1, visiblePages.indexOf(calculation.page) + 1);
             const status = tieStatus(calculation.result, calculation.compareTo);
             return (
-              <div key={calculation.id} className={cn('flex items-start gap-1 rounded-[8px] border bg-card p-3', editingCalcId === calculation.id ? 'border-primary' : 'border-border')}>
-                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { const annotation = editState.annotations.find((item) => item.id === calculation.id); setPage(pageLabel); setSelectedAnnotationId(calculation.id); if (annotation) setSearchHighlight({ id: crypto.randomUUID(), page: annotation.page, x: annotation.x, y: annotation.y, width: 18, height: 5 }); }}>
+              <div key={calculation.id} onMouseEnter={() => setHoveredCalcId(calculation.id)} onMouseLeave={() => setHoveredCalcId(null)} className={cn('flex items-start gap-1 rounded-[8px] border bg-card p-3', editingCalcId === calculation.id ? 'border-primary' : 'border-border', hoveredCalcId === calculation.id && 'bg-muted/40')} style={hoveredCalcId === calculation.id && editingCalcId !== calculation.id ? { borderColor: calculation.color } : undefined}>
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setPage(pageLabel); setSelectedAnnotationId(calculation.id); setPulseCalc({ id: calculation.id, key: Date.now() }); }}>
                   <span className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: calculation.color }} /><span className="truncate text-[13px] font-semibold text-foreground">{calculation.title || 'Calculation'}</span></span>
                   <span className="mt-0.5 block truncate pl-4 text-[13px] tabular-nums text-foreground">Result = {formatAmount(calculation.result)}{status && <span className={cn('ml-1.5 font-semibold', status.ties ? 'text-success' : 'text-destructive')}>{status.ties ? '✓' : '≠'}</span>}</span>
                   {calculation.author && <span className="block truncate pl-4 text-[13px] text-foreground">{calculation.author.split(' ')[0]}{calculation.createdAt ? ` · ${new Date(calculation.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}</span>}
@@ -1727,7 +1750,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button></div>
             <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(zoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto bg-muted/30"><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} /></div></div>
+          <div className="min-h-0 flex-1 overflow-auto bg-muted/30"><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} /></div></div>
         </section>
         {editing && <aside className={cn("flex min-h-0", activePanel === 'calculations' ? "w-[408px]" : "w-[340px]", "shrink-0 border-l border-border bg-card")}>
           <ScrollArea className="w-12 shrink-0 border-r border-border"><div className="flex min-h-full flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? (activePanel === 'luka' ? <LukaIcon size={22} bare /> : <LukaIcon size={22} />) : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
