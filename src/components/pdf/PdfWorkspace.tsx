@@ -352,7 +352,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
       onMouseDown={startDraw}
       onMouseMove={(event) => { if (placeNoun) { const rect = event.currentTarget.getBoundingClientRect(); setHintPos({ x: event.clientX - rect.left, y: event.clientY - rect.top }); } moveDraw(event); }}
       onMouseUp={endDraw}
-      onMouseLeave={(event) => { setHintPos(null); endDraw(event); }}
+      onMouseLeave={(event) => { setHintPos(null); endDraw(); }}
     >
       {placeNoun && hintPos && <div className="pointer-events-none absolute z-40 whitespace-nowrap rounded-[6px] bg-foreground px-2 py-1 text-[11px] font-medium text-background" style={{ left: hintPos.x + 14, top: hintPos.y + 14 }}>Click to place {placeNoun}</div>}
       <canvas ref={canvasRef} className="block" />
