@@ -1456,7 +1456,10 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       const card = 'rounded-[8px] border border-border bg-card p-4';
       return (
       <div className="pdf-calculator-panel flex flex-col gap-4 pb-4 text-[13px]">
-        <p className="flex items-center gap-1.5 text-[13px] font-semibold"><Calculator className="h-3.5 w-3.5" />{editingCalcId ? 'Edit calculation' : 'Build a calculation'}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="flex items-center gap-1.5 text-[13px] font-semibold"><Calculator className="h-3.5 w-3.5" />{editingCalcId ? 'Edit calculation' : 'Build a calculation'}</p>
+          <button type="button" className="shrink-0 text-[13px] font-medium text-muted-foreground" onClick={resetCalculator}>Reset</button>
+        </div>
         <div className={card}>
           <div className="flex flex-col gap-2">
             {showCalcHeader ? (
@@ -1467,7 +1470,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             ) : (
               <button type="button" className="mb-1 self-start text-[13px] font-medium text-primary hover:underline" onClick={() => setShowCalcHeader(true)}>+ Add header</button>
             )}
-            <div className={cn('relative', lineGrid, sectionLabel)}><span>Description</span><span className="pr-2 text-right">Amount</span><span /><button type="button" className="absolute right-0 top-1/2 -translate-y-1/2 whitespace-nowrap text-[13px] font-medium text-muted-foreground underline-offset-2 hover:underline" onClick={resetCalculator}>Reset</button></div>
+            <div className={cn(lineGrid, sectionLabel)}><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
             {calcRows.map((row, index) => (
               <div key={index} className={lineGrid} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
                 <Input aria-label={`Description ${index + 1}`} className="h-8 min-w-0 px-2.5 text-[13px]" value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
