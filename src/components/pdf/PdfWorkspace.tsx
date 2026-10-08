@@ -229,11 +229,12 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
 
   useEffect(() => {
     if (!pulseCalc) return;
-    setPulsingId(pulseCalc.id);
-    const scroll = window.setTimeout(() => document.querySelector(`[data-calc-id="${pulseCalc.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
-    const clear = window.setTimeout(() => setPulsingId(null), 2150);
+    const id = pulseCalc.id;
+    setPulsingId(id);
+    const scroll = window.setTimeout(() => document.querySelector(`[data-calc-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+    const clear = window.setTimeout(() => setPulsingId((current) => (current === id ? null : current)), 2150);
     return () => { window.clearTimeout(scroll); window.clearTimeout(clear); };
-  }, [pulseCalc, pageNumber]);
+  }, [pulseCalc]);
 
   useEffect(() => {
     if (!highlight || highlight.page !== pageNumber) return;
@@ -1579,7 +1580,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             const status = tieStatus(calculation.result, calculation.compareTo);
             return (
               <div key={calculation.id} onMouseEnter={() => setHoveredCalcId(calculation.id)} onMouseLeave={() => setHoveredCalcId(null)} className={cn('flex items-start gap-1 rounded-[8px] border bg-card p-3', editingCalcId === calculation.id ? 'border-primary' : 'border-border', hoveredCalcId === calculation.id && 'bg-muted/40')} style={hoveredCalcId === calculation.id && editingCalcId !== calculation.id ? { borderColor: calculation.color } : undefined}>
-                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setPage(pageLabel); setSelectedAnnotationId(calculation.id); setPulseCalc({ id: calculation.id, key: Date.now() }); }}>
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setPage(pageLabel); setPulseCalc({ id: calculation.id, key: Date.now() }); window.setTimeout(() => setPulseCalc((current) => (current?.id === calculation.id ? null : current)), 2400); }}>
                   <span className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: calculation.color }} /><span className="truncate text-[13px] font-semibold text-foreground">{calculation.title || 'Calculation'}</span></span>
                   <span className="mt-0.5 block truncate pl-4 text-[13px] tabular-nums text-foreground">Result = {formatAmount(calculation.result)}{status && <span className={cn('ml-1.5 font-semibold', status.ties ? 'text-success' : 'text-destructive')}>{status.ties ? '✓' : '≠'}</span>}</span>
                   {calculation.author && <span className="block truncate pl-4 text-[13px] text-foreground">{calculation.author.split(' ')[0]}{calculation.createdAt ? ` · ${new Date(calculation.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}</span>}
