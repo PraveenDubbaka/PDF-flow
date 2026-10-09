@@ -1547,7 +1547,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       const tie = tieStatus(effectiveCalcResult, calcCompare?.value);
       const sectionLabel = 'calc-section-label text-[11px] font-semibold uppercase tracking-normal text-muted-foreground';
       const lineGrid = 'grid grid-cols-[24px_minmax(0,1fr)_120px_24px] items-center gap-2';
-      const resultGrid = 'grid grid-cols-[minmax(0,1fr)_120px_24px] items-center gap-2';
+      const resultGrid = 'grid grid-cols-[24px_minmax(0,1fr)_120px_24px] items-center gap-2';
       const card = 'rounded-[8px] border border-border bg-card p-4';
       return (
       <div className="pdf-calculator-panel flex flex-col gap-4 pb-4 text-[13px]">
