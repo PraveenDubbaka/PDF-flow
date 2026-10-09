@@ -1606,7 +1606,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <div className={resultGrid}>
             <span />
             <Label htmlFor="calc-result" className="text-[13px] font-semibold text-foreground">Result</Label>
-            <Input id="calc-result" aria-label="Result" inputMode="decimal" className="calc-result-value h-8 min-w-0 px-2.5 text-right text-[20px] font-semibold tabular-nums" value={calcResultDraft ?? formatAmount(effectiveCalcResult)} onFocus={() => setCalcResultDraft(String(effectiveCalcResult))} onChange={(event) => { setCalcResultDraft(event.target.value); setCalcResultOverride(parseAmount(event.target.value)); }} onBlur={() => setCalcResultDraft(null)} />
+            <Input id="calc-result" aria-label="Result" inputMode="decimal" className="calc-result-value h-8 min-w-0 px-2.5 text-right text-[13px] font-semibold tabular-nums" value={calcResultDraft ?? formatAmount(effectiveCalcResult)} onFocus={() => setCalcResultDraft(String(effectiveCalcResult))} onChange={(event) => { setCalcResultDraft(event.target.value); setCalcResultOverride(parseAmount(event.target.value)); }} onBlur={() => setCalcResultDraft(null)} />
             <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className={cn('h-8 w-6 text-primary', calcPick?.target === 'compare' && 'bg-primary/10')} aria-label="Compare by" aria-pressed={calcPick?.target === 'compare'} onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}><Crosshair /></Button></TooltipTrigger><TooltipContent>Compare by</TooltipContent></Tooltip>
           </div>
           {calcCompare && <div className="mt-4 flex flex-col gap-3">
