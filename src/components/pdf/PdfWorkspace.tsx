@@ -398,7 +398,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           }}
           className={cn(
             'absolute border-2',
-            activeKind || pickingValue ? 'pointer-events-none' : 'cursor-pointer',
+            activeKind || pickingValue || placingCalc ? 'pointer-events-none' : 'cursor-pointer',
             !activeKind && !pickingValue && (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'comment') && 'outline-none hover:outline hover:outline-1 hover:outline-offset-2 hover:outline-primary/50',
             annotation.kind === 'calculation' && 'border-none rounded-[4px]',
             annotation.kind === 'calculation' && pulsingId === annotation.id && 'animate-pulse',
@@ -1058,7 +1058,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
       setEditState((current) => withHistory({
         ...current,
-        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), sources: rows.map((row) => row.source ?? null), compareTo: calcCompare?.value ?? null, compareSource: calcCompare?.source ?? null, compareLabel: calcCompare?.label, resultOverride: calcResultOverride, visibleLines: rows.map((row) => row.visible !== false), showResult: calcShowResult, showCompare: calcIncludeCompare && calcShowCompare, showDifference: calcIncludeDifference && calcShowDifference, style: 'full', result: effectiveCalcResult, color: calcColor } : item),
+        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), sources: rows.map((row) => row.source ?? null), compareTo: calcCompare?.value ?? null, compareSource: calcCompare?.source ?? null, compareLabel: calcCompare?.label, resultOverride: calcResultOverride, visibleLines: rows.map((row) => row.visible !== false), showResult: calcShowResult, showCompare: calcIncludeCompare && calcShowCompare, showDifference: calcIncludeDifference && calcShowDifference, includeCompare: calcIncludeCompare, includeDifference: calcIncludeDifference, style: 'full', result: effectiveCalcResult, color: calcColor } : item),
         annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${effectiveCalcResult}` } : item),
       }, { kind: 'calculation', title: `${title} updated`, page: currentSourcePage, color: calcColor, targetId: editingCalcId }));
       toast.success('Calculation updated.');
@@ -1085,7 +1085,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       sources: rows.map((row) => row.source ?? null),
       compareTo: calcCompare?.value ?? null,
       compareSource: calcCompare?.source ?? null,
-      compareLabel: calcCompare?.label, resultOverride: calcResultOverride, visibleLines: rows.map((row) => row.visible !== false), showResult: calcShowResult, showCompare: calcIncludeCompare && calcShowCompare, showDifference: calcIncludeDifference && calcShowDifference, style: 'full',
+      compareLabel: calcCompare?.label, resultOverride: calcResultOverride, visibleLines: rows.map((row) => row.visible !== false), showResult: calcShowResult, showCompare: calcIncludeCompare && calcShowCompare, showDifference: calcIncludeDifference && calcShowDifference, includeCompare: calcIncludeCompare, includeDifference: calcIncludeDifference, style: 'full',
       author: currentMentionUser.name,
       createdAt: new Date().toISOString(),
     };
@@ -1175,6 +1175,35 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               color, thickness: 1.5,
             });
           }
+        } else if (item.kind === 'calculation' && editState.calculations?.find((calculation) => calculation.id === item.id)?.visibleLines) {
+          const calculation = editState.calculations.find((calculation) => calculation.id === item.id);
+          if (!calculation) continue;
+          const lines: { label: string; amount?: number }[] = [];
+          if (calculation.title.trim() && calculation.title !== 'Calculation') lines.push({ label: calculation.title });
+          calculation.values.forEach((value, rowIndex) => {
+            if (calculation.visibleLines?.[rowIndex] !== false) lines.push({ label: `${rowIndex > 0 ? `${OP_LABEL[calculation.operators?.[rowIndex] ?? '+']} ` : ''}${calculation.comments?.[rowIndex] ?? ''}`, amount: value });
+          });
+          if (calculation.showResult !== false) lines.push({ label: 'Result', amount: calculation.result });
+          if (calculation.compareTo != null) {
+            if (calculation.showCompare) lines.push({ label: calculation.compareLabel ?? '', amount: calculation.compareTo });
+            if (calculation.showDifference) lines.push({ label: 'Difference', amount: tieStatus(calculation.result, calculation.compareTo)?.difference ?? 0 });
+          }
+          // Match the native stamp's compact scale; selections affect output only, never arithmetic.
+          const safeText = (text: string) => text.replace(/−/g, '-').replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
+          const stampSize = 8;
+          const lineHeight = 11;
+          const stampWidth = Math.max(96, ...lines.map((line) => font.widthOfTextAtSize(safeText(line.label), stampSize) + (line.amount == null ? 0 : font.widthOfTextAtSize(formatAmount(line.amount), stampSize) + 16) + 12));
+          const stampHeight = Math.max(12, lines.length * lineHeight + 8);
+          const top = height - height * item.y / 100;
+          copiedPage.drawRectangle({ x, y: top - stampHeight, width: stampWidth, height: stampHeight, borderColor: color, borderWidth: 0.8, color: rgb(1, 1, 1) });
+          lines.forEach((line, lineIndex) => {
+            const baseline = top - 12 - lineIndex * lineHeight;
+            copiedPage.drawText(safeText(line.label), { x: x + 6, y: baseline, size: stampSize, font, color });
+            if (line.amount != null) {
+              const amount = formatAmount(line.amount);
+              copiedPage.drawText(amount, { x: x + stampWidth - 6 - font.widthOfTextAtSize(amount, stampSize), y: baseline, size: stampSize, font, color });
+            }
+          });
         } else if ((item.kind === 'text' || item.kind === 'comment' || item.kind === 'link' || item.kind === 'trial-balance' || item.kind === 'calculation') && (item.label || item.value)) {
           copiedPage.drawText(String(item.label ?? item.value), { x, y: y + boxHeight / 2, size: 10, font, color });
         } else if (item.kind === 'image' && item.value) {
