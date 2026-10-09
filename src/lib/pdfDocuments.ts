@@ -26,6 +26,12 @@ export interface PdfCalculation {
   style?: 'full' | 'result';
   author?: string;
   createdAt?: string;
+  resultOverride?: number | null;
+  compareLabel?: string;
+  visibleLines?: boolean[];
+  showResult?: boolean;
+  showCompare?: boolean;
+  showDifference?: boolean;
 }
 
 export interface PdfCalcSource { page: number; x: number; y: number; width: number; height: number }
