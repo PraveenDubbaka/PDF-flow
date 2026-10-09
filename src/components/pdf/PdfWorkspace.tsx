@@ -91,7 +91,7 @@ const hexToRgb = (hex: string) => {
 };
 
 type CalcOperator = '+' | '-' | '×' | '÷';
-type CalcRow = { value: string; operator: CalcOperator; comment: string; source?: PdfCalcSource | null };
+type CalcRow = { value: string; operator: CalcOperator; comment: string; source?: PdfCalcSource | null; visible?: boolean };
 const OP_LABEL: Record<CalcOperator, string> = { '+': '+', '-': '−', '×': '×', '÷': '÷' };
 const KEY_TO_OP: Record<string, CalcOperator> = { '+': '+', '-': '-', '*': '×', '/': '÷', 'x': '×' };
 const emptyCalcRow = (): CalcRow => ({ value: '', operator: '+', comment: '' });
@@ -113,28 +113,38 @@ export function parseAmount(raw: string): number | null {
   return Number.isFinite(value) ? (negative ? -value : value) : null;
 }
 
-function CalcStamp({ title, rows, result, color, style, tie }: {
+function CalcStamp({ title, rows, result, color, style, tie, compare, showResult = true, showCompare = false, showDifference = false, includeCompare = true, includeDifference = true, onToggle }: {
   title?: string;
-  rows: { operator: CalcOperator; label: string; value: number; linked?: boolean }[];
+  rows: { operator: CalcOperator; label: string; value: number; visible?: boolean }[];
   result: number;
   color: string;
   style: 'full' | 'result';
   tie?: { ties: boolean; difference: number } | null;
+  compare?: { label: string; value: number } | null;
+  showResult?: boolean;
+  showCompare?: boolean;
+  showDifference?: boolean;
+  includeCompare?: boolean;
+  includeDifference?: boolean;
+  onToggle?: (line: number | 'result' | 'compare' | 'difference', checked: boolean) => void;
 }) {
   const showTitle = !!title && title.trim() !== '' && title !== 'Calculation';
+  const checkbox = (line: number | 'result' | 'compare' | 'difference', checked: boolean, label: string) => onToggle ? <Checkbox className="mr-1 h-3 w-3 shrink-0 self-center" aria-label={`Include ${label} in stamp`} checked={checked} onCheckedChange={(value) => onToggle(line, value === true)} /> : null;
   return (
     <div data-calc-stamp className="inline-flex min-w-[120px] max-w-[260px] flex-col rounded-[4px] border bg-card px-2 py-1.5 text-[10px] leading-snug text-foreground" style={{ borderColor: color }}>
       {showTitle && <span className="truncate text-[11px] font-semibold" style={{ color }}>{title}</span>}
-      {style === 'full' && rows.map((row, index) => (
-        <span key={index} className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 truncate">{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || '\u00a0'}</span>
+      {style === 'full' && rows.map((row, index) => (row.visible !== false || onToggle) && (
+        <span key={index} className={cn('flex items-baseline justify-between gap-3', row.visible === false && 'opacity-50')}>
+          <span className="flex min-w-0">{checkbox(index, row.visible !== false, row.label || `line ${index + 1}`)}<span className="truncate">{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || '\u00a0'}</span></span>
           <span className="shrink-0 text-right tabular-nums">{formatAmount(row.value)}</span>
         </span>
       ))}
-      <span className={cn('flex items-baseline justify-between gap-3 font-semibold', style === 'full' && 'mt-0.5 border-t border-border pt-0.5')}>
-        <span>Result</span><span className="text-right tabular-nums">{formatAmount(result)}</span>
-      </span>
-      {tie && <span className={cn('font-semibold', tie.ties ? 'text-success' : 'text-destructive')}>{tie.ties ? '✓ Ties' : `Difference: ${formatAmount(tie.difference)}`}</span>}
+      {(showResult || onToggle) && <span className={cn('flex items-baseline justify-between gap-3 font-semibold', style === 'full' && 'mt-0.5 border-t border-border pt-0.5', !showResult && 'opacity-50')}>
+        <span className="flex">{checkbox('result', showResult, 'result')}Result</span><span className="text-right tabular-nums">{formatAmount(result)}</span>
+      </span>}
+      {compare && includeCompare && (showCompare || onToggle) && <span className={cn('flex items-baseline justify-between gap-3', !showCompare && 'opacity-50')}><span className="flex min-w-0">{checkbox('compare', showCompare, 'comparison')}<span className="truncate">{compare.label}</span></span><span className="shrink-0 text-right tabular-nums">{formatAmount(compare.value)}</span></span>}
+      {tie && compare && includeDifference && (showDifference || onToggle) && <span className={cn('flex items-baseline justify-between gap-3 font-semibold', !showDifference && 'opacity-50')}><span className="flex">{checkbox('difference', showDifference, 'difference')}Difference</span><span className="shrink-0 text-right tabular-nums">{formatAmount(tie.difference)}</span></span>}
+      {tie && !compare && <span className={cn('font-semibold', tie.ties ? 'text-success' : 'text-destructive')}>{tie.ties ? '✓ Ties' : `Difference: ${formatAmount(tie.difference)}`}</span>}
     </div>
   );
 }
@@ -435,7 +445,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           {annotation.kind === 'calculation' && (() => {
             const calc = calculations?.find((item) => item.id === annotation.id);
             if (!calc) return <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>;
-            return <CalcStamp title={calc.title} color={calc.color} result={calc.result} style={calc.style ?? 'full'} tie={tieStatus(calc.result, calc.compareTo)} rows={calc.values.map((value, index) => ({ value, operator: calc.operators?.[index] ?? '+', label: calc.comments?.[index] ?? '' }))} />;
+            return <CalcStamp title={calc.title} color={calc.color} result={calc.result} style={calc.visibleLines ? 'full' : calc.style ?? 'full'} tie={tieStatus(calc.result, calc.compareTo)} compare={calc.visibleLines && calc.compareTo != null ? { label: calc.compareLabel ?? '', value: calc.compareTo } : null} showResult={calc.showResult ?? true} showCompare={calc.showCompare} showDifference={calc.showDifference} rows={calc.values.map((value, index) => ({ value, operator: calc.operators?.[index] ?? '+', label: calc.comments?.[index] ?? '', visible: calc.visibleLines?.[index] }))} />;
           })()}
           {annotation.kind === 'text' && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
         </div>
@@ -575,8 +585,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     }
     wasPickingCalc.current = !!calcPick;
   }, [calcPick]);
-  const [calcCompare, setCalcCompare] = useState<{ value: number; source?: PdfCalcSource | null } | null>(null);
-  const [calcStyle, setCalcStyle] = useState<'full' | 'result'>('full');
+  const [calcCompare, setCalcCompare] = useState<{ value: number; label: string; source?: PdfCalcSource | null } | null>(null);
+  const [calcResultOverride, setCalcResultOverride] = useState<number | null>(null);
+  const [calcResultDraft, setCalcResultDraft] = useState<string | null>(null);
+  const [calcShowResult, setCalcShowResult] = useState(true);
+  const [calcShowCompare, setCalcShowCompare] = useState(true);
+  const [calcShowDifference, setCalcShowDifference] = useState(true);
+  const [calcIncludeCompare, setCalcIncludeCompare] = useState(true);
+  const [calcIncludeDifference, setCalcIncludeDifference] = useState(true);
   const [editingCalcId, setEditingCalcId] = useState<string | null>(null);
   const [showCalcHeader, setShowCalcHeader] = useState(false);
   const [calcPlacement, setCalcPlacement] = useState(false);
@@ -980,7 +996,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     const total = terms.reduce((sum, term) => sum + term, 0);
     return Number.isFinite(total) ? Math.round(total * 100) / 100 : 0;
   }, [calcRows]);
-  const effectiveCalcResult = calculationResult;
+  const effectiveCalcResult = calcResultOverride ?? calculationResult;
 
   const resetCalculator = useCallback(() => {
     setCalcDescError(false);
@@ -991,7 +1007,13 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setCalcRows([emptyCalcRow()]);
     setCalcPick(null);
     setCalcCompare(null);
-    setCalcStyle('full');
+    setCalcResultOverride(null);
+    setCalcResultDraft(null);
+    setCalcShowResult(true);
+    setCalcShowCompare(true);
+    setCalcShowDifference(true);
+    setCalcIncludeCompare(true);
+    setCalcIncludeDifference(true);
     setCalcHover(null);
   }, []);
 
@@ -1006,15 +1028,22 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       operator: calculation.operators?.[index] ?? '+',
       comment: calculation.comments?.[index] ?? '',
       source: calculation.sources?.[index] ?? null,
+      visible: calculation.visibleLines?.[index] ?? calculation.style !== 'result',
     })));
-    setCalcCompare(calculation.compareTo === null || calculation.compareTo === undefined ? null : { value: calculation.compareTo, source: calculation.compareSource ?? null });
-    setCalcStyle(calculation.style ?? 'full');
+    setCalcCompare(calculation.compareTo === null || calculation.compareTo === undefined ? null : { value: calculation.compareTo, label: calculation.compareLabel ?? '', source: calculation.compareSource ?? null });
+    setCalcResultOverride(calculation.resultOverride ?? null);
+    setCalcResultDraft(null);
+    setCalcShowResult(calculation.showResult ?? true);
+    setCalcShowCompare(calculation.showCompare ?? true);
+    setCalcShowDifference(calculation.showDifference ?? true);
+    setCalcIncludeCompare(calculation.showCompare ?? true);
+    setCalcIncludeDifference(calculation.showDifference ?? true);
     setCalcPick(null);
   }, []);
 
   const handlePickValue = useCallback(({ value, label, source }: { value: number; label: string; source: PdfCalcSource }) => {
     if (!calcPick) return;
-    if (calcPick.target === 'compare') setCalcCompare({ value, source });
+    if (calcPick.target === 'compare') { setCalcCompare({ value, label, source }); setCalcIncludeCompare(true); setCalcIncludeDifference(true); setCalcShowCompare(true); setCalcShowDifference(true); }
     else setCalcRows((current) => current.map((row, index) => index === calcPick.index ? { ...row, value: String(value), source, comment: row.comment.trim() ? row.comment : label } : row));
     setCalcPick(null);
     setCalcHover(null);
@@ -1029,7 +1058,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
       setEditState((current) => withHistory({
         ...current,
-        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), sources: rows.map((row) => row.source ?? null), compareTo: calcCompare?.value ?? null, compareSource: calcCompare?.source ?? null, style: calcStyle, result: effectiveCalcResult, color: calcColor } : item),
+        calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), sources: rows.map((row) => row.source ?? null), compareTo: calcCompare?.value ?? null, compareSource: calcCompare?.source ?? null, compareLabel: calcCompare?.label, resultOverride: calcResultOverride, visibleLines: rows.map((row) => row.visible !== false), showResult: calcShowResult, showCompare: calcIncludeCompare && calcShowCompare, showDifference: calcIncludeDifference && calcShowDifference, style: 'full', result: effectiveCalcResult, color: calcColor } : item),
         annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${effectiveCalcResult}` } : item),
       }, { kind: 'calculation', title: `${title} updated`, page: currentSourcePage, color: calcColor, targetId: editingCalcId }));
       toast.success('Calculation updated.');
@@ -1039,7 +1068,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     if (calcPlacement) { setCalcPlacement(false); return; }
     setActiveKind(null);
     setCalcPlacement(true);
-  }, [calcColor, calcPlacement, calcRows, calcTitle, calcCompare, calcStyle, effectiveCalcResult, currentSourcePage, editingCalcId, resetCalculator]);
+  }, [calcColor, calcPlacement, calcRows, calcTitle, calcCompare, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, effectiveCalcResult, currentSourcePage, editingCalcId, resetCalculator]);
 
   const placeCalculation = useCallback((pageNumber: number, x: number, y: number) => {
     const title = calcTitle.trim() || 'Calculation';
@@ -1056,7 +1085,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       sources: rows.map((row) => row.source ?? null),
       compareTo: calcCompare?.value ?? null,
       compareSource: calcCompare?.source ?? null,
-      style: calcStyle,
+      compareLabel: calcCompare?.label, resultOverride: calcResultOverride, visibleLines: rows.map((row) => row.visible !== false), showResult: calcShowResult, showCompare: calcIncludeCompare && calcShowCompare, showDifference: calcIncludeDifference && calcShowDifference, style: 'full',
       author: currentMentionUser.name,
       createdAt: new Date().toISOString(),
     };
@@ -1067,7 +1096,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     }, { kind: 'calculation', title: `${title} placed on page ${pageNumber}`, page: pageNumber, color: calcColor, targetId: calculation.id }));
     toast.success(`Placed on page ${pageNumber}.`);
     resetCalculator();
-  }, [calcColor, calcRows, calcTitle, calcCompare, calcStyle, effectiveCalcResult, resetCalculator]);
+  }, [calcColor, calcRows, calcTitle, calcCompare, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, effectiveCalcResult, resetCalculator]);
 
   const askLuka = useCallback(async (question: string) => {
     const prompt = question.trim();
@@ -1486,10 +1515,10 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       const setRow = (index: number, changes: Partial<CalcRow>) => setCalcRows((current) => current.map((item, rowIndex) => rowIndex === index ? { ...item, ...changes } : item));
       const focusAmount = (index: number) => window.setTimeout(() => (window.document.querySelector(`[data-calc-amount="${index}"]`) as HTMLInputElement | null)?.focus(), 0);
       const addLine = () => { setCalcRows((current) => [...current, emptyCalcRow()]); focusAmount(calcRows.length); };
-      const tie = tieStatus(calculationResult, calcCompare?.value);
-      const pickHint = calcPick ? (calcPick.target === 'compare' ? 'Click the figure to compare against. Press Esc to cancel.' : `Click a number on the page for line ${calcPick.index + 1}. Press Esc to cancel.`) : null;
+      const tie = tieStatus(effectiveCalcResult, calcCompare?.value);
       const sectionLabel = 'calc-section-label text-[11px] font-semibold uppercase tracking-normal text-muted-foreground';
-      const lineGrid = 'grid grid-cols-[minmax(0,1fr)_120px_24px] items-center gap-2';
+      const lineGrid = 'grid grid-cols-[24px_minmax(0,1fr)_100px_24px] items-center gap-2';
+      const resultGrid = 'grid grid-cols-[minmax(0,1fr)_100px_24px] items-center gap-2';
       const card = 'rounded-[8px] border border-border bg-card p-4';
       return (
       <div className="pdf-calculator-panel flex flex-col gap-4 pb-4 text-[13px]">
@@ -1498,7 +1527,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <button type="button" className="shrink-0 text-[13px] font-medium text-muted-foreground" onClick={resetCalculator}>Reset</button>
         </div>
         <div className={card}>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {showCalcHeader ? (
               <div className="mb-2 flex flex-col gap-2">
                 <div className="flex items-center justify-between"><Label htmlFor="calc-header" className={sectionLabel}>Header</Label><button type="button" className="text-[13px] font-medium text-muted-foreground hover:underline" onClick={() => { setCalcTitle(''); setShowCalcHeader(false); }}>Remove</button></div>
@@ -1507,9 +1536,21 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             ) : (
               <button type="button" className="mb-1 self-start text-[13px] font-medium text-primary hover:underline" onClick={() => setShowCalcHeader(true)}>+ Add header</button>
             )}
-            <div className={cn(lineGrid, sectionLabel)}><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
+            <div className={cn(lineGrid, sectionLabel)}><span /><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
             {calcRows.map((row, index) => (
               <div key={index} className={lineGrid} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
+                {index === 0 ? <span /> : (<DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" aria-label={`Line ${index + 1} operator ${OP_LABEL[row.operator]}`} onKeyDown={(event) => { const operator = KEY_TO_OP[event.key]; if (operator) { event.preventDefault(); setRow(index, { operator }); } }} className="flex h-7 w-6 items-center justify-center rounded-[6px] bg-primary/10 text-[13px] font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{OP_LABEL[row.operator]}</button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="min-w-[120px]">
+                        {(['+', '-', '×', '÷'] as const).map((operator) => (
+                          <DropdownMenuItem key={operator} onSelect={() => setRow(index, { operator })} className={cn('h-8 gap-2 text-[13px]', row.operator === operator && 'font-semibold text-primary')}>
+                            <span className="w-4 text-center">{OP_LABEL[operator]}</span>{operator === '+' ? 'Add' : operator === '-' ? 'Subtract' : operator === '×' ? 'Multiply' : 'Divide'}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>)}
                 <Input aria-label={`Description ${index + 1}`} aria-invalid={calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim()} className={cn('h-8 min-w-0 px-2.5 text-[13px]', calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim() && 'border-destructive focus-visible:ring-destructive')} value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
                 <CalcAmountInput
                   index={index}
@@ -1521,63 +1562,38 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                   onEnter={() => { if (index === calcRows.length - 1) addLine(); else focusAmount(index + 1); }}
                   onPasteMany={(values) => setCalcRows((current) => [...current.slice(0, index), ...values.map((value, offset) => ({ ...(offset === 0 ? current[index] : emptyCalcRow()), value: String(value), source: null })), ...current.slice(index + 1)])}
                   onPick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'row' && current.index === index ? null : { target: 'row', index }); }}
-                  prefix={index === 0 ? undefined : (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button type="button" aria-label={`Line ${index + 1} operator ${OP_LABEL[row.operator]}`} onKeyDown={(event) => { const operator = KEY_TO_OP[event.key]; if (operator) { event.preventDefault(); setRow(index, { operator }); } }} className="flex h-7 w-6 items-center justify-center rounded-[6px] bg-primary/10 text-[13px] font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{OP_LABEL[row.operator]}</button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="min-w-[120px]">
-                        {(['+', '-', '×', '÷'] as const).map((operator) => (
-                          <DropdownMenuItem key={operator} onSelect={() => setRow(index, { operator })} className={cn('h-8 gap-2 text-[13px]', row.operator === operator && 'font-semibold text-primary')}>
-                            <span className="w-4 text-center">{OP_LABEL[operator]}</span>{operator === '+' ? 'Add' : operator === '-' ? 'Subtract' : operator === '×' ? 'Multiply' : 'Divide'}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+
                 />
                 <Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" disabled={calcRows.length === 1} onClick={() => setCalcRows((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label={`Remove line ${index + 1}`}><X /></Button>
               </div>
             ))}
             {calcDescError && calcRows.some((row, index) => (index === 0 || row.value.trim() !== '') && !row.comment.trim()) && <p className="text-[13px] text-destructive">Add a description to each line before placing.</p>}
-            {pickHint && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-[13px] font-medium text-primary">{pickHint}</p>}
             <div className="flex h-8 items-center justify-center">
               <Button variant="ghost" className="h-8 px-2 text-[13px] font-medium text-primary" onClick={addLine}><Plus />Add line</Button>
             </div>
 
           </div>
           <div className="-mx-4 my-4 border-t border-border" />
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex flex-col">
-              <span className="text-[13px] font-semibold text-foreground">Result</span>
-              <span className="text-[13px] text-foreground">Calculated automatically</span>
-            </div>
-            <p className="calc-result-value pr-8 text-[20px] font-semibold tabular-nums text-foreground">{formatAmount(calculationResult)}</p>
+          <div className={resultGrid}>
+            <Label htmlFor="calc-result" className="text-[13px] font-semibold text-foreground">Result</Label>
+            <Input id="calc-result" aria-label="Result" inputMode="decimal" className="calc-result-value h-8 min-w-0 px-2.5 text-right text-[20px] font-semibold tabular-nums" value={calcResultDraft ?? formatAmount(effectiveCalcResult)} onFocus={() => setCalcResultDraft(String(effectiveCalcResult))} onChange={(event) => { setCalcResultDraft(event.target.value); setCalcResultOverride(parseAmount(event.target.value)); }} onBlur={() => setCalcResultDraft(null)} />
+            <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className={cn('h-8 w-6 text-primary', calcPick?.target === 'compare' && 'bg-primary/10')} aria-label="Compare by" aria-pressed={calcPick?.target === 'compare'} onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}><Crosshair /></Button></TooltipTrigger><TooltipContent>Compare by</TooltipContent></Tooltip>
           </div>
-          {calcCompare ? (
-            <div className="mt-2 flex items-center justify-between gap-2 text-[13px]">
-              <span className="text-foreground">Compared to <span className="tabular-nums">{formatAmount(calcCompare.value)}</span></span>
-              <span className="flex items-center gap-1">
-                <span className={cn('font-semibold', tie?.ties ? 'text-success' : 'text-destructive')}>{tie?.ties ? '✓ Ties' : `Difference: ${formatAmount(tie?.difference ?? 0)}`}</span>
-                <Button variant="ghost" size="icon-sm" className="h-8 w-6" aria-label="Remove comparison" onClick={() => setCalcCompare(null)}><X /></Button>
-              </span>
-            </div>
-          ) : (
-            <button type="button" className="mt-2 text-[13px] font-medium text-primary hover:underline" onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}>Compare to…</button>
-          )}
+          {calcCompare && <div className="mt-4 flex flex-col gap-3">
+            {calcIncludeCompare && <div className={resultGrid} onMouseEnter={() => setCalcHover(calcCompare.source ?? null)} onMouseLeave={() => setCalcHover(null)}><span className="min-w-0 truncate text-[13px]" title={calcCompare.label}>{calcCompare.label}</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(calcCompare.value)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove comparison" onClick={() => setCalcIncludeCompare(false)}><X /></Button></div>}
+            {calcIncludeDifference && <div className={resultGrid}><span className="text-[13px]">Difference</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(tie?.difference ?? 0)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove difference" onClick={() => setCalcIncludeDifference(false)}><X /></Button></div>}
+          </div>}
+
         </div>
         <div className={cn(card, 'calc-preview flex flex-col gap-3 !p-3')}>
           <div className="flex items-center justify-between gap-2">
             <p className={sectionLabel}>Preview</p>
             <div className="flex items-center gap-2">
-              <div className="calc-style-toggle flex h-7 items-center rounded-[10px] border border-input p-0.5" role="group" aria-label="Stamp style">
-                {(['full', 'result'] as const).map((style) => <button key={style} type="button" aria-pressed={calcStyle === style} onClick={() => setCalcStyle(style)} className={cn('h-full rounded-[8px] px-1.5 text-[12px] font-medium', calcStyle === style ? 'bg-primary text-primary-foreground' : 'text-foreground')}>{style === 'full' ? 'Full breakdown' : 'Result only'}</button>)}
-              </div>
               <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-8 w-8 cursor-pointer rounded-[10px] border border-input bg-background p-1" />
             </div>
           </div>
           <div className="flex justify-center rounded-[8px] bg-muted/40 p-3">
-            <CalcStamp title={calcTitle} color={calcColor} result={calculationResult} style={calcStyle} tie={tie} rows={calcRows.map((row) => ({ operator: row.operator, label: row.comment, value: Number(row.value) || 0 }))} />
+            <CalcStamp title={calcTitle} color={calcColor} result={effectiveCalcResult} style="full" tie={calcIncludeDifference ? tie : null} compare={calcCompare && (calcIncludeCompare || calcIncludeDifference) ? { label: calcIncludeCompare ? calcCompare.label : '', value: calcCompare.value } : null} includeCompare={calcIncludeCompare} includeDifference={calcIncludeDifference} showResult={calcShowResult} showCompare={calcIncludeCompare && calcShowCompare} showDifference={calcIncludeDifference && calcShowDifference} rows={calcRows.map((row) => ({ operator: row.operator, label: row.comment, value: Number(row.value) || 0, visible: row.visible }))} onToggle={(line, checked) => { if (typeof line === 'number') setRow(line, { visible: checked }); else if (line === 'result') setCalcShowResult(checked); else if (line === 'compare') setCalcShowCompare(checked); else setCalcShowDifference(checked); }} />
           </div>
           {calcPlacement && <p className="rounded-[8px] bg-primary/10 px-2 py-1.5 text-center text-[13px] font-medium text-primary">Click on the page to place. Press Esc to cancel.</p>}
           <div className="flex gap-2">
@@ -1648,7 +1664,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
     );
-  }, [activeColor, activeKind, activePanel, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcSearch, calcTitle, calcPick, calcCompare, calcStyle, showCalcHeader, hoveredCalcId, calcDescError, setSearch, calculationResult, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeKind, activePanel, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcSearch, calcTitle, calcPick, calcCompare, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, showCalcHeader, hoveredCalcId, calcDescError, setSearch, effectiveCalcResult, calcResultDraft, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   const historyEntries = useMemo(() => {
     const fallbackDate = document?.updated_at ?? document?.created_at ?? new Date().toISOString();
@@ -1765,7 +1781,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button></div>
             <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(zoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
           </div>
-          {editing && activeKind && PLACE_NOUN[activeKind] && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">Placing a {PLACE_NOUN[activeKind]}: click on the page</span><Button variant="ghost" size="sm" className="h-7" onClick={() => setActiveKind(null)}>Cancel</Button></div>}
+          {editing && (calcPick || (activeKind && PLACE_NOUN[activeKind])) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : `Placing a ${activeKind ? PLACE_NOUN[activeKind] : ''}: click on the page`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); }}>Cancel</Button></div>}
           <div className="min-h-0 flex-1 overflow-auto bg-muted/30"><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
         </section>
         {editing && <aside className={cn("flex min-h-0", activePanel === 'calculations' ? "w-[408px]" : "w-[340px]", "shrink-0 border-l border-border bg-card")}>
