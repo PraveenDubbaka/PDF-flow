@@ -32,6 +32,8 @@ export interface PdfCalculation {
   showResult?: boolean;
   showCompare?: boolean;
   showDifference?: boolean;
+  includeCompare?: boolean;
+  includeDifference?: boolean;
 }
 
 export interface PdfCalcSource { page: number; x: number; y: number; width: number; height: number }

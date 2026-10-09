@@ -1036,8 +1036,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setCalcShowResult(calculation.showResult ?? true);
     setCalcShowCompare(calculation.showCompare ?? true);
     setCalcShowDifference(calculation.showDifference ?? true);
-    setCalcIncludeCompare(calculation.showCompare ?? true);
-    setCalcIncludeDifference(calculation.showDifference ?? true);
+    setCalcIncludeCompare(calculation.includeCompare ?? true);
+    setCalcIncludeDifference(calculation.includeDifference ?? true);
     setCalcPick(null);
   }, []);
 
@@ -1517,8 +1517,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       const addLine = () => { setCalcRows((current) => [...current, emptyCalcRow()]); focusAmount(calcRows.length); };
       const tie = tieStatus(effectiveCalcResult, calcCompare?.value);
       const sectionLabel = 'calc-section-label text-[11px] font-semibold uppercase tracking-normal text-muted-foreground';
-      const lineGrid = 'grid grid-cols-[24px_minmax(0,1fr)_100px_24px] items-center gap-2';
-      const resultGrid = 'grid grid-cols-[minmax(0,1fr)_100px_24px] items-center gap-2';
+      const lineGrid = 'grid grid-cols-[24px_minmax(0,1fr)_120px_24px] items-center gap-2';
+      const resultGrid = 'grid grid-cols-[minmax(0,1fr)_120px_24px] items-center gap-2';
       const card = 'rounded-[8px] border border-border bg-card p-4';
       return (
       <div className="pdf-calculator-panel flex flex-col gap-4 pb-4 text-[13px]">
@@ -1541,7 +1541,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               <div key={index} className={lineGrid} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
                 {index === 0 ? <span /> : (<DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button type="button" aria-label={`Line ${index + 1} operator ${OP_LABEL[row.operator]}`} onKeyDown={(event) => { const operator = KEY_TO_OP[event.key]; if (operator) { event.preventDefault(); setRow(index, { operator }); } }} className="flex h-7 w-6 items-center justify-center rounded-[6px] bg-primary/10 text-[13px] font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{OP_LABEL[row.operator]}</button>
+                        <Button variant="ghost" size="icon-sm" aria-label={`Line ${index + 1} operator ${OP_LABEL[row.operator]}`} onKeyDown={(event) => { const operator = KEY_TO_OP[event.key]; if (operator) { event.preventDefault(); setRow(index, { operator }); } }} className="flex h-7 w-6 items-center justify-center rounded-[6px] bg-primary/10 text-[13px] font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{OP_LABEL[row.operator]}</Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="min-w-[120px]">
                         {(['+', '-', '×', '÷'] as const).map((operator) => (
