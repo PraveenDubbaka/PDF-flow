@@ -115,6 +115,13 @@ export function parseAmount(raw: string): number | null {
   return Number.isFinite(value) ? (negative ? -value : value) : null;
 }
 
+function isCalculationAnnotation(annotation: PdfAnnotation, calculations?: PdfCalculation[]) {
+  return annotation.kind === 'calculation' || (annotation.kind === 'text' && (
+    calculations?.some((calculation) => calculation.id === annotation.id) ||
+    (/^Calculation\s*:/i.test(annotation.label ?? annotation.value ?? '') && parseAmount((annotation.label ?? annotation.value ?? '').split(':').slice(1).join(':')) !== null)
+  ));
+}
+
 // Older result-only annotations may have only a "Name: number" label.
 function resolveCalculation(annotation: PdfAnnotation, calculations?: PdfCalculation[]): PdfCalculation {
   const saved = calculations?.find((item) => item.id === annotation.id);
@@ -473,7 +480,9 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
         {drawing && activeKind === 'freehand' && <polyline points={polyline(drawing)} fill="none" stroke={color} strokeWidth={0.4} vectorEffect="non-scaling-stroke" />}
         {drawing && activeKind === 'redaction' && <rect x={Math.min(...drawing.map((p) => p.x))} y={Math.min(...drawing.map((p) => p.y))} width={Math.max(...drawing.map((p) => p.x)) - Math.min(...drawing.map((p) => p.x))} height={Math.max(...drawing.map((p) => p.y)) - Math.min(...drawing.map((p) => p.y))} className="fill-foreground/70" />}
       </svg>
-      {annotations.map((annotation) => (
+      {annotations.map((storedAnnotation) => {
+        const annotation = isCalculationAnnotation(storedAnnotation, calculations) ? { ...storedAnnotation, kind: 'calculation' as const } : storedAnnotation;
+        return (
         <div
           key={annotation.id}
           data-annotation-id={annotation.id}
@@ -553,7 +562,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           })()}
           {annotation.kind === 'text' && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
         </div>
-      ))}
+      ); })}
       {selectedComment && onUpdate && (
         <div
           className="absolute z-40"
@@ -1284,7 +1293,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               color, thickness: 1.5,
             });
           }
-        } else if (item.kind === 'calculation') {
+        } else if (isCalculationAnnotation(item, editState.calculations)) {
           const calculation = resolveCalculation(item, editState.calculations);
           const resultOnly = calculation.style === 'result';
           const lines: { label: string; amount?: number }[] = [];
