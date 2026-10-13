@@ -66,6 +66,7 @@ export interface PdfAnnotation {
   label?: string;
   value?: string;
   points?: { x: number; y: number }[];
+  regions?: { x: number; y: number; width: number; height: number }[];
   author?: string;
   createdAt?: string;
   mentions?: string[];

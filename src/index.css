@@ -4,7 +4,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Calculator-only sizing; the shared PDF stamp retains its native 100% scale. */
+/* Calculator controls match other editor panels; PDF stamps keep their native scale. */
 .pdf-calculator-panel {
   --calculator-muted: 220 9% 46%;
   --calculator-muted-strong: 220 9% 26%;
@@ -15,15 +15,15 @@
   --calculator-muted: 220 10% 70%;
   --calculator-muted-strong: 220 10% 88%;
 }
-.pdf-calculator-panel :where(p, span, label, input, button):not([data-calc-stamp], [data-calc-stamp] *) {
-  font-size: 13px !important;
+.pdf-calculator-panel :where(p, span, label, input, button, textarea):not([data-calc-stamp], [data-calc-stamp] *) {
+  font-size: 15px !important;
   letter-spacing: 0;
 }
 .pdf-calculator-panel .calc-section-label,
 .pdf-calculator-panel .calc-section-label span {
-  font-size: 11px !important;
+  font-size: 12px !important;
   font-weight: 600;
-  color: hsl(var(--calculator-muted));
+  color: hsl(var(--foreground));
 }
 .pdf-calculator-panel button.text-muted-foreground {
   color: hsl(var(--calculator-muted));
@@ -32,12 +32,22 @@
   color: hsl(var(--calculator-muted-strong));
 }
 .pdf-calculator-panel .calc-result-value {
-  font-size: 13px !important;
+  font-size: 15px !important;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .pdf-calculator-panel .calc-style-toggle button {
   font-size: 12px !important;
+}
+.calc-preview-enlarged {
+  zoom: 1.5;
+}
+.pdf-strike-text-layer span {
+  color: transparent !important;
+  user-select: text;
+}
+.pdf-strike-text-layer span::selection {
+  background: hsl(var(--primary) / 0.25);
 }
 
 /* Global link text styling */
