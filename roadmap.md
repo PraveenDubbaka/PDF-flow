@@ -1,7 +1,5 @@
-# PDF editor updates
-- [x] Widen and resize calculator panel; align fonts, sections, header and line controls.
-- [x] Unify enlarged preview and verify checked stamp lines.
-- [x] Move search above calculator with matching-line results.
-- [x] Standardize placement bars and redaction drawing; clip watermarks.
-- [x] Enable dragging placed items and whole-selection strikethrough.
-- [x] Verify calculator selections, editing, dragging, resizing, picker cancellation, search, redaction and strikethrough in an isolated live PDF fixture.
+# PDF edit panel fixes
+- [x] Share panel width and resizing across all tools, preserving width on switches.
+- [x] Keep document search in Search; filter placed calculations with dedicated search.
+- [x] Scale preview proportionally to full container width and fitted height.
+- [x] Verify all three changes in the live editor.

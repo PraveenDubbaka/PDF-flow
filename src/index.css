@@ -39,9 +39,6 @@
 .pdf-calculator-panel .calc-style-toggle button {
   font-size: 12px !important;
 }
-.calc-preview-enlarged {
-  zoom: 1.5;
-}
 .pdf-strike-text-layer span {
   color: transparent !important;
   user-select: text;
