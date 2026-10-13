@@ -58,6 +58,9 @@
   height: auto;
   font-weight: 400;
 }
+.pdf-calculator-panel button.calc-operator-chip {
+  height: 28px;
+}
 .pdf-calculator-panel input:not([type='color']),
 .pdf-calculator-panel textarea {
   color: hsl(var(--foreground));
