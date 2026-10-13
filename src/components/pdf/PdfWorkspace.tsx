@@ -1662,25 +1662,25 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         return [calculation.title, ...(calculation.comments ?? []), String(calculation.result), formatAmount(calculation.result), `Page ${pageNumber}`]
           .some((value) => value.toLocaleLowerCase().includes(calculationQuery));
       });
-      const sectionLabel = 'calc-section-label text-xs font-semibold text-foreground';
+      const sectionLabel = 'calc-section-label';
       const lineGrid = 'grid grid-cols-[24px_minmax(0,1fr)_120px_48px] items-center gap-2';
       const resultGrid = 'grid grid-cols-[24px_minmax(0,1fr)_120px_48px] items-center gap-2';
-      const card = 'border-b border-border pb-4';
+      const card = 'border-b border-border pb-5';
       return (
-      <div className="pdf-calculator-panel flex flex-col gap-4 pb-4 text-[13px]">
+      <div className="pdf-calculator-panel flex flex-col gap-5 pb-4 text-[13px]">
         <div className="flex items-center justify-between gap-2">
-          <p className="flex items-center gap-1.5 text-[13px] font-semibold"><Calculator className="h-3.5 w-3.5" />{editingCalcId ? 'Editing calculation' : 'New calculation'}</p>
-          <button type="button" className="shrink-0 text-[13px] font-medium text-muted-foreground" onClick={resetCalculator}>Reset</button>
+          <p className="calc-title flex items-center gap-1.5"><Calculator className="h-3.5 w-3.5" />{editingCalcId ? 'Editing calculation' : 'New calculation'}</p>
+          <Button variant="ghost" className="calc-text-action h-9 shrink-0 px-0" onClick={resetCalculator}>Reset</Button>
         </div>
         <div className={card}>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2">
             {showCalcHeader ? (
-              <div className="mb-2 flex flex-col gap-2">
-                <div className="flex items-center justify-between"><Label htmlFor="calc-header" className={sectionLabel}>Header</Label><button type="button" className="text-[13px] font-medium text-muted-foreground hover:underline" onClick={() => { setCalcTitle(''); setShowCalcHeader(false); }}>Remove</button></div>
+              <div className="mb-3.5 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between"><Label htmlFor="calc-header" className={sectionLabel}>Header</Label><Button variant="ghost" className="calc-text-action h-9 px-0" onClick={() => { setCalcTitle(''); setShowCalcHeader(false); }}>Remove header</Button></div>
                 <Input id="calc-header" className="h-8 text-[13px]" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
               </div>
             ) : null}
-            <div className={cn(lineGrid, sectionLabel)}><span /><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
+            <div className={cn(lineGrid, sectionLabel, '-mb-0.5')}><span /><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
             {calcRows.map((row, index) => (
               <div key={index} className={cn(lineGrid, 'group/calc-row')} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
                 {index === 0 ? <span /> : (<DropdownMenu>
@@ -1714,20 +1714,20 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             {calcDescError && calcRows.some((row, index) => (index === 0 || row.value.trim() !== '') && !row.comment.trim()) && <p className="text-[13px] text-destructive">Add a description to each line before placing.</p>}
 
           </div>
-          <div className="-mx-4 my-4 border-t border-border" />
+          <div className="-mx-4 my-5 border-t border-border" />
           <div className={resultGrid}>
             <span />
-            <Label htmlFor="calc-result" className="text-[13px] font-semibold text-foreground">Result</Label>
+            <Label htmlFor="calc-result" className={sectionLabel}>Result</Label>
             <Input id="calc-result" aria-label="Result" inputMode="decimal" className="calc-result-value h-8 min-w-0 px-2.5 text-right text-[13px] font-semibold tabular-nums" value={calcResultDraft ?? formatAmount(effectiveCalcResult)} onFocus={() => setCalcResultDraft(String(effectiveCalcResult))} onChange={(event) => { setCalcResultDraft(event.target.value); setCalcResultOverride(parseAmount(event.target.value)); }} onBlur={() => setCalcResultDraft(null)} />
             <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className={cn('h-8 w-6 text-primary', calcPick?.target === 'compare' && 'bg-primary/10')} aria-label="Compare by" aria-pressed={calcPick?.target === 'compare'} onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}><Crosshair /></Button></TooltipTrigger><TooltipContent>Compare by</TooltipContent></Tooltip>
           </div>
-          {calcCompare && <div className="mt-4 flex flex-col gap-3">
+          {calcCompare && <div className="mt-2 flex flex-col gap-2">
             {calcIncludeCompare && <div className={resultGrid} onMouseEnter={() => setCalcHover(calcCompare.source ?? null)} onMouseLeave={() => setCalcHover(null)}><span /><span className="min-w-0 truncate text-[13px]" title={calcCompare.label}>{calcCompare.label}</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(calcCompare.value)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove comparison" onClick={() => setCalcIncludeCompare(false)}><X /></Button></div>}
             {calcIncludeDifference && <div className={resultGrid}><span /><span className="text-[13px]">Difference</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(tie?.difference ?? 0)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove difference" onClick={() => setCalcIncludeDifference(false)}><X /></Button></div>}
           </div>}
 
         </div>
-        <div className="calc-preview flex flex-col gap-3">
+        <div className="calc-preview flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <p className={sectionLabel}>Preview</p>
             <div className="flex items-center gap-2">
@@ -1738,7 +1738,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             <CalcStamp title={calcTitle} color={calcColor} result={effectiveCalcResult} style="full" tie={calcIncludeDifference ? tie : null} compare={calcCompare && (calcIncludeCompare || calcIncludeDifference) ? { label: calcIncludeCompare ? calcCompare.label : '', value: calcCompare.value } : null} includeCompare={calcIncludeCompare} includeDifference={calcIncludeDifference} showResult={calcShowResult} showCompare={calcIncludeCompare && calcShowCompare} showDifference={calcIncludeDifference && calcShowDifference} rows={calcRows.filter((row, index) => index === 0 || row.value.trim() !== '').map((row) => ({ operator: row.operator, label: row.comment, value: Number(row.value) || 0, visible: row.visible }))} onToggle={(line, checked) => { if (typeof line === 'number') { const originalIndex = calcRows.map((row, index) => ({ row, index })).filter(({ row, index }) => index === 0 || row.value.trim() !== '')[line]?.index; if (originalIndex !== undefined) setRow(originalIndex, { visible: checked }); } else if (line === 'result') setCalcShowResult(checked); else if (line === 'compare') setCalcShowCompare(checked); else setCalcShowDifference(checked); }} />
           </CalculationPreview>
           <div className="flex gap-2">
-            {editingCalcId && <Button variant="outline" className="calc-panel-action h-8 flex-1 text-[13px]" onClick={resetCalculator}>Discard changes</Button>}
+            {editingCalcId && <Button variant="outline" className="calc-panel-action h-9 flex-1 text-[13px]" onClick={resetCalculator}>Discard changes</Button>}
             <Button className={cn('calc-panel-action h-9 flex-1 text-[13px]', calcPlacement && 'bg-primary/85 ring-2 ring-ring ring-offset-2')} aria-pressed={calcPlacement} disabled={!calcPlacement && !calcRows.some((row) => (Number(row.value) || 0) !== 0)} onClick={() => { setCalcPick(null); armCalcPlacement(); }}>{editingCalcId ? <Save /> : <Plus />}{editingCalcId ? 'Update stamp' : 'Place on page'}</Button>
           </div>
         </div>
@@ -1751,12 +1751,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             const status = tieStatus(calculation.result, calculation.compareTo);
             return (
               <div key={calculation.id} onMouseEnter={() => setHoveredCalcId(calculation.id)} onMouseLeave={() => setHoveredCalcId(null)} className={cn('flex items-start gap-1 rounded-[8px] border bg-card p-3', editingCalcId === calculation.id ? 'border-primary' : 'border-border', hoveredCalcId === calculation.id && 'bg-muted/40')} style={hoveredCalcId === calculation.id && editingCalcId !== calculation.id ? { borderColor: calculation.color } : undefined}>
-                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setPage(pageLabel); setPulseCalc({ id: calculation.id, key: Date.now() }); window.setTimeout(() => setPulseCalc((current) => (current?.id === calculation.id ? null : current)), 2400); }}>
-                  <span className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: calculation.color }} /><span className="truncate text-[13px] font-semibold text-foreground">{calculation.title || 'Calculation'}</span></span>
-                  <span className="mt-0.5 block truncate pl-4 text-[13px] tabular-nums text-foreground">Result = {formatAmount(calculation.result)}{status && <span className={cn('ml-1.5 font-semibold', status.ties ? 'text-success' : 'text-destructive')}>{status.ties ? '✓' : '≠'}</span>}</span>
-                  {calculation.author && <span className="block truncate pl-4 text-[13px] text-foreground">{calculation.author.split(' ')[0]}{calculation.createdAt ? ` · ${new Date(calculation.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}</span>}
+                <button type="button" className="calc-history-row min-w-0 flex-1 text-left" onClick={() => { setPage(pageLabel); setPulseCalc({ id: calculation.id, key: Date.now() }); window.setTimeout(() => setPulseCalc((current) => (current?.id === calculation.id ? null : current)), 2400); }}>
+                  <span className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: calculation.color }} /><span className="calc-body-semibold truncate text-[13px] text-foreground">{calculation.title || 'Calculation'}</span></span>
+                  <span className="calc-history-meta mt-0.5 block truncate pl-4 tabular-nums">Result = {formatAmount(calculation.result)}{status && <span className={cn('ml-1.5', status.ties ? 'text-success' : 'text-destructive')}>{status.ties ? '✓' : '≠'}</span>}</span>
+                  {calculation.author && <span className="calc-history-meta block truncate pl-4">{calculation.author.split(' ')[0]}{calculation.createdAt ? ` · ${new Date(calculation.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}</span>}
                 </button>
-                <span className="mt-0.5 shrink-0 rounded-full bg-muted px-2 py-0.5 text-[13px] font-medium text-foreground">Page {pageLabel}</span>
+                <span className="calc-history-meta mt-0.5 shrink-0 rounded-full bg-muted px-2 py-0.5">Page {pageLabel}</span>
                 <Button variant="ghost" size="icon-sm" className="h-8 w-7 shrink-0 text-foreground/60 hover:text-foreground" aria-label="Edit calculation" onClick={() => startEditCalculation(calculation)}><Pencil /></Button>
                 <Button variant="ghost" size="icon-sm" className="h-8 w-7 shrink-0 text-foreground/60 hover:bg-destructive/10 hover:text-destructive" aria-label="Delete calculation" onClick={() => { if (editingCalcId === calculation.id) resetCalculator(); setEditState((current) => ({ ...current, calculations: (current.calculations ?? []).filter((item) => item.id !== calculation.id), annotations: current.annotations.filter((item) => item.id !== calculation.id) })); }}><Trash2 /></Button>
               </div>
