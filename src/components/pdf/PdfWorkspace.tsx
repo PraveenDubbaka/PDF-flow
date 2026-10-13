@@ -115,6 +115,26 @@ export function parseAmount(raw: string): number | null {
   return Number.isFinite(value) ? (negative ? -value : value) : null;
 }
 
+function formattedNumberEntry(input: HTMLInputElement) {
+  const raw = input.value;
+  const caret = (raw.slice(0, input.selectionStart ?? raw.length).match(/[^,]/g) ?? []).length;
+  const ungrouped = raw.replace(/,/g, '');
+  const formatted = /^[-−(]?\d*(?:\.\d*)?\)?$/.test(ungrouped)
+    ? ungrouped.replace(/\d+/, (digits) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ','))
+    : raw;
+  requestAnimationFrame(() => {
+    if (window.document.activeElement !== input) return;
+    let position = 0;
+    let characters = 0;
+    while (position < formatted.length && characters < caret) {
+      if (formatted[position] !== ',') characters += 1;
+      position += 1;
+    }
+    input.setSelectionRange(position, position);
+  });
+  return formatted;
+}
+
 function isCalculationAnnotation(annotation: PdfAnnotation, calculations?: PdfCalculation[]) {
   return annotation.kind === 'calculation' || (annotation.kind === 'text' && (
     calculations?.some((calculation) => calculation.id === annotation.id) ||
@@ -155,11 +175,11 @@ function CalcStamp({ title, rows, result, color, style, tie, compare, showResult
       {style === 'full' && rows.map((row, index) => (row.visible !== false || onToggle) && (
         <span key={index} className={cn('flex items-baseline justify-between gap-3', row.visible === false && 'opacity-50')}>
           <span className={cn("relative flex min-w-0", onToggle && "pl-4")}>{checkbox(index, row.visible !== false, row.label || `line ${index + 1}`)}<span className="truncate">{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || '\u00a0'}</span></span>
-          <span className="shrink-0 text-right tabular-nums">{formatAmount(row.value)}</span>
+          <span className="shrink-0 whitespace-nowrap text-right tabular-nums">{formatAmount(row.value)}</span>
         </span>
       ))}
       {(showResult || onToggle) && <span className={cn('flex items-baseline justify-between gap-3 font-semibold', style === 'full' && 'mt-0.5 border-t border-border pt-0.5', !showResult && 'opacity-50')}>
-        <span className={cn("relative flex", onToggle && "pl-4")}>{checkbox('result', showResult, 'result')}Result</span><span className="text-right tabular-nums">{formatAmount(result)}</span>
+        <span className={cn("relative flex", onToggle && "pl-4")}>{checkbox('result', showResult, 'result')}Result</span><span className="shrink-0 whitespace-nowrap text-right tabular-nums">{formatAmount(result)}</span>
       </span>}
       {compare && includeCompare && (showCompare || onToggle) && <span className={cn('flex items-baseline justify-between gap-3', !showCompare && 'opacity-50')}><span className={cn("relative flex min-w-0", onToggle && "pl-4")}>{checkbox('compare', showCompare, 'comparison')}<span className="truncate">{compare.label}</span></span><span className="shrink-0 text-right tabular-nums">{formatAmount(compare.value)}</span></span>}
       {tie && compare && includeDifference && (showDifference || onToggle) && <span className={cn('flex items-baseline justify-between gap-3 font-semibold', !showDifference && 'opacity-50')}><span className={cn("relative flex", onToggle && "pl-4")}>{checkbox('difference', showDifference, 'difference')}Difference</span><span className="shrink-0 text-right tabular-nums">{formatAmount(tie.difference)}</span></span>}
@@ -198,9 +218,9 @@ function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, o
         className={cn("h-9 min-w-0 pr-2.5 text-right text-[13px] tabular-nums", prefix ? "pl-[52px]" : "pl-7")}
         value={display}
         placeholder="0"
-        onFocus={() => { setFocused(true); setDraft(value); }}
+        onFocus={() => { setFocused(true); setDraft(value === '' ? '' : formatAmount(Number(value))); }}
         onBlur={() => setFocused(false)}
-        onChange={(event) => { setDraft(event.target.value); const parsed = parseAmount(event.target.value); onValue(parsed === null ? '' : String(parsed)); }}
+        onChange={(event) => { setDraft(formattedNumberEntry(event.currentTarget)); const parsed = parseAmount(event.target.value); onValue(parsed === null ? '' : String(parsed)); }}
         onKeyDown={(event) => {
           if (event.key === 'Enter') { event.preventDefault(); onEnter(); return; }
           const operator = KEY_TO_OP[event.key];
@@ -1679,7 +1699,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           .some((value) => value.toLocaleLowerCase().includes(calculationQuery));
       });
       const sectionLabel = 'calc-section-label';
-      const lineGrid = 'grid grid-cols-[minmax(0,1fr)_120px_48px] items-center gap-2';
+      const lineGrid = 'grid grid-cols-[minmax(0,1fr)_192px_48px] items-center gap-2';
       const resultGrid = lineGrid;
       const card = 'border-b border-border pb-5';
       return (
@@ -1735,7 +1755,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <div className="-mx-4 my-5 border-t border-border" />
           <div className={resultGrid}>
             <Label htmlFor="calc-result" className={sectionLabel}>Result</Label>
-            <Input id="calc-result" aria-label="Result" inputMode="decimal" className="calc-result-value h-8 min-w-0 px-2.5 text-right text-[13px] font-semibold tabular-nums" value={calcResultDraft ?? formatAmount(effectiveCalcResult)} onFocus={() => setCalcResultDraft(String(effectiveCalcResult))} onChange={(event) => { setCalcResultDraft(event.target.value); setCalcResultOverride(parseAmount(event.target.value)); }} onBlur={() => setCalcResultDraft(null)} />
+            <Input id="calc-result" aria-label="Result" inputMode="decimal" className="calc-result-value h-8 min-w-0 px-2.5 text-right text-[13px] font-normal tabular-nums" value={calcResultDraft ?? formatAmount(effectiveCalcResult)} onFocus={() => setCalcResultDraft(formatAmount(effectiveCalcResult))} onChange={(event) => { setCalcResultDraft(formattedNumberEntry(event.currentTarget)); setCalcResultOverride(parseAmount(event.target.value)); }} onBlur={() => setCalcResultDraft(null)} />
             <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className={cn('h-8 w-6 text-primary', calcPick?.target === 'compare' && 'bg-primary/10')} aria-label="Compare by" aria-pressed={calcPick?.target === 'compare'} onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}><Crosshair /></Button></TooltipTrigger><TooltipContent>Compare by</TooltipContent></Tooltip>
           </div>
           {calcCompare && <div className="mt-2 flex flex-col gap-2">
@@ -1941,7 +1961,10 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </section>
         {editing && <aside style={{ width: editPanelWidth }} className="relative flex min-h-0 max-w-[calc(100vw-64px)] shrink-0 border-l border-border bg-card">
           <div role="separator" aria-label="Resize edit panel" aria-orientation="vertical" tabIndex={0} className="absolute -left-1 top-0 z-40 h-full w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20" onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setEditPanelWidth((width) => Math.max(408, Math.min(window.innerWidth - 64, width + (event.key === 'ArrowLeft' ? 16 : -16)))); } }} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.dataset.startX = String(event.clientX); event.currentTarget.dataset.startWidth = String(editPanelWidth); }} onPointerMove={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; setEditPanelWidth(Math.max(408, Math.min(window.innerWidth - 64, Number(event.currentTarget.dataset.startWidth) + Number(event.currentTarget.dataset.startX) - event.clientX))); }} onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
-          <ScrollArea className="w-12 shrink-0 border-r border-border"><div className="flex min-h-full flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" className={activePanel === id ? undefined : 'hover:bg-muted'} onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? (activePanel === 'luka' ? <LukaIcon size={22} bare /> : <LukaIcon size={22} />) : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
+          <div className="flex w-12 shrink-0 flex-col border-r border-border">
+            <ScrollArea className="min-h-0 flex-1"><div className="flex flex-col items-center gap-1 py-2">{TOOLS.filter(({ id }) => id !== 'luka').map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" className={activePanel === id ? undefined : 'hover:bg-muted'} onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}><Icon /></Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
+            <div className="flex shrink-0 justify-center border-t border-border py-2"><Tooltip><TooltipTrigger asChild><Button variant="default" size="icon" aria-label="Ask Luka" aria-pressed={activePanel === 'luka'} onClick={() => { setActivePanel('luka'); setActiveKind(null); }}><LukaIcon size={22} bare /></Button></TooltipTrigger><TooltipContent side="left">Ask Luka</TooltipContent></Tooltip></div>
+          </div>
           {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full min-w-0 flex-1"><div className={cn("min-w-0", activePanel === 'calculations' ? "p-4" : "p-3")}>
             {panelContent}</div></ScrollArea>}
         </aside>}
