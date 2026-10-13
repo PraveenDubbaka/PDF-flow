@@ -1,5 +1,4 @@
-# Calculator input and comparison alignment
-- [x] Move operators to right suffixes with uniform description text starts.
-- [x] Set description and amount inputs to 36px with inset chips.
-- [x] Align comparison and Difference labels and values with Result.
-- [x] Verify the three changes in the live editor.
+# Calculator preview resizing
+- [x] Attach the row-resize handle to the preview bottom edge.
+- [x] Fit the stamp proportionally to user-chosen height with a native-size minimum.
+- [x] Verify resizing, retained size, and recent calculator changes in the live editor.

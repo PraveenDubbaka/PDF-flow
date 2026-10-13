@@ -16,10 +16,12 @@ export function CalculationPreview({ children }: { children: ReactNode }) {
     if (!container || !stamp) return;
     const measure = () => {
       const widthScale = container.clientWidth / stamp.offsetWidth;
-      const height = Math.max(chosenHeight ?? 0, stamp.offsetHeight * widthScale);
-      const scale = widthScale;
+      const handleClearance = 18;
+      const minimumHeight = stamp.offsetHeight * Math.min(1, widthScale) + handleClearance;
+      const height = Math.max(chosenHeight ?? stamp.offsetHeight * widthScale + handleClearance, minimumHeight);
+      const scale = Math.min(widthScale, (height - handleClearance) / stamp.offsetHeight);
       if (!Number.isFinite(scale) || scale <= 0) return;
-      setSize({ scale, height, left: (container.clientWidth - stamp.offsetWidth * scale) / 2, top: (height - stamp.offsetHeight * scale) / 2 });
+      setSize({ scale, height, left: (container.clientWidth - stamp.offsetWidth * scale) / 2, top: (height - handleClearance - stamp.offsetHeight * scale) / 2 });
     };
     const observer = new ResizeObserver(measure);
     observer.observe(container);
@@ -29,20 +31,20 @@ export function CalculationPreview({ children }: { children: ReactNode }) {
   }, [chosenHeight]);
 
   return (
-    <div className="flex w-full min-w-0 flex-col items-center gap-1">
+    <div className="mb-[18px] w-full min-w-0">
       <div className="w-full rounded-[8px] border border-border bg-muted/40">
       <div ref={containerRef} data-calculation-preview className="relative w-full" style={{ height: size.height }}>
         <div ref={stampRef} className="absolute w-[260px] origin-top-left [&>[data-calc-stamp]]:flex [&>[data-calc-stamp]]:w-full" style={{ left: size.left, top: size.top, transform: `scale(${size.scale})` }}>
           {children}
         </div>
-      </div>
-      </div>
-      <Button variant="ghost" aria-label="Resize calculation preview" className="z-10 h-9 w-10 shrink-0 cursor-ns-resize touch-none rounded-[4px] border border-border bg-background p-0"
+      <Button variant="ghost" aria-label="Resize calculation preview" className="absolute bottom-0 left-1/2 z-10 h-9 w-10 -translate-x-1/2 translate-y-1/2 cursor-row-resize touch-none rounded-[4px] border border-border bg-background p-0"
         onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); dragRef.current = { y: event.clientY, height: size.height }; }}
         onPointerMove={(event) => { if (dragRef.current) setChosenHeight(Math.max(48, dragRef.current.height + event.clientY - dragRef.current.y)); }}
         onPointerUp={(event) => { dragRef.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
         onPointerCancel={() => { dragRef.current = null; }}
       ><GripHorizontal className="h-3 w-4" /></Button>
+      </div>
+      </div>
     </div>
   );
 }
