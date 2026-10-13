@@ -65,13 +65,13 @@
 }
 .pdf-calculator-panel input::placeholder,
 .pdf-calculator-panel textarea::placeholder {
-  font-size: 13px;
+  font-size: 13px !important;
   font-weight: 400;
   color: hsl(var(--foreground));
 }
 .pdf-calculator-panel .calc-result-value {
   font-size: 14px !important;
-  font-weight: 600;
+  font-weight: 600 !important;
   color: hsl(var(--foreground));
   font-variant-numeric: tabular-nums;
 }
