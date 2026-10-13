@@ -42,6 +42,13 @@
 .calc-preview-enlarged {
   zoom: 1.5;
 }
+.pdf-strike-text-layer span {
+  color: transparent !important;
+  user-select: text;
+}
+.pdf-strike-text-layer span::selection {
+  background: hsl(var(--primary) / 0.25);
+}
 
 /* Global link text styling */
 .text-link {
