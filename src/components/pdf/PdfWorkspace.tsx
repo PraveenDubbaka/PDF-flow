@@ -339,7 +339,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
     onAdd({
       id: crypto.randomUUID(), kind: activeKind, page: pageNumber, x, y,
       width: isPoint ? 4 : 18, height: isPoint ? 4 : 5,
-      color: activeKind === 'comment' ? '#f59e0b' : activeKind === 'link' ? '#1C63A6' : activeKind === 'trial-balance' ? '#2563eb' : activeKind === 'redaction' ? '#111827' : color,
+      color: activeKind === 'comment' ? '#f59e0b' : activeKind === 'link' ? '#1C63A6' : activeKind === 'trial-balance' ? '#2563eb' : color,
     });
   };
 
