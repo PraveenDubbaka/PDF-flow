@@ -195,7 +195,7 @@ function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, o
         data-calc-amount={index}
         aria-label={`Amount ${index + 1}`}
         inputMode="decimal"
-        className={cn("h-8 min-w-0 pr-2.5 text-right text-[13px] tabular-nums", prefix ? "pl-[52px]" : "pl-7")}
+        className={cn("h-9 min-w-0 pr-2.5 text-right text-[13px] tabular-nums", prefix ? "pl-[52px]" : "pl-7")}
         value={display}
         placeholder="0"
         onFocus={() => { setFocused(true); setDraft(value); }}
@@ -1673,7 +1673,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       });
       const sectionLabel = 'calc-section-label';
       const lineGrid = 'grid grid-cols-[minmax(0,1fr)_120px_48px] items-center gap-2';
-      const resultGrid = 'grid grid-cols-[24px_minmax(0,1fr)_120px_48px] items-center gap-2';
+      const resultGrid = lineGrid;
       const card = 'border-b border-border pb-5';
       return (
       <div className="pdf-calculator-panel flex flex-col gap-5 pb-4 text-[13px]">
@@ -1695,7 +1695,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                 <div className="relative min-w-0">
                 {index > 0 && (<DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm" aria-label={`Line ${index + 1} operator ${OP_LABEL[row.operator]}`} onKeyDown={(event) => { const operator = KEY_TO_OP[event.key]; if (operator) { event.preventDefault(); setRow(index, { operator }); } }} className="absolute left-1 top-1/2 z-10 flex h-9 w-6 -translate-y-1/2 items-center justify-center rounded-[6px] bg-primary/10 text-[13px] font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{OP_LABEL[row.operator]}</Button>
+                        <Button variant="ghost" size="icon-sm" aria-label={`Line ${index + 1} operator ${OP_LABEL[row.operator]}`} onKeyDown={(event) => { const operator = KEY_TO_OP[event.key]; if (operator) { event.preventDefault(); setRow(index, { operator }); } }} className="calc-operator-chip absolute right-1 top-1/2 z-10 flex h-7 w-6 -translate-y-1/2 items-center justify-center rounded-[6px] bg-primary/10 text-[13px] font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{OP_LABEL[row.operator]}</Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="min-w-[120px]">
                         {(['+', '-', '×', '÷'] as const).map((operator) => (
@@ -1705,7 +1705,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                         ))}
                       </DropdownMenuContent>
                     </DropdownMenu>)}
-                <Textarea aria-label={`Description ${index + 1}`} aria-invalid={calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim()} rows={1} className={cn('min-h-8 h-auto min-w-0 resize-none overflow-hidden whitespace-pre-wrap break-words px-2.5 py-1.5 text-[13px] [field-sizing:content]', index > 0 && 'min-h-10 pl-9', calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim() && 'border-destructive focus-visible:ring-destructive')} value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
+                <Textarea aria-label={`Description ${index + 1}`} aria-invalid={calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim()} rows={1} className={cn('h-9 min-h-9 max-h-9 min-w-0 resize-none overflow-hidden whitespace-pre-wrap break-words px-2.5 py-1.5 text-[13px]', index > 0 && 'pr-9', calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim() && 'border-destructive focus-visible:ring-destructive')} value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
                 </div>
                 <CalcAmountInput
                   index={index}
@@ -1727,13 +1727,13 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           </div>
           <div className="-mx-4 my-5 border-t border-border" />
           <div className={resultGrid}>
-            <Label htmlFor="calc-result" className={cn(sectionLabel, 'col-span-2')}>Result</Label>
+            <Label htmlFor="calc-result" className={sectionLabel}>Result</Label>
             <Input id="calc-result" aria-label="Result" inputMode="decimal" className="calc-result-value h-8 min-w-0 px-2.5 text-right text-[13px] font-semibold tabular-nums" value={calcResultDraft ?? formatAmount(effectiveCalcResult)} onFocus={() => setCalcResultDraft(String(effectiveCalcResult))} onChange={(event) => { setCalcResultDraft(event.target.value); setCalcResultOverride(parseAmount(event.target.value)); }} onBlur={() => setCalcResultDraft(null)} />
             <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className={cn('h-8 w-6 text-primary', calcPick?.target === 'compare' && 'bg-primary/10')} aria-label="Compare by" aria-pressed={calcPick?.target === 'compare'} onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}><Crosshair /></Button></TooltipTrigger><TooltipContent>Compare by</TooltipContent></Tooltip>
           </div>
           {calcCompare && <div className="mt-2 flex flex-col gap-2">
-            {calcIncludeCompare && <div className={resultGrid} onMouseEnter={() => setCalcHover(calcCompare.source ?? null)} onMouseLeave={() => setCalcHover(null)}><span /><span className="min-w-0 truncate text-[13px]" title={calcCompare.label}>{calcCompare.label}</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(calcCompare.value)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove comparison" onClick={() => setCalcIncludeCompare(false)}><X /></Button></div>}
-            {calcIncludeDifference && <div className={resultGrid}><span /><span className="text-[13px]">Difference</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(tie?.difference ?? 0)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove difference" onClick={() => setCalcIncludeDifference(false)}><X /></Button></div>}
+            {calcIncludeCompare && <div className={resultGrid} onMouseEnter={() => setCalcHover(calcCompare.source ?? null)} onMouseLeave={() => setCalcHover(null)}><span className="min-w-0 truncate text-[13px]" title={calcCompare.label}>{calcCompare.label}</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(calcCompare.value)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove comparison" onClick={() => setCalcIncludeCompare(false)}><X /></Button></div>}
+            {calcIncludeDifference && <div className={resultGrid}><span className="text-[13px]">Difference</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(tie?.difference ?? 0)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove difference" onClick={() => setCalcIncludeDifference(false)}><X /></Button></div>}
           </div>}
 
         </div>
