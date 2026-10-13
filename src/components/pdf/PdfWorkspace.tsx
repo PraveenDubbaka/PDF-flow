@@ -115,6 +115,16 @@ export function parseAmount(raw: string): number | null {
   return Number.isFinite(value) ? (negative ? -value : value) : null;
 }
 
+// Older result-only annotations may have only a "Name: number" label.
+function resolveCalculation(annotation: PdfAnnotation, calculations?: PdfCalculation[]): PdfCalculation {
+  const saved = calculations?.find((item) => item.id === annotation.id);
+  if (saved) return saved;
+  const label = annotation.label ?? annotation.value ?? '';
+  const separator = label.lastIndexOf(':');
+  const amount = separator >= 0 ? label.slice(separator + 1) : label;
+  return { id: annotation.id, page: annotation.page, title: separator >= 0 ? label.slice(0, separator).trim() : '', result: parseAmount(amount) ?? parseAmount(annotation.value ?? '') ?? 0, values: [], color: annotation.color, style: 'result' };
+}
+
 function CalcStamp({ title, rows, result, color, style, tie, compare, showResult = true, showCompare = false, showDifference = false, includeCompare = true, includeDifference = true, onToggle }: {
   title?: string;
   rows: { operator: CalcOperator; label: string; value: number; visible?: boolean }[];
@@ -532,14 +542,14 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           )}
           {annotation.kind === 'image' && annotation.value && <img src={annotation.value} alt={annotation.label ?? 'Inserted image'} className="h-full w-full object-contain" />}
           {annotation.kind === 'calculation' && (() => {
-            const calc = calculations?.find((item) => item.id === annotation.id);
-            if (!calc) return <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>;
+            const calc = resolveCalculation(annotation, calculations);
+            const resultOnly = calc.style === 'result';
             return <ResizableCalculationStamp scale={annotation.stampScale ?? 1} selected={selectedId === annotation.id && !activeKind && !placingCalc && !pickingValue} onCommit={({ scale, width, height, dx, dy }) => {
               const bounds = pageRef.current?.getBoundingClientRect();
               if (!bounds) return;
               suppressClick.current = true;
               onUpdate?.(annotation.id, { stampScale: scale, x: annotation.x + dx / bounds.width * 100, y: annotation.y + dy / bounds.height * 100, width: width / bounds.width * 100, height: height / bounds.height * 100 });
-            }}><CalcStamp title={calc.title} color={calc.color} result={calc.result} style={calc.visibleLines ? 'full' : calc.style ?? 'full'} tie={calc.visibleLines && calc.includeDifference === false ? null : tieStatus(calc.result, calc.compareTo)} compare={calc.visibleLines && calc.compareTo != null ? { label: calc.compareLabel ?? '', value: calc.compareTo } : null} includeCompare={calc.includeCompare ?? true} includeDifference={calc.includeDifference ?? true} showResult={calc.showResult ?? true} showCompare={calc.showCompare} showDifference={calc.showDifference} rows={calc.values.map((value, index) => ({ value, operator: calc.operators?.[index] ?? '+', label: calc.comments?.[index] ?? '', visible: calc.visibleLines?.[index] }))} /></ResizableCalculationStamp>;
+            }}><CalcStamp title={calc.title} color={calc.color} result={calc.result} style={resultOnly ? 'result' : 'full'} tie={resultOnly || (calc.visibleLines && calc.includeDifference === false) ? null : tieStatus(calc.result, calc.compareTo)} compare={!resultOnly && calc.visibleLines && calc.compareTo != null ? { label: calc.compareLabel ?? '', value: calc.compareTo } : null} includeCompare={calc.includeCompare ?? true} includeDifference={calc.includeDifference ?? true} showResult={resultOnly || (calc.showResult ?? true)} showCompare={calc.showCompare} showDifference={calc.showDifference} rows={calc.values.map((value, index) => ({ value, operator: calc.operators?.[index] ?? '+', label: calc.comments?.[index] ?? '', visible: calc.visibleLines?.[index] }))} /></ResizableCalculationStamp>;
           })()}
           {annotation.kind === 'text' && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
         </div>
@@ -1274,16 +1284,16 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               color, thickness: 1.5,
             });
           }
-        } else if (item.kind === 'calculation' && editState.calculations?.some((calculation) => calculation.id === item.id)) {
-          const calculation = editState.calculations.find((calculation) => calculation.id === item.id);
-          if (!calculation) continue;
+        } else if (item.kind === 'calculation') {
+          const calculation = resolveCalculation(item, editState.calculations);
+          const resultOnly = calculation.style === 'result';
           const lines: { label: string; amount?: number }[] = [];
           if (calculation.title.trim() && calculation.title !== 'Calculation') lines.push({ label: calculation.title });
           calculation.values.forEach((value, rowIndex) => {
-            if ((calculation.visibleLines || calculation.style !== 'result') && calculation.visibleLines?.[rowIndex] !== false) lines.push({ label: `${rowIndex > 0 ? `${OP_LABEL[calculation.operators?.[rowIndex] ?? '+']} ` : ''}${calculation.comments?.[rowIndex] ?? ''}`, amount: value });
+            if (!resultOnly && calculation.visibleLines?.[rowIndex] !== false) lines.push({ label: `${rowIndex > 0 ? `${OP_LABEL[calculation.operators?.[rowIndex] ?? '+']} ` : ''}${calculation.comments?.[rowIndex] ?? ''}`, amount: value });
           });
-          if (calculation.showResult !== false) lines.push({ label: 'Result', amount: calculation.result });
-          if (calculation.compareTo != null) {
+          if (resultOnly || calculation.showResult !== false) lines.push({ label: 'Result', amount: calculation.result });
+          if (!resultOnly && calculation.compareTo != null) {
             if (calculation.includeCompare !== false && calculation.showCompare) lines.push({ label: calculation.compareLabel ?? '', amount: calculation.compareTo });
             if (calculation.includeDifference !== false && calculation.showDifference) lines.push({ label: 'Difference', amount: tieStatus(calculation.result, calculation.compareTo)?.difference ?? 0 });
           }
@@ -1305,7 +1315,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               copiedPage.drawText(amount, { x: x + stampWidth - padding - font.widthOfTextAtSize(amount, stampSize), y: baseline, size: stampSize, font, color });
             }
           });
-        } else if ((item.kind === 'text' || item.kind === 'comment' || item.kind === 'link' || item.kind === 'trial-balance' || item.kind === 'calculation') && (item.label || item.value)) {
+        } else if ((item.kind === 'text' || item.kind === 'comment' || item.kind === 'link' || item.kind === 'trial-balance') && (item.label || item.value)) {
           copiedPage.drawText(String(item.label ?? item.value), { x, y: y + boxHeight / 2, size: 10, font, color });
         } else if (item.kind === 'image' && item.value) {
           const bytes = Uint8Array.from(atob(item.value.split(',')[1] ?? ''), (character) => character.charCodeAt(0));
@@ -1728,12 +1738,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             <CalcStamp title={calcTitle} color={calcColor} result={effectiveCalcResult} style="full" tie={calcIncludeDifference ? tie : null} compare={calcCompare && (calcIncludeCompare || calcIncludeDifference) ? { label: calcIncludeCompare ? calcCompare.label : '', value: calcCompare.value } : null} includeCompare={calcIncludeCompare} includeDifference={calcIncludeDifference} showResult={calcShowResult} showCompare={calcIncludeCompare && calcShowCompare} showDifference={calcIncludeDifference && calcShowDifference} rows={calcRows.filter((row, index) => index === 0 || row.value.trim() !== '').map((row) => ({ operator: row.operator, label: row.comment, value: Number(row.value) || 0, visible: row.visible }))} onToggle={(line, checked) => { if (typeof line === 'number') { const originalIndex = calcRows.map((row, index) => ({ row, index })).filter(({ row, index }) => index === 0 || row.value.trim() !== '')[line]?.index; if (originalIndex !== undefined) setRow(originalIndex, { visible: checked }); } else if (line === 'result') setCalcShowResult(checked); else if (line === 'compare') setCalcShowCompare(checked); else setCalcShowDifference(checked); }} />
           </CalculationPreview>
           <div className="flex gap-2">
-            {editingCalcId && <Button variant="outline" className="h-8 flex-1 text-[13px]" onClick={resetCalculator}>Discard changes</Button>}
-            <Button className={cn('h-9 flex-1 text-[13px]', calcPlacement && 'bg-primary/85 ring-2 ring-ring ring-offset-2')} aria-pressed={calcPlacement} disabled={!calcPlacement && !calcRows.some((row) => (Number(row.value) || 0) !== 0)} onClick={() => { setCalcPick(null); armCalcPlacement(); }}>{editingCalcId ? <Save /> : <Plus />}{editingCalcId ? 'Update stamp' : 'Place on page'}</Button>
+            {editingCalcId && <Button variant="outline" className="calc-panel-action h-8 flex-1 text-[13px]" onClick={resetCalculator}>Discard changes</Button>}
+            <Button className={cn('calc-panel-action h-9 flex-1 text-[13px]', calcPlacement && 'bg-primary/85 ring-2 ring-ring ring-offset-2')} aria-pressed={calcPlacement} disabled={!calcPlacement && !calcRows.some((row) => (Number(row.value) || 0) !== 0)} onClick={() => { setCalcPick(null); armCalcPlacement(); }}>{editingCalcId ? <Save /> : <Plus />}{editingCalcId ? 'Update stamp' : 'Place on page'}</Button>
           </div>
         </div>
         <div className="flex flex-col gap-2">
-          <div><p className={sectionLabel}>History</p><p className="mt-1 text-[13px] text-muted-foreground">Placed calculations</p></div>
+          <div><p className={sectionLabel}>History</p><p className="calc-history-helper mt-1 text-muted-foreground">Placed calculations</p></div>
           <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground" /><Input aria-label="Search placed calculations" placeholder="Search placed calculations" value={placedCalcSearch} onChange={(event) => setPlacedCalcSearch(event.target.value)} className="pl-8" /></div>
           {filteredCalculations.length === 0 && <p className="text-[13px] text-foreground">{calculationQuery ? 'No calculations match your search.' : 'No calculations placed on the document yet.'}</p>}
           {filteredCalculations.map((calculation) => {

@@ -25,6 +25,14 @@
   font-weight: 600;
   color: hsl(var(--foreground));
 }
+.pdf-calculator-panel .calc-history-helper {
+  font-size: 11px !important;
+  color: hsl(var(--calculator-muted)) !important;
+}
+.pdf-calculator-panel button.calc-panel-action,
+.pdf-calculator-panel button.calc-panel-action span {
+  font-size: 15px !important;
+}
 .pdf-calculator-panel button.text-muted-foreground {
   color: hsl(var(--calculator-muted));
 }
