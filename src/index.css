@@ -73,8 +73,8 @@
   color: hsl(var(--foreground));
 }
 .pdf-calculator-panel .calc-result-value {
-  font-size: 14px !important;
-  font-weight: 600 !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
   color: hsl(var(--foreground));
   font-variant-numeric: tabular-nums;
 }
