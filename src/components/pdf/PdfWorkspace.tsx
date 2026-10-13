@@ -148,9 +148,9 @@ function CalcStamp({ title, rows, result, color, style, tie, compare, showResult
   onToggle?: (line: number | 'result' | 'compare' | 'difference', checked: boolean) => void;
 }) {
   const showTitle = !!title && title.trim() !== '' && title !== 'Calculation';
-  const checkbox = (line: number | 'result' | 'compare' | 'difference', checked: boolean, label: string) => onToggle ? <Checkbox className="absolute left-0 top-1/2 h-3 w-3 -translate-y-1/2" aria-label={`Include ${label} in stamp`} checked={checked} onCheckedChange={(value) => onToggle(line, value === true)} /> : null;
+  const checkbox = (line: number | 'result' | 'compare' | 'difference', checked: boolean, label: string) => onToggle ? <span className="absolute left-0 top-1/2 flex h-3 w-3 -translate-y-1/2 items-center"><Checkbox className="h-3 w-3 shrink-0" aria-label={`Include ${label} in stamp`} checked={checked} onCheckedChange={(value) => onToggle(line, value === true)} /></span> : null;
   return (
-    <div data-calc-stamp className="inline-flex min-w-[120px] max-w-[260px] flex-col rounded-[4px] border bg-card px-2 py-1.5 text-[10px] leading-snug text-foreground" style={{ borderColor: color }}>
+    <div data-calc-stamp className="inline-flex min-w-[120px] max-w-[260px] flex-col rounded-[4px] border bg-card px-2 py-1.5 text-[10px] font-normal leading-snug text-foreground" style={{ borderColor: color }}>
       {showTitle && <span className="truncate text-[11px] font-semibold" style={{ color }}>{title}</span>}
       {style === 'full' && rows.map((row, index) => (row.visible !== false || onToggle) && (
         <span key={index} className={cn('flex items-baseline justify-between gap-3', row.visible === false && 'opacity-50')}>
