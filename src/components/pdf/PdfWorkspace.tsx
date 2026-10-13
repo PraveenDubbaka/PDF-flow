@@ -350,7 +350,8 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   };
   const moveDraw = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!drawing) return;
-    setDrawing((current) => (current ? [...current, relative(event)] : current));
+    const point = relative(event);
+    setDrawing((current) => (current ? [...current, point] : current));
   };
   const endDraw = () => {
     if (!drawing) return;
@@ -486,7 +487,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             !activeKind && !pickingValue && (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'comment') && 'outline-none hover:outline hover:outline-1 hover:outline-offset-2 hover:outline-primary/50',
             annotation.kind === 'calculation' && 'border-none rounded-[4px]',
             annotation.kind === 'calculation' && pulsingId === annotation.id && 'animate-pulse',
-            selectedId === annotation.id && 'ring-2 ring-primary ring-offset-1',
+            selectedId === annotation.id && annotation.kind !== 'calculation' && 'ring-2 ring-primary ring-offset-1',
             annotation.kind === 'comment' && 'flex items-center justify-center rounded-sm border-none bg-warning text-warning-foreground',
             (annotation.kind === 'link' || annotation.kind === 'trial-balance') && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
             annotation.kind === 'underline' && 'border-x-0 border-t-0',
