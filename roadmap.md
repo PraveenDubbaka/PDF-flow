@@ -1,4 +1,5 @@
-# Match preview and placed stamp sizes
-- [x] Pass preview scale and measured dimensions to placement and updates, preserving native defaults.
-- [x] Apply PDF zoom to stamp display and normalize independent page resize commits.
-- [x] Verify default/resized placement, editing updates, zoom, and saved resizing in the live editor.
+# PDF calculator numbers and Luka rail
+- [ ] Fit large formatted amounts in inputs, result, and placed stamps.
+- [ ] Match amount and result typography at 13px regular with tabular figures.
+- [ ] Separate the filled Luka button at the rail bottom.
+- [ ] Verify number entry, placement, and rail appearance in the live editor.
