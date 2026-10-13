@@ -1685,7 +1685,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           <div className="flex flex-col gap-2">
             {showCalcHeader ? (
               <div className="mb-3.5 flex flex-col gap-1.5">
-                <div className="flex items-center justify-between"><Label htmlFor="calc-header" className={sectionLabel}>Header</Label><Button variant="ghost" className="calc-text-action h-9 px-0" onClick={() => { setCalcTitle(''); setShowCalcHeader(false); }}>Remove header</Button></div>
+                <div className="flex items-center justify-between"><Label htmlFor="calc-header" className={cn(sectionLabel, 'flex h-9 items-center')}>Header</Label><Button variant="ghost" className="calc-text-action h-9 px-0" onClick={() => { setCalcTitle(''); setShowCalcHeader(false); }}>Remove header</Button></div>
                 <Input id="calc-header" className="h-8 text-[13px]" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
               </div>
             ) : null}
@@ -1724,9 +1724,10 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
 
           </div>
           <div className="-mx-4 my-5 border-t border-border" />
+          <div className={cn(resultGrid, 'mb-1.5')}><span /><span /><Label htmlFor="calc-result" className={cn(sectionLabel, 'pr-2 text-right')}>Result</Label><span /></div>
           <div className={resultGrid}>
             <span />
-            <Label htmlFor="calc-result" className={sectionLabel}>Result</Label>
+            <span />
             <Input id="calc-result" aria-label="Result" inputMode="decimal" className="calc-result-value h-8 min-w-0 px-2.5 text-right text-[13px] font-semibold tabular-nums" value={calcResultDraft ?? formatAmount(effectiveCalcResult)} onFocus={() => setCalcResultDraft(String(effectiveCalcResult))} onChange={(event) => { setCalcResultDraft(event.target.value); setCalcResultOverride(parseAmount(event.target.value)); }} onBlur={() => setCalcResultDraft(null)} />
             <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className={cn('h-8 w-6 text-primary', calcPick?.target === 'compare' && 'bg-primary/10')} aria-label="Compare by" aria-pressed={calcPick?.target === 'compare'} onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}><Crosshair /></Button></TooltipTrigger><TooltipContent>Compare by</TooltipContent></Tooltip>
           </div>
