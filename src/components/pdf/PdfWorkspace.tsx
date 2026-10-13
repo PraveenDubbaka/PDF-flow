@@ -148,21 +148,21 @@ function CalcStamp({ title, rows, result, color, style, tie, compare, showResult
   onToggle?: (line: number | 'result' | 'compare' | 'difference', checked: boolean) => void;
 }) {
   const showTitle = !!title && title.trim() !== '' && title !== 'Calculation';
-  const checkbox = (line: number | 'result' | 'compare' | 'difference', checked: boolean, label: string) => onToggle ? <Checkbox className="mr-1 h-3 w-3 shrink-0 self-center" aria-label={`Include ${label} in stamp`} checked={checked} onCheckedChange={(value) => onToggle(line, value === true)} /> : null;
+  const checkbox = (line: number | 'result' | 'compare' | 'difference', checked: boolean, label: string) => onToggle ? <Checkbox className="absolute left-0 top-1/2 h-3 w-3 -translate-y-1/2" aria-label={`Include ${label} in stamp`} checked={checked} onCheckedChange={(value) => onToggle(line, value === true)} /> : null;
   return (
     <div data-calc-stamp className="inline-flex min-w-[120px] max-w-[260px] flex-col rounded-[4px] border bg-card px-2 py-1.5 text-[10px] leading-snug text-foreground" style={{ borderColor: color }}>
       {showTitle && <span className="truncate text-[11px] font-semibold" style={{ color }}>{title}</span>}
       {style === 'full' && rows.map((row, index) => (row.visible !== false || onToggle) && (
         <span key={index} className={cn('flex items-baseline justify-between gap-3', row.visible === false && 'opacity-50')}>
-          <span className="flex min-w-0">{checkbox(index, row.visible !== false, row.label || `line ${index + 1}`)}<span className="truncate">{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || '\u00a0'}</span></span>
+          <span className={cn("relative flex min-w-0", onToggle && "pl-4")}>{checkbox(index, row.visible !== false, row.label || `line ${index + 1}`)}<span className="truncate">{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || '\u00a0'}</span></span>
           <span className="shrink-0 text-right tabular-nums">{formatAmount(row.value)}</span>
         </span>
       ))}
       {(showResult || onToggle) && <span className={cn('flex items-baseline justify-between gap-3 font-semibold', style === 'full' && 'mt-0.5 border-t border-border pt-0.5', !showResult && 'opacity-50')}>
-        <span className="flex">{checkbox('result', showResult, 'result')}Result</span><span className="text-right tabular-nums">{formatAmount(result)}</span>
+        <span className={cn("relative flex", onToggle && "pl-4")}>{checkbox('result', showResult, 'result')}Result</span><span className="text-right tabular-nums">{formatAmount(result)}</span>
       </span>}
-      {compare && includeCompare && (showCompare || onToggle) && <span className={cn('flex items-baseline justify-between gap-3', !showCompare && 'opacity-50')}><span className="flex min-w-0">{checkbox('compare', showCompare, 'comparison')}<span className="truncate">{compare.label}</span></span><span className="shrink-0 text-right tabular-nums">{formatAmount(compare.value)}</span></span>}
-      {tie && compare && includeDifference && (showDifference || onToggle) && <span className={cn('flex items-baseline justify-between gap-3 font-semibold', !showDifference && 'opacity-50')}><span className="flex">{checkbox('difference', showDifference, 'difference')}Difference</span><span className="shrink-0 text-right tabular-nums">{formatAmount(tie.difference)}</span></span>}
+      {compare && includeCompare && (showCompare || onToggle) && <span className={cn('flex items-baseline justify-between gap-3', !showCompare && 'opacity-50')}><span className={cn("relative flex min-w-0", onToggle && "pl-4")}>{checkbox('compare', showCompare, 'comparison')}<span className="truncate">{compare.label}</span></span><span className="shrink-0 text-right tabular-nums">{formatAmount(compare.value)}</span></span>}
+      {tie && compare && includeDifference && (showDifference || onToggle) && <span className={cn('flex items-baseline justify-between gap-3 font-semibold', !showDifference && 'opacity-50')}><span className={cn("relative flex", onToggle && "pl-4")}>{checkbox('difference', showDifference, 'difference')}Difference</span><span className="shrink-0 text-right tabular-nums">{formatAmount(tie.difference)}</span></span>}
       {tie && !compare && !onToggle && <span className={cn('font-semibold', tie.ties ? 'text-success' : 'text-destructive')}>{tie.ties ? '✓ Ties' : `Difference: ${formatAmount(tie.difference)}`}</span>}
     </div>
   );
