@@ -235,6 +235,10 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
 }) {
   const selectedComment = annotations.find((item) => item.id === selectedId && item.kind === 'comment');
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ id: string; startX: number; startY: number; x: number; y: number; width: number; height: number; moved: boolean; annotation: PdfAnnotation } | null>(null);
+  const suppressClick = useRef(false);
+  const [textItems, setTextItems] = useState<{ text: string; x: number; y: number; width: number; height: number }[]>([]);
   const highlightRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 612, height: 792 });
   const [drawing, setDrawing] = useState<{ x: number; y: number }[] | null>(null);
@@ -269,6 +273,16 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
       setSize({ width: viewport.width, height: viewport.height });
+      void page.getTextContent().then((content) => {
+        if (cancelled) return;
+        setTextItems(content.items.flatMap((raw) => {
+          if (!('str' in raw) || !raw.str.trim()) return [];
+          const item = raw as unknown as TextItemLike;
+          const [vx, vy] = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
+          const h = (Math.hypot(item.transform[2], item.transform[3]) || item.height || 10) * viewport.scale;
+          return [{ text: item.str, x: vx / viewport.width * 100, y: (vy - h) / viewport.height * 100, width: item.width * viewport.scale / viewport.width * 100, height: h / viewport.height * 100 }];
+        }));
+      });
       task = page.render({ canvas, canvasContext: context, viewport });
       return task.promise;
     }).catch(() => undefined);
@@ -317,8 +331,9 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
       onPlaceCalc(pageNumber, x, y);
       return;
     }
+    if (suppressClick.current) { suppressClick.current = false; return; }
     if (!activeKind) { onSelect(null); return; }
-    if (activeKind === 'freehand') return;
+    if (activeKind === 'freehand' || activeKind === 'redaction' || activeKind === 'strikeout') return;
     const { x, y } = relative(event);
     const isPoint = activeKind === 'comment' || activeKind === 'link' || activeKind === 'trial-balance';
     onAdd({
@@ -330,7 +345,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
 
 
   const startDraw = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (activeKind !== 'freehand') return;
+    if (activeKind !== 'freehand' && activeKind !== 'redaction') return;
     setDrawing([relative(event)]);
   };
   const moveDraw = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -345,27 +360,91 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
     const xs = points.map((point) => point.x);
     const ys = points.map((point) => point.y);
     onAdd({
-      id: crypto.randomUUID(), kind: 'freehand', page: pageNumber,
+      id: crypto.randomUUID(), kind: activeKind === 'redaction' ? 'redaction' : 'freehand', page: pageNumber,
       x: Math.min(...xs), y: Math.min(...ys),
       width: Math.max(1, Math.max(...xs) - Math.min(...xs)), height: Math.max(1, Math.max(...ys) - Math.min(...ys)),
-      color, points,
+      color: activeKind === 'redaction' ? '#111827' : color, points: activeKind === 'redaction' ? undefined : points,
     });
   };
 
   const polyline = (points: { x: number; y: number }[]) => points.map((point) => `${point.x},${point.y}`).join(' ');
+  const applyStrikeSelection = () => {
+    if (activeKind !== 'strikeout' || !pageRef.current) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!pageRef.current.contains(range.commonAncestorContainer)) return;
+    const bounds = pageRef.current.getBoundingClientRect();
+    const rectangles = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0).sort((a, b) => a.top - b.top || a.left - b.left);
+    const lines: { left: number; top: number; right: number; bottom: number }[] = [];
+    for (const rect of rectangles) {
+      const line = lines.find((item) => Math.abs(item.top - rect.top) < rect.height * 0.5);
+      if (line) { line.left = Math.min(line.left, rect.left); line.right = Math.max(line.right, rect.right); line.bottom = Math.max(line.bottom, rect.bottom); }
+      else lines.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
+    }
+    if (!lines.length) return;
+    const regions = lines.map((line) => ({ x: (line.left - bounds.left) / bounds.width * 100, y: (line.top - bounds.top) / bounds.height * 100, width: (line.right - line.left) / bounds.width * 100, height: (line.bottom - line.top) / bounds.height * 100 }));
+    const x = Math.min(...regions.map((r) => r.x));
+    const y = Math.min(...regions.map((r) => r.y));
+    onAdd({ id: crypto.randomUUID(), kind: 'strikeout', page: pageNumber, x, y, width: Math.max(...regions.map((r) => r.x + r.width)) - x, height: Math.max(...regions.map((r) => r.y + r.height)) - y, color, regions });
+    selection.removeAllRanges();
+    suppressClick.current = true;
+  };
+
+  const startDrag = (event: React.PointerEvent<HTMLDivElement>, annotation: PdfAnnotation) => {
+    if (activeKind || placingCalc || pickingValue || !onUpdate || event.button !== 0) return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const bounds = pageRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const item = event.currentTarget.getBoundingClientRect();
+    dragRef.current = { id: annotation.id, startX: event.clientX, startY: event.clientY, x: annotation.x, y: annotation.y, width: item.width / bounds.width * 100, height: item.height / bounds.height * 100, moved: false, annotation };
+  };
+  const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const bounds = pageRef.current?.getBoundingClientRect();
+    if (!drag || drag.id !== event.currentTarget.dataset.annotationId || !bounds) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (Math.hypot(dx, dy) < 3 && !drag.moved) return;
+    drag.moved = true;
+    const x = Math.max(0, Math.min(100 - drag.width, drag.annotation.x + dx / bounds.width * 100));
+    const y = Math.max(0, Math.min(100 - drag.height, drag.annotation.y + dy / bounds.height * 100));
+    drag.x = x; drag.y = y;
+    event.currentTarget.style.left = `${x}%`;
+    event.currentTarget.style.top = `${y}%`;
+  };
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>, cancel = false) => {
+    const drag = dragRef.current;
+    if (!drag || drag.id !== event.currentTarget.dataset.annotationId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (drag.moved) {
+      suppressClick.current = true;
+      if (cancel) { event.currentTarget.style.left = `${drag.annotation.x}%`; event.currentTarget.style.top = `${drag.annotation.y}%`; }
+      else {
+        const dx = drag.x - drag.annotation.x; const dy = drag.y - drag.annotation.y;
+        onUpdate?.(drag.id, { x: drag.x, y: drag.y, ...(drag.annotation.points ? { points: drag.annotation.points.map((point) => ({ x: point.x + dx, y: point.y + dy })) } : {}), ...(drag.annotation.regions ? { regions: drag.annotation.regions.map((region) => ({ ...region, x: region.x + dx, y: region.y + dy })) } : {}) });
+      }
+    }
+  };
+
 
   return (
     <div
+      ref={pageRef}
+      data-pdf-page={pageNumber}
       className={cn('relative shrink-0 overflow-hidden rounded-[4px] border border-border bg-card shadow-[0_2px_10px_hsl(220_30%_50%/0.12)]', (activeKind || placingCalc || pickingValue) && 'cursor-crosshair')}
       style={{ width: size.width, height: size.height }}
       onClick={addAtPoint}
       onMouseDown={startDraw}
       onMouseMove={(event) => { if (placeNoun) { const rect = event.currentTarget.getBoundingClientRect(); setHintPos({ x: event.clientX - rect.left, y: event.clientY - rect.top }); } moveDraw(event); }}
-      onMouseUp={endDraw}
+      onMouseUp={() => { endDraw(); applyStrikeSelection(); }}
       onMouseLeave={(event) => { setHintPos(null); endDraw(); }}
     >
       {placeNoun && hintPos && <div className="pointer-events-none absolute z-40 whitespace-nowrap rounded-[6px] bg-foreground px-2 py-1 text-[11px] font-medium text-background" style={{ left: hintPos.x + 14, top: hintPos.y + 14 }}>Click to place {placeNoun}</div>}
       <canvas ref={canvasRef} className="block" />
+      {activeKind === 'strikeout' && <div className="pdf-strike-text-layer absolute inset-0 z-20 cursor-text">{textItems.map((item, index) => <span key={index} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.width}%`, height: `${item.height}%`, fontSize: size.height * item.height / 100 }} className="absolute whitespace-pre leading-none">{item.text}</span>)}</div>}
       {highlight && highlight.page === pageNumber && (
         <div
           ref={highlightRef}
@@ -378,26 +457,31 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
         <div className="pointer-events-none absolute z-30 rounded-[2px] bg-primary/15 ring-2 ring-primary" style={{ left: `${sourceHighlight.x - 0.4}%`, top: `${sourceHighlight.y - 0.3}%`, width: `${sourceHighlight.width + 0.8}%`, height: `${sourceHighlight.height + 0.6}%` }} />
       )}
       <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {annotations.filter((item) => item.kind === 'freehand' && item.points?.length).map((item) => (
-          <polyline key={item.id} points={polyline(item.points!)} fill="none" stroke={item.color} strokeWidth={0.4} vectorEffect="non-scaling-stroke" />
-        ))}
-        {drawing && <polyline points={polyline(drawing)} fill="none" stroke={color} strokeWidth={0.4} vectorEffect="non-scaling-stroke" />}
+        {drawing && activeKind === 'freehand' && <polyline points={polyline(drawing)} fill="none" stroke={color} strokeWidth={0.4} vectorEffect="non-scaling-stroke" />}
+        {drawing && activeKind === 'redaction' && <rect x={Math.min(...drawing.map((p) => p.x))} y={Math.min(...drawing.map((p) => p.y))} width={Math.max(...drawing.map((p) => p.x)) - Math.min(...drawing.map((p) => p.x))} height={Math.max(...drawing.map((p) => p.y)) - Math.min(...drawing.map((p) => p.y))} className="fill-foreground/70" />}
       </svg>
-      {annotations.filter((item) => item.kind !== 'freehand').map((annotation) => (
+      {annotations.map((annotation) => (
         <div
           key={annotation.id}
+          data-annotation-id={annotation.id}
+          onPointerDown={(event) => startDrag(event, annotation)}
+          onPointerMove={moveDrag}
+          onPointerUp={(event) => endDrag(event)}
+          onPointerCancel={(event) => endDrag(event, true)}
           data-calc-id={annotation.kind === 'calculation' ? annotation.id : undefined}
           onMouseEnter={annotation.kind === 'calculation' ? () => onHoverCalc?.(annotation.id) : undefined}
           onMouseLeave={annotation.kind === 'calculation' ? () => onHoverCalc?.(null) : undefined}
           onClick={(event) => {
             event.stopPropagation();
+            if (suppressClick.current) { suppressClick.current = false; return; }
             onSelect(annotation.id);
             if (annotation.kind === 'link' && !activeKind && annotation.value && /^https?:\/\//i.test(annotation.value)) {
               window.open(annotation.value, '_blank', 'noopener,noreferrer');
             }
           }}
           className={cn(
-            'absolute border-2',
+            'absolute touch-none select-none border-2',
+            (annotation.kind === 'freehand' || (annotation.kind === 'strikeout' && annotation.regions)) && 'border-none',
             activeKind || pickingValue || placingCalc ? 'pointer-events-none' : 'cursor-pointer',
             !activeKind && !pickingValue && (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'comment') && 'outline-none hover:outline hover:outline-1 hover:outline-offset-2 hover:outline-primary/50',
             annotation.kind === 'calculation' && 'border-none rounded-[4px]',
@@ -406,7 +490,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             annotation.kind === 'comment' && 'flex items-center justify-center rounded-sm border-none bg-warning text-warning-foreground',
             (annotation.kind === 'link' || annotation.kind === 'trial-balance') && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
             annotation.kind === 'underline' && 'border-x-0 border-t-0',
-            annotation.kind === 'strikeout' && 'border-x-0 border-b-0 top-auto',
+            annotation.kind === 'strikeout' && !annotation.regions && 'border-x-0 border-b-0 top-auto',
             annotation.kind === 'highlight' && 'border-none opacity-40',
             annotation.kind === 'redaction' && 'bg-foreground border-foreground',
             annotation.kind === 'circle' && 'rounded-full',
@@ -421,7 +505,9 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           }}
           title={annotation.kind === 'link' ? annotation.value ?? annotation.label : annotation.label}
         >
-          {annotation.kind === 'comment' && (
+          {annotation.kind === 'freehand' && annotation.points && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={annotation.points.map((p) => `${(p.x - annotation.x) / annotation.width * 100},${(p.y - annotation.y) / annotation.height * 100}`).join(' ')} fill="none" stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" /></svg>}
+          {annotation.kind === 'strikeout' && annotation.regions && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">{annotation.regions.map((r, index) => <line key={index} x1={(r.x - annotation.x) / annotation.width * 100} x2={(r.x + r.width - annotation.x) / annotation.width * 100} y1={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} y2={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />)}</svg>}
+          {annotation.kind === 'comment'  && (
             <>
               <MessageSquare className="h-3 w-3" />
               {!!annotation.replies?.length && (
@@ -746,6 +832,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       if (annotation.kind === 'link' || annotation.kind === 'trial-balance') setActiveKind(null);
       return;
     }
+    if (annotation.kind === 'redaction') setActiveKind(null);
     const stamped: PdfAnnotation = {
       ...annotation,
       author: annotation.author ?? currentMentionUser.name,
@@ -1164,7 +1251,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         } else if (item.kind === 'underline') {
           copiedPage.drawLine({ start: { x, y }, end: { x: x + boxWidth, y }, color, thickness: 1.5 });
         } else if (item.kind === 'strikeout') {
-          copiedPage.drawLine({ start: { x, y: y + boxHeight / 2 }, end: { x: x + boxWidth, y: y + boxHeight / 2 }, color, thickness: 1.5 });
+          const regions = item.regions ?? [{ x: item.x, y: item.y, width: item.width, height: item.height }];
+          for (const region of regions) copiedPage.drawLine({ start: { x: width * region.x / 100, y: height - height * (region.y + region.height / 2) / 100 }, end: { x: width * (region.x + region.width) / 100, y: height - height * (region.y + region.height / 2) / 100 }, color, thickness: 1.5 });
         } else if (item.kind === 'arrow') {
           copiedPage.drawLine({ start: { x, y: y + boxHeight }, end: { x: x + boxWidth, y }, color, thickness: 1.5 });
         } else if (item.kind === 'freehand' && item.points?.length) {
