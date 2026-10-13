@@ -72,6 +72,7 @@ export interface PdfAnnotation {
   mentions?: string[];
   replies?: PdfCommentReply[];
   resolved?: boolean;
+  stampScale?: number;
 }
 
 export interface PdfHistoryEntry {

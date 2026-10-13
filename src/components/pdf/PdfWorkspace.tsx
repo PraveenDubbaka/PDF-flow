@@ -32,6 +32,7 @@ import {
 import { trialBalanceAccounts } from '@/data/trialBalanceAccounts';
 import { PdfCommentNote, MentionText } from '@/components/pdf/PdfCommentNote';
 import { CalculationPreview } from '@/components/pdf/CalculationPreview';
+import { ResizableCalculationStamp } from '@/components/pdf/ResizableCalculationStamp';
 import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
 
@@ -533,7 +534,12 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           {annotation.kind === 'calculation' && (() => {
             const calc = calculations?.find((item) => item.id === annotation.id);
             if (!calc) return <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>;
-            return <CalcStamp title={calc.title} color={calc.color} result={calc.result} style={calc.visibleLines ? 'full' : calc.style ?? 'full'} tie={calc.visibleLines && calc.includeDifference === false ? null : tieStatus(calc.result, calc.compareTo)} compare={calc.visibleLines && calc.compareTo != null ? { label: calc.compareLabel ?? '', value: calc.compareTo } : null} includeCompare={calc.includeCompare ?? true} includeDifference={calc.includeDifference ?? true} showResult={calc.showResult ?? true} showCompare={calc.showCompare} showDifference={calc.showDifference} rows={calc.values.map((value, index) => ({ value, operator: calc.operators?.[index] ?? '+', label: calc.comments?.[index] ?? '', visible: calc.visibleLines?.[index] }))} />;
+            return <ResizableCalculationStamp scale={annotation.stampScale ?? 1} selected={selectedId === annotation.id && !activeKind && !placingCalc && !pickingValue} onCommit={({ scale, width, height, dx, dy }) => {
+              const bounds = pageRef.current?.getBoundingClientRect();
+              if (!bounds) return;
+              suppressClick.current = true;
+              onUpdate?.(annotation.id, { stampScale: scale, x: annotation.x + dx / bounds.width * 100, y: annotation.y + dy / bounds.height * 100, width: width / bounds.width * 100, height: height / bounds.height * 100 });
+            }}><CalcStamp title={calc.title} color={calc.color} result={calc.result} style={calc.visibleLines ? 'full' : calc.style ?? 'full'} tie={calc.visibleLines && calc.includeDifference === false ? null : tieStatus(calc.result, calc.compareTo)} compare={calc.visibleLines && calc.compareTo != null ? { label: calc.compareLabel ?? '', value: calc.compareTo } : null} includeCompare={calc.includeCompare ?? true} includeDifference={calc.includeDifference ?? true} showResult={calc.showResult ?? true} showCompare={calc.showCompare} showDifference={calc.showDifference} rows={calc.values.map((value, index) => ({ value, operator: calc.operators?.[index] ?? '+', label: calc.comments?.[index] ?? '', visible: calc.visibleLines?.[index] }))} /></ResizableCalculationStamp>;
           })()}
           {annotation.kind === 'text' && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
         </div>
@@ -1268,33 +1274,35 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               color, thickness: 1.5,
             });
           }
-        } else if (item.kind === 'calculation' && editState.calculations?.find((calculation) => calculation.id === item.id)?.visibleLines) {
+        } else if (item.kind === 'calculation' && editState.calculations?.some((calculation) => calculation.id === item.id)) {
           const calculation = editState.calculations.find((calculation) => calculation.id === item.id);
           if (!calculation) continue;
           const lines: { label: string; amount?: number }[] = [];
           if (calculation.title.trim() && calculation.title !== 'Calculation') lines.push({ label: calculation.title });
           calculation.values.forEach((value, rowIndex) => {
-            if (calculation.visibleLines?.[rowIndex] !== false) lines.push({ label: `${rowIndex > 0 ? `${OP_LABEL[calculation.operators?.[rowIndex] ?? '+']} ` : ''}${calculation.comments?.[rowIndex] ?? ''}`, amount: value });
+            if ((calculation.visibleLines || calculation.style !== 'result') && calculation.visibleLines?.[rowIndex] !== false) lines.push({ label: `${rowIndex > 0 ? `${OP_LABEL[calculation.operators?.[rowIndex] ?? '+']} ` : ''}${calculation.comments?.[rowIndex] ?? ''}`, amount: value });
           });
           if (calculation.showResult !== false) lines.push({ label: 'Result', amount: calculation.result });
           if (calculation.compareTo != null) {
-            if (calculation.showCompare) lines.push({ label: calculation.compareLabel ?? '', amount: calculation.compareTo });
-            if (calculation.showDifference) lines.push({ label: 'Difference', amount: tieStatus(calculation.result, calculation.compareTo)?.difference ?? 0 });
+            if (calculation.includeCompare !== false && calculation.showCompare) lines.push({ label: calculation.compareLabel ?? '', amount: calculation.compareTo });
+            if (calculation.includeDifference !== false && calculation.showDifference) lines.push({ label: 'Difference', amount: tieStatus(calculation.result, calculation.compareTo)?.difference ?? 0 });
           }
           // Match the native stamp's compact scale; selections affect output only, never arithmetic.
           const safeText = (text: string) => text.replace(/−/g, '-').replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
-          const stampSize = 8;
-          const lineHeight = 11;
-          const stampWidth = Math.max(96, ...lines.map((line) => font.widthOfTextAtSize(safeText(line.label), stampSize) + (line.amount == null ? 0 : font.widthOfTextAtSize(formatAmount(line.amount), stampSize) + 16) + 12));
-          const stampHeight = Math.max(12, lines.length * lineHeight + 8);
+          const stampScale = item.stampScale ?? 1;
+          const stampSize = 8 * stampScale;
+          const lineHeight = 11 * stampScale;
+          const padding = 6 * stampScale;
+          const stampWidth = Math.max(96 * stampScale, ...lines.map((line) => font.widthOfTextAtSize(safeText(line.label), stampSize) + (line.amount == null ? 0 : font.widthOfTextAtSize(formatAmount(line.amount), stampSize) + 16 * stampScale) + padding * 2));
+          const stampHeight = Math.max(12 * stampScale, lines.length * lineHeight + 8 * stampScale);
           const top = height - height * item.y / 100;
-          copiedPage.drawRectangle({ x, y: top - stampHeight, width: stampWidth, height: stampHeight, borderColor: color, borderWidth: 0.8, color: rgb(1, 1, 1) });
+          copiedPage.drawRectangle({ x, y: top - stampHeight, width: stampWidth, height: stampHeight, borderColor: color, borderWidth: 0.8 * stampScale, color: rgb(1, 1, 1) });
           lines.forEach((line, lineIndex) => {
-            const baseline = top - 12 - lineIndex * lineHeight;
-            copiedPage.drawText(safeText(line.label), { x: x + 6, y: baseline, size: stampSize, font, color });
+            const baseline = top - 12 * stampScale - lineIndex * lineHeight;
+            copiedPage.drawText(safeText(line.label), { x: x + padding, y: baseline, size: stampSize, font, color });
             if (line.amount != null) {
               const amount = formatAmount(line.amount);
-              copiedPage.drawText(amount, { x: x + stampWidth - 6 - font.widthOfTextAtSize(amount, stampSize), y: baseline, size: stampSize, font, color });
+              copiedPage.drawText(amount, { x: x + stampWidth - padding - font.widthOfTextAtSize(amount, stampSize), y: baseline, size: stampSize, font, color });
             }
           });
         } else if ((item.kind === 'text' || item.kind === 'comment' || item.kind === 'link' || item.kind === 'trial-balance' || item.kind === 'calculation') && (item.label || item.value)) {
@@ -1694,9 +1702,6 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               </div>
             ))}
             {calcDescError && calcRows.some((row, index) => (index === 0 || row.value.trim() !== '') && !row.comment.trim()) && <p className="text-[13px] text-destructive">Add a description to each line before placing.</p>}
-            <div className="flex h-8 items-center justify-center">
-              <Button variant="ghost" className="h-8 px-2 text-[13px] font-medium text-primary" onClick={addLine}><Plus />Add line</Button>
-            </div>
 
           </div>
           <div className="-mx-4 my-4 border-t border-border" />
@@ -1728,7 +1733,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           </div>
         </div>
         <div className="flex flex-col gap-2">
-          <p className={sectionLabel}>Placed calculations</p>
+          <div><p className={sectionLabel}>History</p><p className="mt-1 text-[13px] text-muted-foreground">Placed calculations</p></div>
           <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground" /><Input aria-label="Search placed calculations" placeholder="Search placed calculations" value={placedCalcSearch} onChange={(event) => setPlacedCalcSearch(event.target.value)} className="pl-8" /></div>
           {filteredCalculations.length === 0 && <p className="text-[13px] text-foreground">{calculationQuery ? 'No calculations match your search.' : 'No calculations placed on the document yet.'}</p>}
           {filteredCalculations.map((calculation) => {
