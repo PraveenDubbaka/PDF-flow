@@ -11,9 +11,10 @@ const positions: Record<Corner, string> = {
 };
 
 /** Keep the native stamp unchanged and resize its whole rendered box. */
-export function ResizableCalculationStamp({ children, scale = 1, selected, onCommit }: {
+export function ResizableCalculationStamp({ children, scale = 1, minimumScale = 1, selected, onCommit }: {
   children: ReactNode;
   scale?: number;
+  minimumScale?: number;
   selected: boolean;
   onCommit: (size: { scale: number; width: number; height: number; dx: number; dy: number }) => void;
 }) {
@@ -51,7 +52,7 @@ export function ResizableCalculationStamp({ children, scale = 1, selected, onCom
         const page = wrapperRef.current?.closest('[data-pdf-page]')?.getBoundingClientRect();
         const box = wrapperRef.current?.parentElement?.getBoundingClientRect();
         const maxScale = page && box ? Math.min((sx === 1 ? page.right - box.left : box.left - page.left + native.width * start.scale) / native.width, (sy === 1 ? page.bottom - box.top : box.top - page.top + native.height * start.scale) / native.height) : 8;
-        const nextScale = Math.max(1, Math.min(maxScale, start.scale + delta));
+        const nextScale = Math.max(minimumScale, Math.min(maxScale, start.scale + delta));
         setDraft({ scale: nextScale, dx: sx === -1 ? native.width * (start.scale - nextScale) : 0, dy: sy === -1 ? native.height * (start.scale - nextScale) : 0 });
       }}
       onPointerUp={(event) => {
