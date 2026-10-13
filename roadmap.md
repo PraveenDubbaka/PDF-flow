@@ -1,6 +1,5 @@
-# Calculator panel and stamps
-- [x] Remove standalone Add line and rename placed section to History with subtitle.
-- [x] Add height-resizable, proportionally fitted preview.
-- [x] Add selected-stamp corner resizing and persist proportional size.
-- [x] Preserve bordered, formatted result-only stamps in page and PDF output.
-- [x] Verify the requested controls, resizing, and saved sizing in the live editor.
+# Calculator three fixes
+- [x] Render legacy and existing result-only stamps as bordered header/result boxes.
+- [x] Make History helper text muted and smaller than section labels.
+- [x] Match editing action button text to Place on page.
+- [x] Verify the three fixes in the live editor.
