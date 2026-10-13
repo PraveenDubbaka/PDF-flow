@@ -148,21 +148,21 @@ function CalcStamp({ title, rows, result, color, style, tie, compare, showResult
   onToggle?: (line: number | 'result' | 'compare' | 'difference', checked: boolean) => void;
 }) {
   const showTitle = !!title && title.trim() !== '' && title !== 'Calculation';
-  const checkbox = (line: number | 'result' | 'compare' | 'difference', checked: boolean, label: string) => onToggle ? <Checkbox className="mr-1 h-3 w-3 shrink-0 self-center" aria-label={`Include ${label} in stamp`} checked={checked} onCheckedChange={(value) => onToggle(line, value === true)} /> : null;
+  const checkbox = (line: number | 'result' | 'compare' | 'difference', checked: boolean, label: string) => onToggle ? <span className="absolute left-0 top-1/2 flex h-3 w-3 -translate-y-1/2 items-center"><Checkbox className="h-3 w-3 shrink-0" aria-label={`Include ${label} in stamp`} checked={checked} onCheckedChange={(value) => onToggle(line, value === true)} /></span> : null;
   return (
-    <div data-calc-stamp className="inline-flex min-w-[120px] max-w-[260px] flex-col rounded-[4px] border bg-card px-2 py-1.5 text-[10px] leading-snug text-foreground" style={{ borderColor: color }}>
+    <div data-calc-stamp className="inline-flex min-w-[120px] max-w-[260px] flex-col rounded-[4px] border bg-card px-2 py-1.5 text-[10px] font-normal leading-snug text-foreground" style={{ borderColor: color }}>
       {showTitle && <span className="truncate text-[11px] font-semibold" style={{ color }}>{title}</span>}
       {style === 'full' && rows.map((row, index) => (row.visible !== false || onToggle) && (
         <span key={index} className={cn('flex items-baseline justify-between gap-3', row.visible === false && 'opacity-50')}>
-          <span className="flex min-w-0">{checkbox(index, row.visible !== false, row.label || `line ${index + 1}`)}<span className="truncate">{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || '\u00a0'}</span></span>
+          <span className={cn("relative flex min-w-0", onToggle && "pl-4")}>{checkbox(index, row.visible !== false, row.label || `line ${index + 1}`)}<span className="truncate">{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || '\u00a0'}</span></span>
           <span className="shrink-0 text-right tabular-nums">{formatAmount(row.value)}</span>
         </span>
       ))}
       {(showResult || onToggle) && <span className={cn('flex items-baseline justify-between gap-3 font-semibold', style === 'full' && 'mt-0.5 border-t border-border pt-0.5', !showResult && 'opacity-50')}>
-        <span className="flex">{checkbox('result', showResult, 'result')}Result</span><span className="text-right tabular-nums">{formatAmount(result)}</span>
+        <span className={cn("relative flex", onToggle && "pl-4")}>{checkbox('result', showResult, 'result')}Result</span><span className="text-right tabular-nums">{formatAmount(result)}</span>
       </span>}
-      {compare && includeCompare && (showCompare || onToggle) && <span className={cn('flex items-baseline justify-between gap-3', !showCompare && 'opacity-50')}><span className="flex min-w-0">{checkbox('compare', showCompare, 'comparison')}<span className="truncate">{compare.label}</span></span><span className="shrink-0 text-right tabular-nums">{formatAmount(compare.value)}</span></span>}
-      {tie && compare && includeDifference && (showDifference || onToggle) && <span className={cn('flex items-baseline justify-between gap-3 font-semibold', !showDifference && 'opacity-50')}><span className="flex">{checkbox('difference', showDifference, 'difference')}Difference</span><span className="shrink-0 text-right tabular-nums">{formatAmount(tie.difference)}</span></span>}
+      {compare && includeCompare && (showCompare || onToggle) && <span className={cn('flex items-baseline justify-between gap-3', !showCompare && 'opacity-50')}><span className={cn("relative flex min-w-0", onToggle && "pl-4")}>{checkbox('compare', showCompare, 'comparison')}<span className="truncate">{compare.label}</span></span><span className="shrink-0 text-right tabular-nums">{formatAmount(compare.value)}</span></span>}
+      {tie && compare && includeDifference && (showDifference || onToggle) && <span className={cn('flex items-baseline justify-between gap-3 font-semibold', !showDifference && 'opacity-50')}><span className={cn("relative flex", onToggle && "pl-4")}>{checkbox('difference', showDifference, 'difference')}Difference</span><span className="shrink-0 text-right tabular-nums">{formatAmount(tie.difference)}</span></span>}
       {tie && !compare && !onToggle && <span className={cn('font-semibold', tie.ties ? 'text-success' : 'text-destructive')}>{tie.ties ? '✓ Ties' : `Difference: ${formatAmount(tie.difference)}`}</span>}
     </div>
   );
@@ -553,11 +553,11 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           {annotation.kind === 'calculation' && (() => {
             const calc = resolveCalculation(annotation, calculations);
             const resultOnly = calc.style === 'result';
-            return <ResizableCalculationStamp scale={annotation.stampScale ?? 1} selected={selectedId === annotation.id && !activeKind && !placingCalc && !pickingValue} onCommit={({ scale, width, height, dx, dy }) => {
+            return <ResizableCalculationStamp scale={(annotation.stampScale ?? 1) * zoom} minimumScale={zoom} selected={selectedId === annotation.id && !activeKind && !placingCalc && !pickingValue} onCommit={({ scale, width, height, dx, dy }) => {
               const bounds = pageRef.current?.getBoundingClientRect();
               if (!bounds) return;
               suppressClick.current = true;
-              onUpdate?.(annotation.id, { stampScale: scale, x: annotation.x + dx / bounds.width * 100, y: annotation.y + dy / bounds.height * 100, width: width / bounds.width * 100, height: height / bounds.height * 100 });
+              onUpdate?.(annotation.id, { stampScale: scale / zoom, x: annotation.x + dx / bounds.width * 100, y: annotation.y + dy / bounds.height * 100, width: width / bounds.width * 100, height: height / bounds.height * 100 });
             }}><CalcStamp title={calc.title} color={calc.color} result={calc.result} style={resultOnly ? 'result' : 'full'} tie={resultOnly || (calc.visibleLines && calc.includeDifference === false) ? null : tieStatus(calc.result, calc.compareTo)} compare={!resultOnly && calc.visibleLines && calc.compareTo != null ? { label: calc.compareLabel ?? '', value: calc.compareTo } : null} includeCompare={calc.includeCompare ?? true} includeDifference={calc.includeDifference ?? true} showResult={resultOnly || (calc.showResult ?? true)} showCompare={calc.showCompare} showDifference={calc.showDifference} rows={calc.values.map((value, index) => ({ value, operator: calc.operators?.[index] ?? '+', label: calc.comments?.[index] ?? '', visible: calc.visibleLines?.[index] }))} /></ResizableCalculationStamp>;
           })()}
           {annotation.kind === 'text' && <span className="text-xs font-medium" style={{ color: annotation.color }}>{annotation.label}</span>}
@@ -711,6 +711,9 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [placedCalcSearch, setPlacedCalcSearch] = useState('');
   const [editPanelWidth, setEditPanelWidth] = useState(() => window.innerWidth >= 1280 ? 520 : 408);
   const [calcPlacement, setCalcPlacement] = useState(false);
+  const calcPreviewSize = useRef({ scale: 1, width: 120, height: 30 });
+  const [calcPreviewInitialScale, setCalcPreviewInitialScale] = useState(1);
+  const captureCalcPreviewSize = useCallback((size: { scale: number; width: number; height: number }) => { calcPreviewSize.current = size; }, []);
   useEffect(() => {
     if (!activeKind || (!PLACE_NOUN[activeKind] && activeKind !== 'redaction')) return;
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setActiveKind(null); };
@@ -1116,6 +1119,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const resetCalculator = useCallback(() => {
     setCalcDescError(false);
     setEditingCalcId(null);
+    setCalcPreviewInitialScale(1);
     setShowCalcHeader(true);
     setCalcPlacement(false);
     setCalcTitle('');
@@ -1133,6 +1137,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   }, []);
 
   const startEditCalculation = useCallback((calculation: PdfCalculation) => {
+    setCalcPreviewInitialScale(editState.annotations.find((item) => item.id === calculation.id)?.stampScale ?? 1);
     setEditingCalcId(calculation.id);
     setCalcPlacement(false);
     setShowCalcHeader(true);
@@ -1154,7 +1159,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setCalcIncludeCompare(calculation.includeCompare ?? true);
     setCalcIncludeDifference(calculation.includeDifference ?? true);
     setCalcPick(null);
-  }, []);
+  }, [editState.annotations]);
 
   const handlePickValue = useCallback(({ value, label, source }: { value: number; label: string; source: PdfCalcSource }) => {
     if (!calcPick) return;
@@ -1174,7 +1179,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       setEditState((current) => withHistory({
         ...current,
         calculations: (current.calculations ?? []).map((item) => item.id === editingCalcId ? { ...item, title, values: rows.map((row) => Number(row.value) || 0), operators: rows.map((row) => row.operator), comments: rows.map((row) => row.comment), sources: rows.map((row) => row.source ?? null), compareTo: calcCompare?.value ?? null, compareSource: calcCompare?.source ?? null, compareLabel: calcCompare?.label, resultOverride: calcResultOverride, visibleLines: rows.map((row) => row.visible !== false), showResult: calcShowResult, showCompare: calcIncludeCompare && calcShowCompare, showDifference: calcIncludeDifference && calcShowDifference, includeCompare: calcIncludeCompare, includeDifference: calcIncludeDifference, style: 'full', result: effectiveCalcResult, color: calcColor } : item),
-        annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${effectiveCalcResult}` } : item),
+        annotations: current.annotations.map((item) => item.id === editingCalcId ? { ...item, color: calcColor, label: `${title}: ${effectiveCalcResult}`, stampScale: calcPreviewSize.current.scale, width: item.width * calcPreviewSize.current.scale / (item.stampScale ?? 1), height: item.height * calcPreviewSize.current.scale / (item.stampScale ?? 1) } : item),
       }, { kind: 'calculation', title: `${title} updated`, page: currentSourcePage, color: calcColor, targetId: editingCalcId }));
       toast.success('Calculation updated.');
       resetCalculator();
@@ -1188,6 +1193,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const placeCalculation = useCallback((pageNumber: number, x: number, y: number) => {
     const title = calcTitle.trim() || 'Calculation';
     const rows = calcRows.filter((row, index) => index === 0 || row.value.trim() !== '');
+    const previewSize = { ...calcPreviewSize.current };
+    const pageBounds = window.document.querySelector(`[data-pdf-page="${pageNumber}"]`)?.getBoundingClientRect();
     const calculation: PdfCalculation = {
       id: crypto.randomUUID(),
       page: pageNumber,
@@ -1207,11 +1214,11 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     setEditState((current) => withHistory({
       ...current,
       calculations: [...(current.calculations ?? []), calculation],
-      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: pageNumber, x, y, width: 25, height: 6, color: calcColor, label: `${title}: ${effectiveCalcResult}` }],
+      annotations: [...current.annotations, { id: calculation.id, kind: 'calculation', page: pageNumber, x, y, stampScale: previewSize.scale, width: pageBounds ? previewSize.width * zoom / pageBounds.width * 100 : 25, height: pageBounds ? previewSize.height * zoom / pageBounds.height * 100 : 6, color: calcColor, label: `${title}: ${effectiveCalcResult}` }],
     }, { kind: 'calculation', title: `${title} placed on page ${pageNumber}`, page: pageNumber, color: calcColor, targetId: calculation.id }));
     toast.success(`Placed on page ${pageNumber}.`);
     resetCalculator();
-  }, [calcColor, calcRows, calcTitle, calcCompare, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, effectiveCalcResult, resetCalculator]);
+  }, [calcColor, calcRows, calcTitle, calcCompare, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, effectiveCalcResult, resetCalculator, zoom]);
 
   const askLuka = useCallback(async (question: string) => {
     const prompt = question.trim();
@@ -1744,7 +1751,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
               <input type="color" value={calcColor} onChange={(event) => setCalcColor(event.target.value)} aria-label="Calculation colour" className="h-8 w-8 cursor-pointer rounded-[10px] border border-input bg-background p-1" />
             </div>
           </div>
-          <CalculationPreview>
+          <CalculationPreview key={editingCalcId ?? 'new'} initialScale={calcPreviewInitialScale} onSizeChange={captureCalcPreviewSize}>
             <CalcStamp title={calcTitle} color={calcColor} result={effectiveCalcResult} style="full" tie={calcIncludeDifference ? tie : null} compare={calcCompare && (calcIncludeCompare || calcIncludeDifference) ? { label: calcIncludeCompare ? calcCompare.label : '', value: calcCompare.value } : null} includeCompare={calcIncludeCompare} includeDifference={calcIncludeDifference} showResult={calcShowResult} showCompare={calcIncludeCompare && calcShowCompare} showDifference={calcIncludeDifference && calcShowDifference} rows={calcRows.filter((row, index) => index === 0 || row.value.trim() !== '').map((row) => ({ operator: row.operator, label: row.comment, value: Number(row.value) || 0, visible: row.visible }))} onToggle={(line, checked) => { if (typeof line === 'number') { const originalIndex = calcRows.map((row, index) => ({ row, index })).filter(({ row, index }) => index === 0 || row.value.trim() !== '')[line]?.index; if (originalIndex !== undefined) setRow(originalIndex, { visible: checked }); } else if (line === 'result') setCalcShowResult(checked); else if (line === 'compare') setCalcShowCompare(checked); else setCalcShowDifference(checked); }} />
           </CalculationPreview>
           <div className="flex gap-2">
@@ -1812,7 +1819,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </div>
       </div>
     );
-  }, [activeColor, activeKind, activePanel, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcTitle, calcPick, calcCompare, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, showCalcHeader, placedCalcSearch, hoveredCalcId, calcDescError, setSearch, effectiveCalcResult, calcResultDraft, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeKind, activePanel, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcTitle, calcPick, calcCompare, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, showCalcHeader, calcPreviewInitialScale, captureCalcPreviewSize, placedCalcSearch, hoveredCalcId, calcDescError, setSearch, effectiveCalcResult, calcResultDraft, currentSourcePage, decryptPassword, editingCalcId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkOpacity, watermarkRotation, watermarkText]);
 
   const historyEntries = useMemo(() => {
     const fallbackDate = document?.updated_at ?? document?.created_at ?? new Date().toISOString();

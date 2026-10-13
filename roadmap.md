@@ -1,4 +1,4 @@
-# Calculator preview resizing
-- [x] Attach the row-resize handle to the preview bottom edge.
-- [x] Fit the stamp proportionally to user-chosen height with a native-size minimum.
-- [x] Verify resizing, retained size, and recent calculator changes in the live editor.
+# Match preview and placed stamp sizes
+- [x] Pass preview scale and measured dimensions to placement and updates, preserving native defaults.
+- [x] Apply PDF zoom to stamp display and normalize independent page resize commits.
+- [x] Verify default/resized placement, editing updates, zoom, and saved resizing in the live editor.
