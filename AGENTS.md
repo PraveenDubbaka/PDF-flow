@@ -7,4 +7,4 @@
 - Store PDF edit-panel width in shared workspace state rather than per-tool state so resizing persists across tool switches.
 - Scale calculator previews in a measured wrapper, not the shared stamp, so preview width and height fit without changing document output.
 - Resize placed calculations through a measured stamp wrapper and persist scale with annotation bounds at drag end; this keeps text, borders, and exported sizing proportional without changing arithmetic.
-- Resolve legacy label-only calculation annotations through the same calculation rendering path on the page and export; this preserves existing result-only stamps without changing stored arithmetic.
+- Resolve legacy label-only calculations, including text annotations with a numeric Calculation label or matching calculation record, through the same page/export stamp path; this preserves existing result-only stamps without reclassifying ordinary text or changing arithmetic.
