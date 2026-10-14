@@ -1699,7 +1699,15 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           .some((value) => value.toLocaleLowerCase().includes(calculationQuery));
       });
       const sectionLabel = 'calc-section-label';
-      const lineGrid = 'grid grid-cols-[minmax(0,1fr)_192px_48px] items-center gap-2';
+      const amountTexts = [
+        ...calcRows.map((row) => row.value === '' ? '0' : formatAmount(Number(row.value) || 0)),
+        calcResultDraft ?? formatAmount(effectiveCalcResult),
+        ...(calcCompare ? [formatAmount(calcCompare.value)] : []),
+        ...(calcIncludeDifference && tie ? [formatAmount(tie.difference ?? 0)] : []),
+      ];
+      const amountColWidth = Math.max(96, Math.min(18, Math.max(...amountTexts.map((text) => text.length))) * 8 + 46);
+      const lineGrid = 'grid items-center gap-2';
+      const gridStyle = { gridTemplateColumns: `minmax(160px, 1fr) ${amountColWidth}px 48px` };
       const resultGrid = lineGrid;
       const card = 'border-b border-border pb-5';
       return (
@@ -1716,9 +1724,9 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                 <Input id="calc-header" className="h-8 text-[13px]" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
               </div>
             ) : null}
-            <div className={cn(lineGrid, sectionLabel, '-mb-0.5')}><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
+            <div className={cn(lineGrid, sectionLabel, '-mb-0.5')} style={gridStyle}><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
             {calcRows.map((row, index) => (
-              <div key={index} className={cn(lineGrid, 'group/calc-row')} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
+              <div key={index} className={cn(lineGrid, 'group/calc-row')} style={gridStyle} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
                 <div className="relative min-w-0">
                 {index > 0 && (<DropdownMenu>
                       <DropdownMenuTrigger asChild>
