@@ -52,4 +52,12 @@
     min-height: 36px;
     white-space: normal;
   }
+
+  .pdf-edit-panel-content .flex:has(> button) {
+    flex-wrap: wrap;
+  }
+
+  .pdf-edit-panel-content .group\/calc-row > .flex {
+    flex-wrap: nowrap;
+  }
 }

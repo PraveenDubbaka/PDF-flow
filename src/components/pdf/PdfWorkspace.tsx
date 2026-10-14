@@ -171,7 +171,7 @@ function CalcStamp({ title, rows, result, color, style, tie, compare, showResult
   const showTitle = !!title && title.trim() !== '' && title !== 'Calculation';
   const checkbox = (line: number | 'result' | 'compare' | 'difference', checked: boolean, label: string) => onToggle ? <span className="absolute left-0 top-1/2 flex h-3 w-3 -translate-y-1/2 items-center"><Checkbox className="h-3 w-3 shrink-0" aria-label={`Include ${label} in stamp`} checked={checked} onCheckedChange={(value) => onToggle(line, value === true)} /></span> : null;
   return (
-    <div data-calc-stamp className="inline-grid w-max min-w-[120px] grid-cols-[fit-content(240px)_max-content] gap-x-[12px] rounded-[4px] border bg-card px-2 py-1.5 text-[10px] font-normal leading-snug text-foreground" style={{ borderColor: color }}>
+    <div data-calc-stamp className="inline-grid w-max min-w-[120px] grid-cols-[fit-content(240px)_minmax(max-content,1fr)] gap-x-[12px] rounded-[4px] border bg-card px-2 py-1.5 text-[10px] font-normal leading-snug text-foreground" style={{ borderColor: color }}>
       {showTitle && <span className="col-span-2 max-w-[240px] whitespace-normal [overflow-wrap:anywhere] text-[11px] font-semibold" style={{ color }}>{title}</span>}
       {style === 'full' && rows.map((row, index) => (row.visible !== false || onToggle) && (
         <span key={index} className={cn('col-span-2 grid grid-cols-[subgrid] items-baseline', row.visible === false && 'opacity-50')}>

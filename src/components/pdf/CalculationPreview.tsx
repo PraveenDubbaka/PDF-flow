@@ -38,7 +38,7 @@ export function CalculationPreview({ children, initialScale = 1, onSizeChange }:
     <div className="mb-[18px] w-full min-w-0">
       <div className="w-full rounded-[8px] border border-border bg-muted/40">
       <div ref={containerRef} data-calculation-preview className="relative w-full" style={{ height: size.height }}>
-        <div ref={outputRef} aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 w-max [&_[data-calc-stamp]]:tracking-[0.15px] [&_[data-calc-stamp]_span]:tracking-[0.15px]">{cloneElement(children, { onToggle: undefined })}</div>
+        <div aria-hidden="true" className="pointer-events-none invisible absolute inset-0 overflow-hidden"><div ref={outputRef} className="absolute left-0 top-0 w-max [&_[data-calc-stamp]]:tracking-[0.15px] [&_[data-calc-stamp]_span]:tracking-[0.15px]">{cloneElement(children, { onToggle: undefined })}</div></div>
         <div ref={stampRef} className="absolute w-max origin-top-left [&_[data-calc-stamp]]:tracking-[0.15px] [&_[data-calc-stamp]_span]:tracking-[0.15px]" style={{ left: size.left, top: size.top, transform: `scale(${size.scale})` }}>
           {children}
         </div>
