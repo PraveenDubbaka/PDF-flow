@@ -78,6 +78,20 @@
   color: hsl(var(--foreground));
   font-variant-numeric: tabular-nums;
 }
+/* Luka tool-rail icon: soft brand-purple glow, brighter on hover, dimmer in dark mode. */
+.luka-rail-glow {
+  filter: drop-shadow(0 0 6px rgb(124 77 230 / 0.5));
+  transition: filter 150ms ease;
+}
+button:hover .luka-rail-glow {
+  filter: drop-shadow(0 0 9px rgb(124 77 230 / 0.75));
+}
+.dark .luka-rail-glow {
+  filter: drop-shadow(0 0 6px rgb(124 77 230 / 0.3));
+}
+.dark button:hover .luka-rail-glow {
+  filter: drop-shadow(0 0 9px rgb(124 77 230 / 0.45));
+}
 .pdf-strike-text-layer span {
   color: transparent !important;
   user-select: text;

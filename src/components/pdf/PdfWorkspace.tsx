@@ -1699,7 +1699,15 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           .some((value) => value.toLocaleLowerCase().includes(calculationQuery));
       });
       const sectionLabel = 'calc-section-label';
-      const lineGrid = 'grid grid-cols-[minmax(0,1fr)_192px_48px] items-center gap-2';
+      const amountTexts = [
+        ...calcRows.map((row) => row.value === '' ? '0' : formatAmount(Number(row.value) || 0)),
+        calcResultDraft ?? formatAmount(effectiveCalcResult),
+        ...(calcCompare ? [formatAmount(calcCompare.value)] : []),
+        ...(calcIncludeDifference && tie ? [formatAmount(tie.difference ?? 0)] : []),
+      ];
+      const amountColWidth = Math.max(96, Math.min(18, Math.max(...amountTexts.map((text) => text.length))) * 8 + 46);
+      const lineGrid = 'grid items-center gap-2';
+      const gridStyle = { gridTemplateColumns: `minmax(160px, 1fr) ${amountColWidth}px 48px` };
       const resultGrid = lineGrid;
       const card = 'border-b border-border pb-5';
       return (
@@ -1716,9 +1724,9 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                 <Input id="calc-header" className="h-8 text-[13px]" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
               </div>
             ) : null}
-            <div className={cn(lineGrid, sectionLabel, '-mb-0.5')}><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
+            <div className={cn(lineGrid, sectionLabel, '-mb-0.5')} style={gridStyle}><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
             {calcRows.map((row, index) => (
-              <div key={index} className={cn(lineGrid, 'group/calc-row')} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
+              <div key={index} className={cn(lineGrid, 'group/calc-row')} style={gridStyle} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
                 <div className="relative min-w-0">
                 {index > 0 && (<DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -1732,7 +1740,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                         ))}
                       </DropdownMenuContent>
                     </DropdownMenu>)}
-                <Textarea aria-label={`Description ${index + 1}`} aria-invalid={calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim()} rows={1} className={cn('h-9 min-h-9 max-h-9 min-w-0 resize-none overflow-hidden whitespace-pre-wrap break-words px-2.5 py-1.5 text-[13px]', index > 0 && 'pr-9', calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim() && 'border-destructive focus-visible:ring-destructive')} value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
+                <Input aria-label={`Description ${index + 1}`} aria-invalid={calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim()} title={row.comment} className={cn('h-9 min-w-0 overflow-hidden whitespace-nowrap text-ellipsis px-2.5 text-[13px]', index > 0 && 'pr-9', calcDescError && (index === 0 || row.value.trim() !== '') && !row.comment.trim() && 'border-destructive focus-visible:ring-destructive')} value={row.comment} onChange={(event) => setRow(index, { comment: event.target.value })} placeholder={index === 0 ? 'Starting value' : 'Description'} />
                 </div>
                 <CalcAmountInput
                   index={index}
@@ -1753,14 +1761,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
 
           </div>
           <div className="-mx-4 my-5 border-t border-border" />
-          <div className={resultGrid}>
+          <div className={resultGrid} style={gridStyle}>
             <Label htmlFor="calc-result" className={sectionLabel}>Result</Label>
             <Input id="calc-result" aria-label="Result" inputMode="decimal" className="calc-result-value h-8 min-w-0 px-2.5 text-right text-[13px] font-normal tabular-nums" value={calcResultDraft ?? formatAmount(effectiveCalcResult)} onFocus={() => setCalcResultDraft(formatAmount(effectiveCalcResult))} onChange={(event) => { setCalcResultDraft(formattedNumberEntry(event.currentTarget)); setCalcResultOverride(parseAmount(event.target.value)); }} onBlur={() => setCalcResultDraft(null)} />
             <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className={cn('h-8 w-6 text-primary', calcPick?.target === 'compare' && 'bg-primary/10')} aria-label="Compare by" aria-pressed={calcPick?.target === 'compare'} onClick={() => { setCalcPlacement(false); setActiveKind(null); setCalcPick((current) => current?.target === 'compare' ? null : { target: 'compare' }); }}><Crosshair /></Button></TooltipTrigger><TooltipContent>Compare by</TooltipContent></Tooltip>
           </div>
           {calcCompare && <div className="mt-2 flex flex-col gap-2">
-            {calcIncludeCompare && <div className={resultGrid} onMouseEnter={() => setCalcHover(calcCompare.source ?? null)} onMouseLeave={() => setCalcHover(null)}><span className="min-w-0 truncate text-[13px]" title={calcCompare.label}>{calcCompare.label}</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(calcCompare.value)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove comparison" onClick={() => setCalcIncludeCompare(false)}><X /></Button></div>}
-            {calcIncludeDifference && <div className={resultGrid}><span className="text-[13px]">Difference</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(tie?.difference ?? 0)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove difference" onClick={() => setCalcIncludeDifference(false)}><X /></Button></div>}
+            {calcIncludeCompare && <div className={resultGrid} style={gridStyle} onMouseEnter={() => setCalcHover(calcCompare.source ?? null)} onMouseLeave={() => setCalcHover(null)}><span className="min-w-0 truncate text-[13px]" title={calcCompare.label}>{calcCompare.label}</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(calcCompare.value)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove comparison" onClick={() => setCalcIncludeCompare(false)}><X /></Button></div>}
+            {calcIncludeDifference && <div className={resultGrid} style={gridStyle}><span className="text-[13px]">Difference</span><span className="pr-2.5 text-right text-[13px] tabular-nums">{formatAmount(tie?.difference ?? 0)}</span><Button variant="ghost" size="icon-sm" className="h-8 w-6 text-foreground/60 hover:text-foreground" aria-label="Remove difference" onClick={() => setCalcIncludeDifference(false)}><X /></Button></div>}
           </div>}
 
         </div>
@@ -1962,8 +1970,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         {editing && <aside style={{ width: editPanelWidth }} className="relative flex min-h-0 max-w-[calc(100vw-64px)] shrink-0 border-l border-border bg-card">
           <div role="separator" aria-label="Resize edit panel" aria-orientation="vertical" tabIndex={0} className="absolute -left-1 top-0 z-40 h-full w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20" onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setEditPanelWidth((width) => Math.max(408, Math.min(window.innerWidth - 64, width + (event.key === 'ArrowLeft' ? 16 : -16)))); } }} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.dataset.startX = String(event.clientX); event.currentTarget.dataset.startWidth = String(editPanelWidth); }} onPointerMove={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; setEditPanelWidth(Math.max(408, Math.min(window.innerWidth - 64, Number(event.currentTarget.dataset.startWidth) + Number(event.currentTarget.dataset.startX) - event.clientX))); }} onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
           <div className="flex w-12 shrink-0 flex-col border-r border-border">
-            <ScrollArea className="min-h-0 flex-1"><div className="flex flex-col items-center gap-1 py-2">{TOOLS.filter(({ id }) => id !== 'luka').map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" className={activePanel === id ? undefined : 'hover:bg-muted'} onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}><Icon /></Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
-            <div className="flex shrink-0 justify-center border-t border-border py-2"><Tooltip><TooltipTrigger asChild><Button variant="default" size="icon" aria-label="Ask Luka" aria-pressed={activePanel === 'luka'} onClick={() => { setActivePanel('luka'); setActiveKind(null); }}><LukaIcon size={22} bare /></Button></TooltipTrigger><TooltipContent side="left">Ask Luka</TooltipContent></Tooltip></div>
+            <ScrollArea className="min-h-0 flex-1"><div className="flex flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" className={activePanel === id ? undefined : 'hover:bg-muted'} onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? <LukaIcon size={22} bare glow /> : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
           </div>
           {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full min-w-0 flex-1"><div className={cn("min-w-0", activePanel === 'calculations' ? "p-4" : "p-3")}>
             {panelContent}</div></ScrollArea>}

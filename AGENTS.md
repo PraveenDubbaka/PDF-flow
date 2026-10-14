@@ -9,4 +9,5 @@
 - Resize placed calculations through a measured stamp wrapper and persist scale with annotation bounds at drag end; this keeps text, borders, and exported sizing proportional without changing arithmetic.
 - Resolve legacy label-only calculations, including text annotations with a numeric Calculation label or matching calculation record, through the same page/export stamp path; this preserves existing result-only stamps without reclassifying ordinary text or changing arithmetic.
 - Format calculator numeric drafts with caret-preserving grouping and reserve a shared amount/result grid track so large values stay readable without changing arithmetic.
-- Keep Luka outside the scrollable PDF tool list in a bottom-pinned rail footer so the AI entry stays separated and visible.
+- Keep Luka as a normal entry in the PDF tool rail list, distinguished only by its brighter brand-gradient icon with a soft glow (dimmer in dark mode), so it matches the other tools' button treatment.
+- Size the calculator amount column from the longest formatted value (shared by every amount input and the result box) and keep descriptions single-line with ellipsis truncation, so large values stay aligned and descriptions never wrap.
