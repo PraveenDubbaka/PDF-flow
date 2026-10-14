@@ -9,6 +9,8 @@ interface LukaIconProps {
   bare?: boolean;
   /** When true, keeps the gradient sparkle even inside already-styled containers */
   inverted?: boolean;
+  /** When true, renders a brighter brand gradient with a soft colored glow (tool-rail standout) */
+  glow?: boolean;
   className?: string;
 }
 
@@ -18,7 +20,7 @@ let _gradientId = 0;
  * Luka mark: a single plump four-point diamond sparkle with a soft violet
  * glow and a small white dot at its center (matches the brand image).
  */
-export function LukaIcon({ size = 28, animated = false, bare = false, inverted = false, className = "" }: LukaIconProps) {
+export function LukaIcon({ size = 28, animated = false, bare = false, inverted = false, glow = false, className = "" }: LukaIconProps) {
   const svgSize = bare ? size : size * 0.78;
   const dur = animated ? "1.3s" : "2.6s";
   const gradId = React.useRef(`luka-grad-${++_gradientId}`).current;
@@ -26,7 +28,7 @@ export function LukaIcon({ size = 28, animated = false, bare = false, inverted =
 
   // White mono sparkle only for bare usage on dark/navy surfaces; everywhere
   // else the sparkle carries the Luka violet gradient.
-  const gradientSparkle = !bare || inverted;
+  const gradientSparkle = !bare || inverted || glow;
   const sparkleFill = gradientSparkle ? `url(#${gradId})` : "#FFFFFF";
   const shadowColor = gradientSparkle ? "rgba(139,92,246," : "rgba(255,255,255,";
 
@@ -41,9 +43,9 @@ export function LukaIcon({ size = 28, animated = false, bare = false, inverted =
       {gradientSparkle && (
         <defs>
           <radialGradient id={gradId} cx="50%" cy="50%" r="55%">
-            <stop offset="0%" stopColor="#BBA6F9" />
-            <stop offset="55%" stopColor="#A585F6" />
-            <stop offset="100%" stopColor="#7E57E8" />
+            <stop offset="0%" stopColor={glow ? "#C9B8FF" : "#BBA6F9"} />
+            <stop offset="55%" stopColor={glow ? "#9F7AFF" : "#A585F6"} />
+            <stop offset="100%" stopColor={glow ? "#6D3BE0" : "#7E57E8"} />
           </radialGradient>
           <filter id={glowId} x="-60%" y="-60%" width="220%" height="220%">
             <feGaussianBlur stdDeviation="7" />
@@ -51,12 +53,15 @@ export function LukaIcon({ size = 28, animated = false, bare = false, inverted =
         </defs>
       )}
       <g
+        className={glow ? "luka-rail-glow" : undefined}
         style={{
           transformOrigin: "50px 50px",
           animation: `luka-sparkle-${animated ? "active" : "idle"} ${dur} ease-in-out infinite`,
-          filter: animated
-            ? `drop-shadow(0 0 6px ${shadowColor}1)) drop-shadow(0 0 3px ${shadowColor}.9))`
-            : `drop-shadow(0 0 3px ${shadowColor}.8))`,
+          filter: glow
+            ? undefined
+            : animated
+              ? `drop-shadow(0 0 6px ${shadowColor}1)) drop-shadow(0 0 3px ${shadowColor}.9))`
+              : `drop-shadow(0 0 3px ${shadowColor}.8))`,
         }}
       >
         {/* Soft glow halo behind the sparkle */}
