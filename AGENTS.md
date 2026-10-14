@@ -1,5 +1,7 @@
 # Architecture rules
 
+- Size shared calculation stamps intrinsically from nonwrapping rows with a minimum 12px label/value gap, and measure preview content without forcing the checkbox-free output width, so long numbers stay within both borders.
+
 - Scope PDF calculator typography overrides to `.pdf-calculator-panel` and exclude the shared stamp; this preserves other editor panels and native stamp sizing.
 - Persist optional calculator result overrides and per-line stamp visibility in PDF edit state; shared stamp rendering uses these fields while preserving legacy stamp defaults and arithmetic.
 - Keep calculator preview selection indices aligned with persisted calculation rows, and honor comparison visibility in all stamp renderers, so preview selections match placed output.
