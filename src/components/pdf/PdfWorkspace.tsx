@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import './pdf-panel-reflow.css';
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle,
   Copy, Crosshair, Download, ExternalLink, FileText, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
@@ -170,20 +171,20 @@ function CalcStamp({ title, rows, result, color, style, tie, compare, showResult
   const showTitle = !!title && title.trim() !== '' && title !== 'Calculation';
   const checkbox = (line: number | 'result' | 'compare' | 'difference', checked: boolean, label: string) => onToggle ? <span className="absolute left-0 top-1/2 flex h-3 w-3 -translate-y-1/2 items-center"><Checkbox className="h-3 w-3 shrink-0" aria-label={`Include ${label} in stamp`} checked={checked} onCheckedChange={(value) => onToggle(line, value === true)} /></span> : null;
   return (
-    <div data-calc-stamp className="inline-flex w-max min-w-[120px] flex-col rounded-[4px] border bg-card px-2 py-1.5 text-[10px] font-normal leading-snug text-foreground" style={{ borderColor: color }}>
-      {showTitle && <span className="whitespace-nowrap text-[11px] font-semibold" style={{ color }}>{title}</span>}
+    <div data-calc-stamp className="inline-grid w-max min-w-[120px] grid-cols-[fit-content(240px)_max-content] gap-x-[12px] rounded-[4px] border bg-card px-2 py-1.5 text-[10px] font-normal leading-snug text-foreground" style={{ borderColor: color }}>
+      {showTitle && <span className="col-span-2 max-w-[240px] whitespace-normal [overflow-wrap:anywhere] text-[11px] font-semibold" style={{ color }}>{title}</span>}
       {style === 'full' && rows.map((row, index) => (row.visible !== false || onToggle) && (
-        <span key={index} className={cn('flex items-baseline justify-between gap-[12px]', row.visible === false && 'opacity-50')}>
-          <span className={cn("relative flex shrink-0 whitespace-nowrap", onToggle && "pl-4")}>{checkbox(index, row.visible !== false, row.label || `line ${index + 1}`)}<span>{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || '\u00a0'}</span></span>
+        <span key={index} className={cn('col-span-2 grid grid-cols-[subgrid] items-baseline', row.visible === false && 'opacity-50')}>
+          <span className={cn("relative block max-w-[240px] whitespace-normal [overflow-wrap:anywhere]", onToggle && "pl-4")}>{checkbox(index, row.visible !== false, row.label || `line ${index + 1}`)}<span>{index > 0 && <span className="mr-1 font-semibold">{OP_LABEL[row.operator]}</span>}{row.label || '\u00a0'}</span></span>
           <span className="shrink-0 whitespace-nowrap text-right tabular-nums">{formatAmount(row.value)}</span>
         </span>
       ))}
-      {(showResult || onToggle) && <span className={cn('flex items-baseline justify-between gap-[12px] font-semibold', style === 'full' && 'mt-0.5 border-t border-border pt-0.5', !showResult && 'opacity-50')}>
-        <span className={cn("relative flex shrink-0 whitespace-nowrap", onToggle && "pl-4")}>{checkbox('result', showResult, 'result')}Result</span><span className="shrink-0 whitespace-nowrap text-right tabular-nums">{formatAmount(result)}</span>
+      {(showResult || onToggle) && <span className={cn('col-span-2 grid grid-cols-[subgrid] items-baseline font-semibold', style === 'full' && 'mt-0.5 border-t border-border pt-0.5', !showResult && 'opacity-50')}>
+        <span className={cn("relative block max-w-[240px] whitespace-normal [overflow-wrap:anywhere]", onToggle && "pl-4")}>{checkbox('result', showResult, 'result')}Result</span><span className="shrink-0 whitespace-nowrap text-right tabular-nums">{formatAmount(result)}</span>
       </span>}
-      {compare && includeCompare && (showCompare || onToggle) && <span className={cn('flex items-baseline justify-between gap-[12px]', !showCompare && 'opacity-50')}><span className={cn("relative flex shrink-0 whitespace-nowrap", onToggle && "pl-4")}>{checkbox('compare', showCompare, 'comparison')}<span>{compare.label}</span></span><span className="shrink-0 whitespace-nowrap text-right tabular-nums">{formatAmount(compare.value)}</span></span>}
-      {tie && compare && includeDifference && (showDifference || onToggle) && <span className={cn('flex items-baseline justify-between gap-[12px] font-semibold', !showDifference && 'opacity-50')}><span className={cn("relative flex shrink-0 whitespace-nowrap", onToggle && "pl-4")}>{checkbox('difference', showDifference, 'difference')}Difference</span><span className="shrink-0 whitespace-nowrap text-right tabular-nums">{formatAmount(tie.difference)}</span></span>}
-      {tie && !compare && !onToggle && <span className={cn('font-semibold', tie.ties ? 'text-success' : 'text-destructive')}>{tie.ties ? '✓ Ties' : `Difference: ${formatAmount(tie.difference)}`}</span>}
+      {compare && includeCompare && (showCompare || onToggle) && <span className={cn('col-span-2 grid grid-cols-[subgrid] items-baseline', !showCompare && 'opacity-50')}><span className={cn("relative block max-w-[240px] whitespace-normal [overflow-wrap:anywhere]", onToggle && "pl-4")}>{checkbox('compare', showCompare, 'comparison')}<span>{compare.label}</span></span><span className="shrink-0 whitespace-nowrap text-right tabular-nums">{formatAmount(compare.value)}</span></span>}
+      {tie && compare && includeDifference && (showDifference || onToggle) && <span className={cn('col-span-2 grid grid-cols-[subgrid] items-baseline font-semibold', !showDifference && 'opacity-50')}><span className={cn("relative block max-w-[240px] whitespace-normal [overflow-wrap:anywhere]", onToggle && "pl-4")}>{checkbox('difference', showDifference, 'difference')}Difference</span><span className="shrink-0 whitespace-nowrap text-right tabular-nums">{formatAmount(tie.difference)}</span></span>}
+      {tie && !compare && !onToggle && <span className={cn('col-span-2 whitespace-normal [overflow-wrap:anywhere] font-semibold', tie.ties ? 'text-success' : 'text-destructive')}>{tie.ties ? '✓ Ties' : `Difference: ${formatAmount(tie.difference)}`}</span>}
     </div>
   );
 }
@@ -1339,13 +1340,33 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           const stampSize = 8 * stampScale;
           const lineHeight = 11 * stampScale;
           const padding = 6 * stampScale;
-          const stampWidth = Math.max(96 * stampScale, ...lines.map((line) => font.widthOfTextAtSize(safeText(line.label), stampSize) + (line.amount == null ? 0 : font.widthOfTextAtSize(formatAmount(line.amount), stampSize) + 16 * stampScale) + padding * 2));
-          const stampHeight = Math.max(12 * stampScale, lines.length * lineHeight + 8 * stampScale);
+          const wrappedLines = lines.map((line) => {
+            const wrapped: string[] = [];
+            let current = '';
+            for (const word of safeText(line.label).split(/\s+/)) {
+              const candidate = current ? `${current} ${word}` : word;
+              if (font.widthOfTextAtSize(candidate, stampSize) <= 192 * stampScale) { current = candidate; continue; }
+              if (current) wrapped.push(current);
+              current = '';
+              for (const character of word) {
+                if (current && font.widthOfTextAtSize(current + character, stampSize) > 192 * stampScale) { wrapped.push(current); current = ''; }
+                current += character;
+              }
+            }
+            wrapped.push(current);
+            return { ...line, wrapped };
+          });
+          const labelWidth = Math.max(0, ...wrappedLines.flatMap((line) => line.wrapped.map((text) => font.widthOfTextAtSize(text, stampSize))));
+          const valueWidth = Math.max(0, ...lines.map((line) => line.amount == null ? 0 : font.widthOfTextAtSize(formatAmount(line.amount), stampSize)));
+          const stampWidth = Math.max(96 * stampScale, labelWidth + (valueWidth ? valueWidth + 12 * stampScale : 0) + padding * 2);
+          const stampHeight = Math.max(12 * stampScale, wrappedLines.reduce((count, line) => count + line.wrapped.length, 0) * lineHeight + 8 * stampScale);
           const top = height - height * item.y / 100;
           copiedPage.drawRectangle({ x, y: top - stampHeight, width: stampWidth, height: stampHeight, borderColor: color, borderWidth: 0.8 * stampScale, color: rgb(1, 1, 1) });
-          lines.forEach((line, lineIndex) => {
-            const baseline = top - 12 * stampScale - lineIndex * lineHeight;
-            copiedPage.drawText(safeText(line.label), { x: x + padding, y: baseline, size: stampSize, font, color });
+          let rowOffset = 0;
+          wrappedLines.forEach((line) => {
+            const baseline = top - 12 * stampScale - rowOffset * lineHeight;
+            line.wrapped.forEach((text, index) => copiedPage.drawText(text, { x: x + padding, y: baseline - index * lineHeight, size: stampSize, font, color }));
+            rowOffset += line.wrapped.length;
             if (line.amount != null) {
               const amount = formatAmount(line.amount);
               copiedPage.drawText(amount, { x: x + stampWidth - padding - font.widthOfTextAtSize(amount, stampSize), y: baseline, size: stampSize, font, color });
@@ -1706,8 +1727,8 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         ...(calcIncludeDifference && tie ? [formatAmount(tie.difference ?? 0)] : []),
       ];
       const amountColWidth = Math.max(96, Math.min(18, Math.max(...amountTexts.map((text) => text.length))) * 8 + 46);
-      const lineGrid = 'grid items-center gap-2';
-      const gridStyle = { gridTemplateColumns: `minmax(160px, 1fr) ${amountColWidth}px 48px` };
+      const lineGrid = 'calc-line-grid grid items-center gap-2';
+      const gridStyle = { gridTemplateColumns: `minmax(0, 1fr) ${amountColWidth}px 48px`, '--calc-amount-width': `${amountColWidth}px` } as React.CSSProperties;
       const resultGrid = lineGrid;
       const card = 'border-b border-border pb-5';
       return (
@@ -1724,7 +1745,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                 <Input id="calc-header" className="h-8 text-[13px]" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
               </div>
             ) : null}
-            <div className={cn(lineGrid, sectionLabel, '-mb-0.5')} style={gridStyle}><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
+            <div className={cn(lineGrid, sectionLabel, 'calc-column-labels -mb-0.5')} style={gridStyle}><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
             {calcRows.map((row, index) => (
               <div key={index} className={cn(lineGrid, 'group/calc-row')} style={gridStyle} onMouseEnter={() => setCalcHover(row.source ?? null)} onMouseLeave={() => setCalcHover(null)}>
                 <div className="relative min-w-0">
@@ -1967,12 +1988,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           {editing && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
           <div className="min-h-0 flex-1 overflow-auto bg-muted/30"><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
         </section>
-        {editing && <aside style={{ width: editPanelWidth }} className="relative flex min-h-0 max-w-[calc(100vw-64px)] shrink-0 border-l border-border bg-card">
-          <div role="separator" aria-label="Resize edit panel" aria-orientation="vertical" tabIndex={0} className="absolute -left-1 top-0 z-40 h-full w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20" onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setEditPanelWidth((width) => Math.max(408, Math.min(window.innerWidth - 64, width + (event.key === 'ArrowLeft' ? 16 : -16)))); } }} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.dataset.startX = String(event.clientX); event.currentTarget.dataset.startWidth = String(editPanelWidth); }} onPointerMove={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; setEditPanelWidth(Math.max(408, Math.min(window.innerWidth - 64, Number(event.currentTarget.dataset.startWidth) + Number(event.currentTarget.dataset.startX) - event.clientX))); }} onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
+        {editing && <aside style={{ width: editPanelWidth }} className="pdf-edit-panel relative flex min-h-0 min-w-[360px] max-w-[calc(100vw-64px)] shrink-0 border-l border-border bg-card">
+          <div role="separator" aria-label="Resize edit panel" aria-orientation="vertical" tabIndex={0} className="absolute -left-1 top-0 z-40 h-full w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20" onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setEditPanelWidth((width) => Math.max(360, Math.min(window.innerWidth - 64, width + (event.key === 'ArrowLeft' ? 16 : -16)))); } }} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.dataset.startX = String(event.clientX); event.currentTarget.dataset.startWidth = String(editPanelWidth); }} onPointerMove={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; setEditPanelWidth(Math.max(360, Math.min(window.innerWidth - 64, Number(event.currentTarget.dataset.startWidth) + Number(event.currentTarget.dataset.startX) - event.clientX))); }} onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
           <div className="flex w-12 shrink-0 flex-col border-r border-border">
             <ScrollArea className="min-h-0 flex-1"><div className="flex flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" className={activePanel === id ? undefined : 'hover:bg-muted'} onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? <LukaIcon size={22} bare glow /> : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
           </div>
-          {activePanel === 'luka' ? <div className="min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="h-full min-w-0 flex-1"><div className={cn("min-w-0", activePanel === 'calculations' ? "p-4" : "p-3")}>
+          {activePanel === 'luka' ? <div className="pdf-edit-panel-content min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="pdf-edit-panel-scroll h-full min-w-0 flex-1"><div className={cn("pdf-edit-panel-content min-w-0", activePanel === 'calculations' ? "p-4" : "p-3")}>
             {panelContent}</div></ScrollArea>}
         </aside>}
       </div>
