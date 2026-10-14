@@ -1,0 +1,55 @@
+.pdf-edit-panel {
+  container-type: inline-size;
+}
+
+.pdf-edit-panel-scroll [data-radix-scroll-area-viewport] > div {
+  display: block !important;
+  min-width: 0 !important;
+}
+
+.pdf-edit-panel-content {
+  overflow-wrap: anywhere;
+}
+
+.pdf-edit-panel-content :where(input, textarea, .flex > *, .grid > *) {
+  min-width: 0;
+}
+
+.pdf-edit-panel-content button {
+  max-width: 100%;
+}
+
+.pdf-edit-panel-content .calc-text-action {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@container (max-width: 460px) {
+  .pdf-calculator-panel .calc-line-grid {
+    grid-template-columns: minmax(0, 1fr) var(--calc-amount-width) !important;
+  }
+
+  .pdf-calculator-panel .calc-line-grid > :nth-child(3) {
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .pdf-calculator-panel .calc-column-labels > :nth-child(3) {
+    display: none;
+  }
+
+  .pdf-calculator-panel > :first-child,
+  .pdf-calculator-panel .calc-preview > .flex:last-child {
+    flex-wrap: wrap;
+  }
+
+  .pdf-calculator-panel .calc-title {
+    flex: 1 1 160px;
+  }
+
+  .pdf-edit-panel-content button.w-full {
+    height: auto;
+    min-height: 36px;
+    white-space: normal;
+  }
+}
