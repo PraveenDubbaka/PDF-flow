@@ -17,14 +17,14 @@ export function CalculationPreview({ children, initialScale = 1, onSizeChange }:
     const output = outputRef.current;
     if (!container || !stamp || !output) return;
     const measure = () => {
-      const widthScale = container.clientWidth / stamp.offsetWidth;
+      const widthScale = container.clientWidth / stamp.scrollWidth;
       const handleClearance = 18;
       const minimumHeight = stamp.offsetHeight * Math.min(1, widthScale) + handleClearance;
       const height = Math.max(chosenHeight ?? stamp.offsetHeight * initialScale + handleClearance, minimumHeight);
       const scale = Math.min(widthScale, (height - handleClearance) / stamp.offsetHeight);
       if (!Number.isFinite(scale) || scale <= 0) return;
       onSizeChange({ scale, width: output.offsetWidth * scale, height: output.offsetHeight * scale });
-      setSize({ scale, height, left: (container.clientWidth - stamp.offsetWidth * scale) / 2, top: (height - handleClearance - stamp.offsetHeight * scale) / 2 });
+      setSize({ scale, height, left: (container.clientWidth - stamp.scrollWidth * scale) / 2, top: (height - handleClearance - stamp.offsetHeight * scale) / 2 });
     };
     const observer = new ResizeObserver(measure);
     observer.observe(container);
@@ -38,8 +38,8 @@ export function CalculationPreview({ children, initialScale = 1, onSizeChange }:
     <div className="mb-[18px] w-full min-w-0">
       <div className="w-full rounded-[8px] border border-border bg-muted/40">
       <div ref={containerRef} data-calculation-preview className="relative w-full" style={{ height: size.height }}>
-        <div ref={outputRef} aria-hidden="true" className="pointer-events-none invisible absolute left-0 top-0 w-max [&_[data-calc-stamp]]:tracking-[0.15px] [&_[data-calc-stamp]_span]:tracking-[0.15px]">{cloneElement(children, { onToggle: undefined })}</div>
-        <div ref={stampRef} className="absolute w-max origin-top-left [&>[data-calc-stamp]]:flex [&_[data-calc-stamp]]:tracking-[0.15px] [&_[data-calc-stamp]_span]:tracking-[0.15px]" style={{ left: size.left, top: size.top, transform: `scale(${size.scale})` }}>
+        <div aria-hidden="true" className="pointer-events-none invisible absolute inset-0 overflow-hidden"><div ref={outputRef} className="absolute left-0 top-0 w-max [&_[data-calc-stamp]]:tracking-[0.15px] [&_[data-calc-stamp]_span]:tracking-[0.15px]">{cloneElement(children, { onToggle: undefined })}</div></div>
+        <div ref={stampRef} className="absolute w-max origin-top-left [&_[data-calc-stamp]]:tracking-[0.15px] [&_[data-calc-stamp]_span]:tracking-[0.15px]" style={{ left: size.left, top: size.top, transform: `scale(${size.scale})` }}>
           {children}
         </div>
       <Button variant="ghost" aria-label="Resize calculation preview" className="absolute bottom-0 left-1/2 z-10 h-9 w-10 -translate-x-1/2 translate-y-1/2 cursor-row-resize touch-none rounded-[4px] border border-border bg-background p-0"
