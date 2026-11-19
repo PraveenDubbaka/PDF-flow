@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
+import type { PdfTrialBalanceLink } from '@/lib/pdfTrialBalance';
 
 export const PDF_BUCKET = 'engagement-pdfs';
 
@@ -73,6 +74,7 @@ export interface PdfAnnotation {
   replies?: PdfCommentReply[];
   resolved?: boolean;
   stampScale?: number;
+  trialBalanceLink?: PdfTrialBalanceLink;
 }
 
 export interface PdfHistoryEntry {

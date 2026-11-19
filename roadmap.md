@@ -7,3 +7,4 @@
 - [x] Working Edit in window in both modes, retaining edits when closed.
 - [x] Collapsible tools panel preserving tab and width without horizontal scroll.
 - [x] Verify persistence, controls, and panel behavior in the live editor.
+- [x] Add Original/PY1/PY2 cell selection, saved account/column labels, and wider X-only trial balance popup; verify formatting and persistence.

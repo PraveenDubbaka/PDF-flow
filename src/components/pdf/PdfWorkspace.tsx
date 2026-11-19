@@ -30,13 +30,14 @@ import {
   emptyPdfEditState, deletePdfDocument, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfCalcSource, PdfDocumentProperties,
   PdfDocumentRecord, PdfEditState, PdfHistoryEntry, persistPdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
-import { trialBalanceAccounts } from '@/data/trialBalanceAccounts';
+import { trialBalanceAccounts, type TrialBalanceAccount } from '@/data/trialBalanceAccounts';
+import { trialBalanceColumns, type TrialBalanceColumn, formatTrialBalanceAmount, trialBalanceAmount, selectTrialBalanceAmount, trialBalanceLinkLabel } from '@/lib/pdfTrialBalance';
 import { PdfCommentNote, MentionText } from '@/components/pdf/PdfCommentNote';
 import { CalculationPreview } from '@/components/pdf/CalculationPreview';
 import { ResizableCalculationStamp } from '@/components/pdf/ResizableCalculationStamp';
 import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
-import { PdfAutoSave, PdfSaveStatus, requiresManualPdfSave, formatOriginalAmount } from '@/lib/pdfAutoSave';
+import { PdfAutoSave, PdfSaveStatus, requiresManualPdfSave } from '@/lib/pdfAutoSave';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -698,6 +699,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [pendingAnnotation, setPendingAnnotation] = useState<PdfAnnotation | null>(null);
   const [pendingValue, setPendingValue] = useState('');
+  const [selectedTbCell, setSelectedTbCell] = useState<string | null>(null);
 
   const [editState, setEditState] = useState<PdfEditState>(emptyPdfEditState());
   const [savedState, setSavedState] = useState<PdfEditState>(emptyPdfEditState());
@@ -966,6 +968,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     if (needsValue) {
       setPendingAnnotation(annotation);
       setPendingValue('');
+      setSelectedTbCell(null);
       if (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'callout') setActiveKind(null);
       return;
     }
@@ -978,17 +981,20 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, stamped] }, { kind: stamped.kind, title: stamped.label || stamped.value || `${stamped.kind.replace('-', ' ')} added`, page: stamped.page, color: stamped.color, targetId: stamped.id }));
   }, []);
 
-  const confirmTrialBalanceAccount = useCallback((label: string) => {
-    setPendingAnnotation((pending) => {
-      if (pending) {
-        const annotation: PdfAnnotation = { ...pending, value: label, label };
-        setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, annotation] }, { kind: annotation.kind, title: annotation.label || annotation.value || `${annotation.kind.replace('-', ' ')} added`, page: annotation.page, color: annotation.color, targetId: annotation.id }));
-        setSelectedAnnotationId(annotation.id);
-      }
-      return null;
+  const confirmTrialBalanceAccount = useCallback((account: TrialBalanceAccount, column: TrialBalanceColumn) => {
+    if (!pendingAnnotation) return;
+    const link = selectTrialBalanceAmount(account, column);
+    if (!link) return;
+    const label = trialBalanceLinkLabel(link);
+    const annotation: PdfAnnotation = { ...pendingAnnotation, value: label, label, trialBalanceLink: link };
+    setEditState((current) => {
+      const exists = current.annotations.some((item) => item.id === annotation.id);
+      const annotations = exists ? current.annotations.map((item) => item.id === annotation.id ? annotation : item) : [...current.annotations, annotation];
+      return withHistory({ ...current, annotations }, { kind: annotation.kind, title: label, page: annotation.page, color: annotation.color, targetId: annotation.id });
     });
-    setPendingValue('');
-  }, []);
+    setSelectedAnnotationId(annotation.id);
+    setSelectedTbCell(`${account.accNo}:${column}`);
+  }, [pendingAnnotation]);
 
   const confirmPendingAnnotation = useCallback(() => {
     const value = pendingValue.trim();
@@ -2112,14 +2118,14 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         </AlertDialogContent>
       </AlertDialog>
       <Dialog open={!!pendingAnnotation} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
-        <DialogContent className={pendingAnnotation?.kind === 'trial-balance' ? 'w-[380px] max-w-[calc(100vw-32px)]' : 'max-w-sm'} onEscapeKeyDown={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }} onInteractOutside={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }}>
+        <DialogContent className={pendingAnnotation?.kind === 'trial-balance' ? 'pdf-tb-dialog w-[880px] max-w-[calc(100vw-32px)]' : 'max-w-sm'} onEscapeKeyDown={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }} onInteractOutside={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>
               {pendingAnnotation?.kind === 'link' ? 'Link to web URL' : pendingAnnotation?.kind === 'trial-balance' ? 'Link to Trial Balance' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
             </DialogTitle>
           </DialogHeader>
           {pendingAnnotation?.kind === 'trial-balance' ? (
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <Input
                 autoFocus
                 value={pendingValue}
@@ -2127,12 +2133,12 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
                 onChange={(event) => setPendingValue(event.target.value)}
               />
               <div className="max-h-72 overflow-auto rounded-[8px] border border-border">
-                <table className="w-full text-xs">
+                <table className="w-full min-w-[680px] text-xs">
                   <thead className="sticky top-0 bg-muted">
                     <tr className="text-left text-foreground">
-                      <th className="px-2 py-1.5 font-semibold">Acc No.</th>
+                      <th className="whitespace-nowrap px-2 py-1.5 font-semibold">Acc No.</th>
                       <th className="px-2 py-1.5 font-semibold">Description</th>
-                      <th className="px-2 py-1.5 text-right font-semibold">Original</th>
+                      {trialBalanceColumns.map((column) => <th key={column} className="whitespace-nowrap px-2 py-1.5 text-right font-semibold">{column}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -2145,12 +2151,20 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
                       .map((account) => (
                         <tr
                           key={account.accNo + account.description}
-                          className="cursor-pointer border-t border-border hover:bg-muted/60"
-                          onClick={() => confirmTrialBalanceAccount(`${account.accNo} ${account.description}`)}
+                          className="border-t border-border"
                         >
-                          <td className="px-2 py-1.5 text-foreground">{account.accNo}</td>
-                          <td className="px-2 py-1.5 text-foreground">{account.description}</td>
-                          <td className="px-2 py-1.5 text-right text-foreground">{formatOriginalAmount(account.balance)}</td>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-foreground">{account.accNo}</td>
+                          <td className="w-full px-2 py-1.5 text-foreground"><div className="max-w-[200px] truncate" title={account.description}>{account.description}</div></td>
+                          {trialBalanceColumns.map((column) => {
+                            const amount = trialBalanceAmount(account, column);
+                            const empty = amount == null || !Number.isFinite(amount);
+                            const selected = selectedTbCell === `${account.accNo}:${column}`;
+                            return <td key={column} className="p-0 text-right">
+                              <Button variant="ghost" disabled={empty} aria-pressed={selected} aria-label={`${account.accNo} ${account.description} · ${column}: ${formatTrialBalanceAmount(amount)}`}
+                                className={cn('pdf-tb-amount h-9 w-full justify-end rounded-none px-2 text-xs font-normal tabular-nums text-foreground', empty && 'pdf-tb-empty', selected && 'bg-primary/15 text-primary ring-1 ring-inset ring-primary')}
+                                onClick={() => confirmTrialBalanceAccount(account, column)}>{formatTrialBalanceAmount(amount)}</Button>
+                            </td>;
+                          })}
                         </tr>
                       ))}
                   </tbody>

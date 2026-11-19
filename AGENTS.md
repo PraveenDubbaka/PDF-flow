@@ -15,3 +15,4 @@
 - Size the calculator amount column from the longest formatted value (shared by every amount input and the result box) and keep descriptions single-line with ellipsis truncation, so large values stay aligned and descriptions never wrap.
 - Serialize PDF edit-state auto-saves, acknowledge only successful writes, and synchronize open editor windows through a document-scoped BroadcastChannel; this prevents stale writes and preserves edits on Done or window close.
 - Use a dedicated PDF editor-window route sharing PdfWorkspace, with manual saving reserved for protected PDFs and the URL-driven protection flag; this keeps in-window tools and persistence consistent with the engagement.
+- Store trial balance links with account identity, selected amount column and amount alongside the legacy label; keep cell selection open until X and update the same annotation when reselecting, so column identity persists without duplicate links.

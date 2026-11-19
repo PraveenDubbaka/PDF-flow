@@ -8,6 +8,21 @@
   --pdf-annotation-active-label: 0 0% 100%;
 }
 
+.pdf-tb-dialog {
+  --pdf-tb-empty: 220 9% 46%;
+}
+.dark .pdf-tb-dialog {
+  --pdf-tb-empty: 220 10% 70%;
+}
+.pdf-tb-dialog .pdf-tb-empty {
+  color: hsl(var(--pdf-tb-empty)) !important;
+  opacity: 1;
+}
+.pdf-tb-dialog .pdf-tb-amount[aria-pressed='true'] {
+  color: hsl(var(--primary)) !important;
+  background: hsl(var(--primary) / 0.15) !important;
+}
+
 /* Exact calculator type roles; document stamps retain their native scale. */
 .pdf-calculator-panel {
   --calculator-muted: 220 9% 46%;
