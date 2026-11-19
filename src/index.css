@@ -4,6 +4,10 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --pdf-annotation-active-label: 0 0% 100%;
+}
+
 /* Exact calculator type roles; document stamps retain their native scale. */
 .pdf-calculator-panel {
   --calculator-muted: 220 9% 46%;

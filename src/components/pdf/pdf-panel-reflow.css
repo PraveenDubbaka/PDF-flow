@@ -94,7 +94,7 @@
   color: hsl(var(--calculator-muted, 220 9% 46%)) !important;
 }
 .pdf-annotation-grid button[aria-pressed='true'] .pdf-annotation-label {
-  color: hsl(var(--primary-foreground)) !important;
+  color: hsl(var(--pdf-annotation-active-label)) !important;
 }
 .dark .pdf-save-status,
 .dark .pdf-annotation-grid .pdf-annotation-label {
