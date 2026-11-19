@@ -2090,7 +2090,6 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             <ScrollArea className="min-h-0 flex-1"><div className="flex flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" className={activePanel === id ? undefined : 'hover:bg-muted'} onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? <LukaIcon size={22} bare glow /> : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
-          <label className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 text-xs"><Checkbox checked={simulateProtected} onCheckedChange={(value) => setSimulateProtected(value === true)} />Simulate password-protected PDF</label>
           {activePanel === 'luka' ? <div className="pdf-edit-panel-content min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="pdf-edit-panel-scroll min-h-0 flex-1 min-w-0 flex-1"><div className={cn("pdf-edit-panel-content min-w-0", activePanel === 'calculations' ? "p-4" : "p-3")}>
             {panelContent}</div></ScrollArea>}
           </div></>}
