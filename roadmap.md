@@ -15,3 +15,4 @@
 - [x] Target highlighting, same-page document return, mock coverage and end-to-end verification.
 - [x] Add link: fixed tab width, content-fitting height with a 60vh engagement cap, fixed search and 13px/32px controls; verify in the live editor.
 - [x] Remove Engagement tree chevrons, separate folder/lead-sheet clicks, preserve guides and verify link selection.
+- [x] Replace the view-mode Edit + Edit in window buttons with one split button (Edit | chevron menu with Edit in Window); keep edit mode unchanged; verify in the live editor.

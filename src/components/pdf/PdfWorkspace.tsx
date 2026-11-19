@@ -39,6 +39,7 @@ import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
 import { PdfAutoSave, PdfSaveStatus, requiresManualPdfSave } from '@/lib/pdfAutoSave';
 import { EngagementLinkPicker } from '@/components/pdf/EngagementLinkPicker';
+import { PdfEditSplitButton } from '@/components/pdf/PdfEditSplitButton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { engagementLinkLabel, engagementLinkTooltip, engagementTargetPath, type PdfEngagementLink } from '@/lib/pdfEngagementLinks';
 import { useTrialBalanceAccounts } from '@/lib/trialBalanceSource';
@@ -2110,12 +2111,12 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
           {editing ? <>
             {manualSave ? <Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button> : saveStatus !== 'idle' && <span role="status" data-status={saveStatus} className="pdf-save-status flex items-center gap-1.5">{saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saveStatus === 'saved' ? <Check className="h-3.5 w-3.5" /> : null}{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'All changes saved' : 'Changes not saved'}</span>}
             {!popout && <Button variant="secondary" size="sm" onClick={() => void finishEditing()}>Done</Button>}
+            {!popout && <Button variant="secondary" size="sm" onClick={openEditorWindow}><ExternalLink />Edit in window</Button>}
           </> : <>
-            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}><Pencil />Edit</Button>
+            <PdfEditSplitButton showWindowItem={!popout} onEdit={() => setEditing(true)} onEditInWindow={openEditorWindow} />
             <Button variant="secondary" size="sm" onClick={() => void downloadPdf()}><Download />Download</Button>
             <Button variant="destructive" size="sm" disabled={deleting} onClick={() => setConfirmDelete(true)}><Trash2 />Delete</Button>
           </>}
-          {!popout && <Button variant="secondary" size="sm" onClick={openEditorWindow}><ExternalLink />Edit in window</Button>}
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
