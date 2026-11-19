@@ -25,13 +25,26 @@ export function PdfEditSplitButton({ onEdit, onEditInWindow, showWindowItem = tr
       <span aria-hidden className="w-px shrink-0 self-stretch bg-secondary-button-border" />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="secondary" size="sm" aria-label="More edit options" className="h-full w-7 rounded-l-none border-0 px-0">
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-label="More edit options"
+            className="h-full w-7 rounded-l-none border-0 px-0 [&_svg]:size-4"
+          >
             <ChevronDown />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={6} className="min-w-0">
-          <DropdownMenuItem data-slot="split-button-item" onSelect={onEditInWindow}>
-            <ExternalLink />Edit in Window
+        <DropdownMenuContent
+          align="end"
+          sideOffset={4}
+          className="pdf-edit-split-menu min-w-0 w-auto rounded-[8px] border border-border bg-popover px-0 py-1 text-popover-foreground shadow-elevation-2 outline-none"
+        >
+          <DropdownMenuItem
+            data-slot="split-button-item"
+            className="h-8 gap-2 rounded-[8px] px-3 py-2 text-[13px] font-normal"
+            onSelect={onEditInWindow}
+          >
+            <ExternalLink className="h-4 w-4" />Edit in Window
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

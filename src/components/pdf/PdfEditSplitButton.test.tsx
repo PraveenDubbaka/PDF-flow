@@ -53,4 +53,43 @@ describe('Edit split button', () => {
     expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'More edit options' })).toBeNull();
   });
+
+  it('renders the menu with the standard surface: 1px border, 8px radius, standard shadow, popover surface', () => {
+    setup();
+    openMenu();
+    const menu = screen.getByRole('menu');
+    const cls = menu.className;
+    expect(cls).toContain('border-border');
+    expect(cls).toContain('border');
+    expect(cls).not.toContain('border-2');
+    expect(cls).toContain('rounded-[8px]');
+    expect(cls).not.toContain('rounded-xl');
+    expect(cls).not.toContain('rounded-lg');
+    expect(cls).toContain('shadow-elevation-2');
+    expect(cls).toContain('bg-popover');
+    expect(cls).toContain('outline-none');
+  });
+
+  it('renders the menu item at 32px height with 8px/12px padding, 8px icon gap and 13px regular text', () => {
+    setup();
+    openMenu();
+    const item = screen.getByRole('menuitem', { name: 'Edit in Window' });
+    const cls = item.className;
+    expect(cls).toContain('h-8');
+    expect(cls).toContain('px-3');
+    expect(cls).toContain('py-2');
+    expect(cls).toContain('gap-2');
+    expect(cls).toContain('text-[13px]');
+    expect(cls).toContain('font-normal');
+    const icon = item.querySelector('svg');
+    expect(icon?.getAttribute('class')).toContain('h-4');
+    expect(icon?.getAttribute('class')).toContain('w-4');
+  });
+
+  it('keeps the chevron half 28px wide with a 16px chevron', () => {
+    setup();
+    const trigger = screen.getByRole('button', { name: 'More edit options' });
+    expect(trigger.className).toContain('w-7');
+    expect(trigger.className).toContain('[&_svg]:size-4');
+  });
 });
