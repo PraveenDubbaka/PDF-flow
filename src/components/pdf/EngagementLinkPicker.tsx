@@ -37,8 +37,8 @@ export function EngagementLinkPicker({ engagementId, onSelect }: { engagementId:
       </div>
       {hasChildren && open && <div className="ml-4 border-l border-border pl-1">
         {(node.children ?? []).map(render)}
-        {!!rows.length && <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr><th className="min-w-[180px] px-2 py-2 text-left font-semibold">Line item</th>{trialBalanceColumns.map((column) => <th key={column} className="min-w-[120px] px-2 py-2 text-right font-semibold">{column}</th>)}</tr></thead><tbody>
-          {rows.map((row, index) => <tr key={row.id} className="border-t border-border"><td className="max-w-[240px] px-2"><span className="block truncate" title={row.description}>{node.code}.{index + 1} {row.description}</span></td>{trialBalanceColumns.map((column) => {
+        {!!rows.length && <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr><th className="px-2 text-left font-semibold">Line item</th>{trialBalanceColumns.map((column) => <th key={column} className="whitespace-nowrap px-2 text-right font-semibold">{column}</th>)}</tr></thead><tbody>
+          {rows.map((row, index) => <tr key={row.id} className="border-t border-border"><td className="w-full max-w-0 px-2"><span className="block truncate" title={row.description}>{node.code}.{index + 1} {row.description}</span></td>{trialBalanceColumns.map((column) => {
             const amount = leadSheetAmount(row, column);
             const empty = amount == null || !Number.isFinite(amount);
             return <td key={column}><Button variant="ghost" aria-label={`${node.code}.${index + 1} ${row.description} · ${column}: ${formatTrialBalanceAmount(amount)}`} disabled={empty} className={`pdf-tb-amount h-9 w-full justify-end rounded-none px-2 text-xs font-normal tabular-nums ${empty ? 'pdf-tb-empty' : ''}`} onClick={() => { const link = selectEngagementTarget(node, row, column); if (link) onSelect(link); }}>{formatTrialBalanceAmount(amount)}</Button></td>;
@@ -47,5 +47,5 @@ export function EngagementLinkPicker({ engagementId, onSelect }: { engagementId:
       </div>}
     </div>;
   };
-  return <div className="min-w-0 space-y-2"><Input autoFocus aria-label="Search engagement items" placeholder="Search name or reference number" value={search} onChange={(event) => setSearch(event.target.value)} /><div className="max-h-[420px] overflow-auto">{tree.map(render)}{!tree.some(matches) && <p className="p-3 text-xs text-foreground">No results</p>}</div></div>;
+  return <div className="flex min-h-0 min-w-0 flex-col gap-2"><Input className="shrink-0" autoFocus aria-label="Search engagement items" placeholder="Search name or reference number" value={search} onChange={(event) => setSearch(event.target.value)} /><div className="min-h-0 overflow-auto">{tree.map(render)}{!tree.some(matches) && <p className="p-3 text-xs text-foreground">No results</p>}</div></div>;
 }

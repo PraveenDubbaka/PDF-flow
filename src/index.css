@@ -23,6 +23,27 @@
   background: hsl(var(--primary) / 0.15) !important;
 }
 
+/* Add-link controls only; other PDF dialogs keep their existing sizing. */
+.pdf-add-link-dialog > :first-child {
+  flex-shrink: 0;
+}
+.pdf-add-link-dialog :where([role='tablist'], [role='tab'], input, button, tr) {
+  height: 32px;
+}
+.pdf-add-link-dialog :where([role='tablist']) {
+  padding: 0;
+}
+.pdf-add-link-dialog :where([role='tab'], input, button, th, td, td span) {
+  font-size: 13px !important;
+  letter-spacing: 0;
+}
+.pdf-add-link-dialog input::placeholder {
+  font-size: 13px !important;
+}
+.pdf-add-link-dialog .pdf-tb-amount {
+  white-space: nowrap;
+}
+
 /* Exact calculator type roles; document stamps retain their native scale. */
 .pdf-calculator-panel {
   --calculator-muted: 220 9% 46%;

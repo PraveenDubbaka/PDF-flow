@@ -2158,13 +2158,13 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         </AlertDialogContent>
       </AlertDialog>
       <Dialog open={!!pendingAnnotation} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
-        <DialogContent className={pendingAnnotation?.kind === 'trial-balance' || (pendingAnnotation?.kind === 'link' && linkTab === 'engagement') ? 'pdf-tb-dialog w-[880px] max-w-[calc(100vw-32px)]' : 'max-w-sm'} onEscapeKeyDown={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }} onInteractOutside={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }}>
+        <DialogContent className={pendingAnnotation?.kind === 'link' ? cn('pdf-add-link-dialog pdf-tb-dialog flex w-[520px] max-w-[calc(100vw-32px)] flex-col', linkTab === 'engagement' && 'max-h-[60vh]') : pendingAnnotation?.kind === 'trial-balance' ? 'pdf-tb-dialog w-[880px] max-w-[calc(100vw-32px)]' : 'max-w-sm'} onEscapeKeyDown={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }} onInteractOutside={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>
               {pendingAnnotation?.kind === 'link' ? 'Add link' : pendingAnnotation?.kind === 'trial-balance' ? 'Link to Trial Balance' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
             </DialogTitle>
           </DialogHeader>
-          {pendingAnnotation?.kind === 'link' && <Tabs value={linkTab} onValueChange={setLinkTab}><TabsList className="w-full"><TabsTrigger value="web" className="flex-1">Web URL</TabsTrigger><TabsTrigger value="engagement" className="flex-1">Engagement</TabsTrigger></TabsList></Tabs>}
+          {pendingAnnotation?.kind === 'link' && <Tabs className="shrink-0" value={linkTab} onValueChange={setLinkTab}><TabsList className="w-full"><TabsTrigger value="web" className="flex-1">Web URL</TabsTrigger><TabsTrigger value="engagement" className="flex-1">Engagement</TabsTrigger></TabsList></Tabs>}
           {pendingAnnotation?.kind === 'link' && linkTab === 'engagement' ? (
             <EngagementLinkPicker engagementId={engagementId ?? ''} onSelect={(link: PdfEngagementLink) => confirmStructuredLink({ engagementLink: link }, engagementLinkLabel(link))} />
           ) : pendingAnnotation?.kind === 'trial-balance' ? (
