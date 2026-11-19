@@ -1,5 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { createPortal } from 'react-dom';
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { baseTrialBalanceData } from '@/data/trialBalanceRows';
+import { publishTrialBalanceAccounts } from '@/lib/trialBalanceSource';
+import { cn } from '@/lib/utils';
 import { useEngagements } from "@/store/EngagementsContext";
 import { toast } from "sonner";
 import { EngagementRightPanel } from "@/components/EngagementRightPanel";
@@ -109,44 +113,7 @@ const toolsMenuActions = [
 
 
 // Harbor Freight Logistics LLC — Trial Balance (USD) — Dec 31, 2025
-const baseTrialBalanceData = [
- // Assets — debit balances (positive)
- { id: "1", accNo: "1010", description: "Cash & Bank", original: 1240000, adj: 0, final: 1240000, py1: 1085000, changePct: "14.29%", py2: "975,000.00", mapNo: 1010, ls: "BB", grouping: "Assets", subGrouping: "Current assets", cfCategory: "CFO", taxCode: 1010, fxRate: 1.00 },
- { id: "2", accNo: "1100", description: "Accounts Receivable", original: 2100000, adj: 0, final: 2100000, py1: 1920000, changePct: "9.38%", py2: "1,750,000.00", mapNo: 1100, ls: "BB", grouping: "Assets", subGrouping: "Current assets", cfCategory: "CFO", taxCode: 1100, fxRate: 1.00 },
- { id: "3", accNo: "1105", description: "Allowance for Doubtful Accounts", original: -42000, adj: 0, final: -42000, py1: -38000, changePct: "10.53%", py2: "(32,000.00)", mapNo: 1105, ls: "BB", grouping: "Assets", subGrouping: "Current assets", cfCategory: "CFO", taxCode: 1105, fxRate: 1.00 },
- { id: "4", accNo: "1200", description: "Inventory", original: 340000, adj: 0, final: 340000, py1: 298000, changePct: "14.09%", py2: "265,000.00", mapNo: 1200, ls: "BB", grouping: "Assets", subGrouping: "Current assets", cfCategory: "CFO", taxCode: 1200, fxRate: 1.00 },
- { id: "5", accNo: "1300", description: "Prepaid Expenses", original: 185000, adj: 0, final: 185000, py1: 162000, changePct: "14.20%", py2: "148,000.00", mapNo: 1300, ls: "BB", grouping: "Assets", subGrouping: "Current assets", cfCategory: "CFO", taxCode: 1300, fxRate: 1.00 },
- { id: "6", accNo: "1510", description: "Right-of-Use Assets (ASC 842)", original: 2800000, adj: 0, final: 2800000, py1: 3080000, changePct: "(9.09)%", py2: "3,360,000.00", mapNo: 1510, ls: "BB", grouping: "Assets", subGrouping: "Non-current assets", cfCategory: "NA", taxCode: 1510, fxRate: 1.00 },
- { id: "7", accNo: "1600", description: "Property Plant & Equipment", original: 6420000, adj: 0, final: 6420000, py1: 5940000, changePct: "8.08%", py2: "5,500,000.00", mapNo: 1600, ls: "BB", grouping: "Assets", subGrouping: "Fixed assets", cfCategory: "CFI", taxCode: 1600, fxRate: 1.00 },
- { id: "8", accNo: "1605", description: "Accumulated Depreciation", original: -1600000, adj: 0, final: -1600000, py1: -1120000, changePct: "42.86%", py2: "(840,000.00)", mapNo: 1605, ls: "BB", grouping: "Assets", subGrouping: "Fixed assets", cfCategory: "CFI", taxCode: 1605, fxRate: 1.00 },
- { id: "9", accNo: "1700", description: "Goodwill", original: 1420000, adj: 0, final: 1420000, py1: 1420000, changePct: "0.00%", py2: "1,420,000.00", mapNo: 1700, ls: "BB", grouping: "Assets", subGrouping: "Non-current assets", cfCategory: "NA", taxCode: 1700, fxRate: 1.00 },
- { id: "10", accNo: "1900", description: "Other Assets", original: 237000, adj: 0, final: 237000, py1: 214000, changePct: "10.75%", py2: "198,000.00", mapNo: 1900, ls: "BB", grouping: "Assets", subGrouping: "Non-current assets", cfCategory: "NA", taxCode: 1900, fxRate: 1.00 },
- { id: "10a", accNo: "1.5", description: "Asset - AIM", original: 445.50, adj: 0, final: 445.50, py1: 445.50, changePct: "0.00%", py2: "221.20", mapNo: 1480, ls: "I", grouping: "Assets", subGrouping: "Current assets", cfCategory: "CFI", taxCode: 1480, fxRate: 1.00 },
- // Liabilities — credit balances (negative)
- { id: "11", accNo: "2010", description: "Accounts Payable", original: -1400000, adj: 0, final: -1400000, py1: -1260000, changePct: "11.11%", py2: "(1,140,000.00)", mapNo: 2010, ls: "BB", grouping: "Liabilities", subGrouping: "Current liabilities", cfCategory: "CFO", taxCode: 2010, fxRate: 1.00 },
- { id: "12", accNo: "2100", description: "Accrued Liabilities", original: -620000, adj: 0, final: -620000, py1: -574000, changePct: "8.01%", py2: "(530,000.00)", mapNo: 2100, ls: "BB", grouping: "Liabilities", subGrouping: "Current liabilities", cfCategory: "CFO", taxCode: 2100, fxRate: 1.00 },
- { id: "13", accNo: "2200", description: "Deferred Revenue", original: -284000, adj: 0, final: -284000, py1: -252000, changePct: "12.70%", py2: "(220,000.00)", mapNo: 2200, ls: "BB", grouping: "Liabilities", subGrouping: "Current liabilities", cfCategory: "CFO", taxCode: 2200, fxRate: 1.00 },
- { id: "14", accNo: "2310", description: "Current Portion LT Debt", original: -480000, adj: 0, final: -480000, py1: -480000, changePct: "0.00%", py2: "(480,000.00)", mapNo: 2310, ls: "BB", grouping: "Liabilities", subGrouping: "Current liabilities", cfCategory: "CFF", taxCode: 2310, fxRate: 1.00 },
- { id: "15", accNo: "2320", description: "Lease Liability - Current", original: -380000, adj: 0, final: -380000, py1: -360000, changePct: "5.56%", py2: "(340,000.00)", mapNo: 2320, ls: "BB", grouping: "Liabilities", subGrouping: "Current liabilities", cfCategory: "CFF", taxCode: 2320, fxRate: 1.00 },
- { id: "16", accNo: "2500", description: "Long-term Debt", original: -4320000, adj: 0, final: -4320000, py1: -4800000, changePct: "(10.00)%", py2: "(5,280,000.00)", mapNo: 2500, ls: "BB", grouping: "Liabilities", subGrouping: "Long-term liabilities", cfCategory: "CFF", taxCode: 2500, fxRate: 1.00 },
- { id: "17", accNo: "2510", description: "Lease Liability - Non-Current", original: -2370000, adj: 0, final: -2370000, py1: -2640000, changePct: "(10.23)%", py2: "(2,910,000.00)", mapNo: 2510, ls: "BB", grouping: "Liabilities", subGrouping: "Long-term liabilities", cfCategory: "CFF", taxCode: 2510, fxRate: 1.00 },
- { id: "18", accNo: "2900", description: "Other Long-term Liabilities", original: -116000, adj: 0, final: -116000, py1: -104000, changePct: "11.54%", py2: "(95,000.00)", mapNo: 2900, ls: "BB", grouping: "Liabilities", subGrouping: "Long-term liabilities", cfCategory: "NA", taxCode: 2900, fxRate: 1.00 },
- // Equity — credit balances (negative)
- { id: "19", accNo: "3100", description: "Common Stock", original: -500000, adj: 0, final: -500000, py1: -500000, changePct: "0.00%", py2: "(500,000.00)", mapNo: 3100, ls: "BB", grouping: "Equity", subGrouping: "Share capital", cfCategory: "NA", taxCode: 3100, fxRate: 1.00 },
- { id: "20", accNo: "3200", description: "Retained Earnings (opening)", original: -2683000, adj: 0, final: -2683000, py1: -1943000, changePct: "38.08%", py2: "(1,354,000.00)", mapNo: 3200, ls: "RE", grouping: "Equity", subGrouping: "Retained earnings", cfCategory: "NA", taxCode: 3200, fxRate: 1.00 },
- // Revenue — credit balances (negative)
- { id: "21", accNo: "4000", description: "Service Revenue", original: -18400000, adj: 0, final: -18400000, py1: -16820000, changePct: "9.39%", py2: "(15,440,000.00)", mapNo: 4000, ls: "I", grouping: "Revenue", subGrouping: "Operating revenue", cfCategory: "CFO", taxCode: 4000, fxRate: 1.00 },
- { id: "22", accNo: "4900", description: "Other Income", original: -47000, adj: 0, final: -47000, py1: -38000, changePct: "23.68%", py2: "(31,000.00)", mapNo: 4900, ls: "I", grouping: "Revenue", subGrouping: "Other income", cfCategory: "CFO", taxCode: 4900, fxRate: 1.00 },
- // Expenses — debit balances (positive)
- { id: "23", accNo: "5000", description: "Cost of Services", original: 12144000, adj: 0, final: 12144000, py1: 11116000, changePct: "9.25%", py2: "10,208,000.00", mapNo: 5000, ls: "I", grouping: "Expenses", subGrouping: "Operating expe...", cfCategory: "CFO", taxCode: 5000, fxRate: 1.00 },
- { id: "24", accNo: "6100", description: "Salaries & Benefits", original: 2160000, adj: 0, final: 2160000, py1: 2040000, changePct: "5.88%", py2: "1,920,000.00", mapNo: 6100, ls: "I", grouping: "Expenses", subGrouping: "Operating expe...", cfCategory: "CFO", taxCode: 6100, fxRate: 1.00 },
- { id: "25", accNo: "6200", description: "Fuel & Vehicle", original: 980000, adj: 0, final: 980000, py1: 876000, changePct: "11.87%", py2: "798,000.00", mapNo: 6200, ls: "I", grouping: "Expenses", subGrouping: "Operating expe...", cfCategory: "CFO", taxCode: 6200, fxRate: 1.00 },
- { id: "26", accNo: "6300", description: "Rent & Occupancy", original: 440000, adj: 0, final: 440000, py1: 420000, changePct: "4.76%", py2: "400,000.00", mapNo: 6300, ls: "I", grouping: "Expenses", subGrouping: "Admin expenses", cfCategory: "CFO", taxCode: 6300, fxRate: 1.00 },
- { id: "27", accNo: "6400", description: "Depreciation & Amortization", original: 480000, adj: 0, final: 480000, py1: 440000, changePct: "9.09%", py2: "400,000.00", mapNo: 6400, ls: "I", grouping: "Expenses", subGrouping: "Admin expenses", cfCategory: "Excl", taxCode: 6400, fxRate: 1.00 },
- { id: "28", accNo: "6500", description: "Interest Expense", original: 384000, adj: 0, final: 384000, py1: 412000, changePct: "(6.80)%", py2: "440,000.00", mapNo: 6500, ls: "I", grouping: "Expenses", subGrouping: "Finance costs", cfCategory: "CFF", taxCode: 6500, fxRate: 1.00 },
- { id: "29", accNo: "6900", description: "Other Operating Expenses", original: 856000, adj: 0, final: 856000, py1: 794000, changePct: "7.81%", py2: "728,000.00", mapNo: 6900, ls: "I", grouping: "Expenses", subGrouping: "Operating expe...", cfCategory: "CFO", taxCode: 6900, fxRate: 1.00 },
- { id: "30", accNo: "7000", description: "Income Tax Expense", original: 249000, adj: 0, final: 249000, py1: 213000, changePct: "16.90%", py2: "183,000.00", mapNo: 7000, ls: "I", grouping: "Expenses", subGrouping: "Finance costs", cfCategory: "CFO", taxCode: 7000, fxRate: 1.00 },
-];
+
 
 const formatNumber = (val: number | string) => {
  if (typeof val === "string") return val;
@@ -181,6 +148,11 @@ function computeAdjFromStorage(engId: string): Record<string, number> {
 
 export default function TrialBalance() {
  const navigate = useNavigate();
+ const [linkParams] = useSearchParams();
+ const linkedAccount = linkParams.get('account');
+ const linkedColumn = linkParams.get('column') ?? 'Original';
+ const returnUrl = linkParams.get('document');
+ const [linkedHighlight, setLinkedHighlight] = useState(false);
  const { engagementId } = useParams();
  const [dateFilter] = useState("Dec 31 2024");
  const [hideZeroAcc, setHideZeroAcc] = useState(false);
@@ -192,6 +164,14 @@ export default function TrialBalance() {
  const [trialBalanceData, setTrialBalanceData] = useState([...baseTrialBalanceData]);
  const [activeFilters, setActiveFilters] = useState<Set<FilterId>>(new Set());
  const { isCollapsed: isPanelCollapsed, toggle: togglePanel } = useSecondaryPanel();
+
+ useEffect(() => {
+   if (!engagementId) return;
+   publishTrialBalanceAccounts(engagementId, trialBalanceData.map((row) => ({
+     accNo: row.accNo, description: row.description, balance: row.original, py1: row.py1,
+     py2: Number(row.py2.replace(/[,()]/g, '')) * (row.py2.startsWith('(') ? -1 : 1),
+   })));
+ }, [engagementId, trialBalanceData]);
 
  // Restore adj amounts from saved AJE entries on mount
  useEffect(() => {
@@ -208,8 +188,21 @@ export default function TrialBalance() {
 
  // TB load state — persisted per engagement
  const [tbLoaded, setTbLoaded] = useState(() =>
- engagementId ? !!localStorage.getItem(TB_LOADED_KEY(engagementId)) : false
+ Boolean(linkedAccount) || (engagementId ? !!localStorage.getItem(TB_LOADED_KEY(engagementId)) : false)
  );
+ useEffect(() => {
+   if (!linkedAccount || !tbLoaded) return;
+   setActiveFilters(new Set());
+   const timer = window.setTimeout(() => {
+     const row = Array.from(document.querySelectorAll<HTMLElement>('[data-tb-account]')).find((el) => el.dataset.tbAccount === linkedAccount);
+     const cell = row?.querySelector<HTMLElement>(`[data-tb-column="${linkedColumn}"]`);
+     cell?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+     setLinkedHighlight(true);
+   }, 100);
+   const clear = window.setTimeout(() => setLinkedHighlight(false), 3000);
+   return () => { window.clearTimeout(timer); window.clearTimeout(clear); };
+ }, [linkedAccount, linkedColumn, tbLoaded]);
+
  const [showImport, setShowImport] = useState(false);
  const [cyFile, setCyFile] = useState<File | null>(null);
  const [py1File, setPy1File] = useState<File | null>(null);
@@ -335,6 +328,7 @@ export default function TrialBalance() {
  <h1 className="text-lg font-semibold text-foreground truncate">Trial Balance</h1>
  </div>
  <div className="flex items-center gap-2">
+ {returnUrl?.startsWith(`/engagements/${engagementId}/pdf/`) && <Button variant="secondary" className="hidden sm:inline-flex" onClick={() => navigate(returnUrl)}><ChevronLeft />Back to document</Button>}
  {inlineHeaderActions.map(action => (
  <ExpandableIconButton key={action.id} variant="secondary" size="sm" icon={<action.icon className="h-4 w-4" />} label={action.label} disabled />
  ))}
@@ -536,6 +530,7 @@ export default function TrialBalance() {
  return (
  <Layout title="Engagements" headerContent={trialBalanceBreadcrumb}>
  <div className="flex h-full overflow-hidden">
+ {returnUrl?.startsWith(`/engagements/${engagementId}/pdf/`) && createPortal(<Button variant="secondary" className="fixed bottom-4 left-1/2 z-[100] -translate-x-1/2 sm:hidden" onClick={() => navigate(returnUrl)}><ChevronLeft />Back to document</Button>, document.body)}
  <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
  {/* Top Header Bar - title and tool actions */}
  <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-1.5 border-b border-border bg-gradient-to-r from-card via-card to-secondary/20">
@@ -555,6 +550,7 @@ export default function TrialBalance() {
  </h1>
  </div>
  <div className="flex items-center gap-2">
+ {returnUrl?.startsWith(`/engagements/${engagementId}/pdf/`) && <Button variant="secondary" className="hidden sm:inline-flex" onClick={() => navigate(returnUrl)}><ChevronLeft />Back to document</Button>}
  {inlineHeaderActions.map(action => (
  <ExpandableIconButton
  key={action.id}
@@ -784,7 +780,8 @@ export default function TrialBalance() {
  return (
  <tr
  key={row.id}
- className="border-b border-border hover:bg-muted/30 transition-colors cursor-pointer"
+ data-tb-account={row.accNo}
+ className={cn("border-b border-border hover:bg-muted/30 transition-colors cursor-pointer", linkedHighlight && row.accNo === linkedAccount && "bg-primary/10")}
  >
  <td className="p-0 relative" style={{ width: "16px", minWidth: "16px", maxWidth: "16px" }}>
  <div
@@ -803,16 +800,16 @@ export default function TrialBalance() {
  <td className="px-2 py-2"><Checkbox /></td>
  <td className="px-6 py-2 text-foreground whitespace-nowrap">{row.accNo}</td>
  <td className="px-6 py-2 text-foreground whitespace-nowrap">{row.description}</td>
- <td className="px-6 py-2 text-right text-foreground whitespace-nowrap">{formatNumber(row.original)}</td>
+ <td data-tb-column="Original" className={cn("px-6 py-2 text-right text-foreground whitespace-nowrap", linkedHighlight && row.accNo === linkedAccount && linkedColumn === 'Original' && "bg-primary/20 ring-2 ring-inset ring-primary font-semibold")}>{formatNumber(row.original)}</td>
  <td className="px-6 py-2 text-right whitespace-nowrap">
  <button onClick={() => { setSelectedAdjRow({ accNo: row.accNo, description: row.description }); setAdjModalOpen(true); }} className="text-link font-medium hover:underline focus:outline-none">
    {formatNumber(row.adj)}
  </button>
  </td>
  <td className="px-6 py-2 text-right text-foreground whitespace-nowrap">{formatNumber(row.final)}</td>
- <td className="px-6 py-2 text-right text-foreground whitespace-nowrap">{formatNumber(row.py1)}</td>
+ <td data-tb-column="PY1" className={cn("px-6 py-2 text-right text-foreground whitespace-nowrap", linkedHighlight && row.accNo === linkedAccount && linkedColumn === 'PY1' && "bg-primary/20 ring-2 ring-inset ring-primary font-semibold")}>{formatNumber(row.py1)}</td>
  <td className="px-6 py-2 text-right text-foreground whitespace-nowrap">{row.changePct}</td>
- <td className="px-6 py-2 text-right text-foreground whitespace-nowrap">{row.py2}</td>
+ <td data-tb-column="PY2" className={cn("px-6 py-2 text-right text-foreground whitespace-nowrap", linkedHighlight && row.accNo === linkedAccount && linkedColumn === 'PY2' && "bg-primary/20 ring-2 ring-inset ring-primary font-semibold")}>{row.py2}</td>
  <td className="px-6 py-2 text-right whitespace-nowrap">
  <span className="text-link font-medium">{formatNumber(row.mapNo)}</span>
  </td>

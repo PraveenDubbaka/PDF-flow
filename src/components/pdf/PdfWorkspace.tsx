@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './pdf-panel-reflow.css';
 import {
@@ -30,14 +30,15 @@ import {
   emptyPdfEditState, deletePdfDocument, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfCalcSource, PdfDocumentProperties,
   PdfDocumentRecord, PdfEditState, PdfHistoryEntry, persistPdfEditState, savePdfVersion,
 } from '@/lib/pdfDocuments';
-import { trialBalanceAccounts, type TrialBalanceAccount } from '@/data/trialBalanceAccounts';
-import { trialBalanceColumns, type TrialBalanceColumn, formatTrialBalanceAmount, trialBalanceAmount, selectTrialBalanceAmount, trialBalanceLinkLabel } from '@/lib/pdfTrialBalance';
+import { type TrialBalanceAccount } from '@/data/trialBalanceAccounts';
+import { trialBalanceColumns, type TrialBalanceColumn, formatTrialBalanceAmount, trialBalanceAmount, selectTrialBalanceAmount, trialBalanceLinkLabel, defaultTrialBalanceColumn, resolveTrialBalanceLink, trialBalanceLinkTooltip, documentReturnPath } from '@/lib/pdfTrialBalance';
 import { PdfCommentNote, MentionText } from '@/components/pdf/PdfCommentNote';
 import { CalculationPreview } from '@/components/pdf/CalculationPreview';
 import { ResizableCalculationStamp } from '@/components/pdf/ResizableCalculationStamp';
 import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
 import { PdfAutoSave, PdfSaveStatus, requiresManualPdfSave } from '@/lib/pdfAutoSave';
+import { useTrialBalanceAccounts } from '@/lib/trialBalanceSource';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -262,8 +263,10 @@ function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, o
 
 const PLACE_NOUN: Partial<Record<PdfAnnotationKind, string>> = { link: 'link', comment: 'comment', 'trial-balance': 'TB link', callout: 'callout' };
 
-function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations, hoveredCalcId, onHoverCalc, pulseCalc, placeNoun }: {
+function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations, hoveredCalcId, onHoverCalc, pulseCalc, placeNoun, onTrialBalanceLink, trialBalanceAccounts }: {
   placeNoun?: string | null;
+  onTrialBalanceLink: (annotation: PdfAnnotation) => void;
+  trialBalanceAccounts: TrialBalanceAccount[];
   pdf: pdfjs.PDFDocumentProxy;
   pageNumber: number;
   zoom: number;
@@ -531,6 +534,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           onClick={(event) => {
             event.stopPropagation();
             if (suppressClick.current) { suppressClick.current = false; return; }
+            if (annotation.kind === 'trial-balance' && !activeKind) { onTrialBalanceLink(annotation); return; }
             onSelect(annotation.id);
             if (annotation.kind === 'link' && !activeKind && annotation.value && /^https?:\/\//i.test(annotation.value)) {
               window.open(annotation.value, '_blank', 'noopener,noreferrer');
@@ -562,7 +566,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             backgroundColor: annotation.kind === 'highlight' ? annotation.color : undefined,
             boxShadow: annotation.kind === 'calculation' && (pulsingId === annotation.id || hoveredCalcId === annotation.id) ? `0 0 0 3px ${annotation.color}66` : undefined,
           }}
-          title={annotation.kind === 'link' ? annotation.value ?? annotation.label : annotation.label}
+          title={annotation.kind === 'trial-balance' ? (() => { const link = resolveTrialBalanceLink(annotation, trialBalanceAccounts); return link ? trialBalanceLinkTooltip(link, trialBalanceAccounts) : annotation.label; })() : annotation.kind === 'link' ? annotation.value ?? annotation.label : annotation.label}
         >
           {annotation.kind === 'freehand' && annotation.points && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={annotation.points.map((p) => `${(p.x - annotation.x) / annotation.width * 100},${(p.y - annotation.y) / annotation.height * 100}`).join(' ')} fill="none" stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" /></svg>}
           {annotation.kind === 'strikeout' && annotation.regions && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">{annotation.regions.map((r, index) => <line key={index} x1={(r.x - annotation.x) / annotation.width * 100} x2={(r.x + r.width - annotation.x) / annotation.width * 100} y1={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} y2={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />)}</svg>}
@@ -583,10 +587,10 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             </>
           )}
           {annotation.kind === 'trial-balance' && (
-            <>
+            <Tooltip><TooltipTrigger asChild><span className="flex min-w-0 items-center gap-1">
               <Landmark className="h-3 w-3 shrink-0" style={{ color: annotation.color }} />
               <span className="truncate text-[10px] font-medium" style={{ color: annotation.color }}>{annotation.label ?? annotation.value}</span>
-            </>
+            </span></TooltipTrigger><TooltipContent>{(() => { const link = resolveTrialBalanceLink(annotation, trialBalanceAccounts); return link ? trialBalanceLinkTooltip(link, trialBalanceAccounts) : annotation.label; })()}</TooltipContent></Tooltip>
           )}
           {annotation.kind === 'image' && annotation.value && <img src={annotation.value} alt={annotation.label ?? 'Inserted image'} className="h-full w-full object-contain" />}
           {annotation.kind === 'calculation' && (() => {
@@ -677,14 +681,16 @@ function multiply(a: number[], b: number[]) {
 
 export function PdfWorkspace({ documentId, popout = false }: { documentId: string; popout?: boolean }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { engagementId } = useParams<{ engagementId: string }>();
+  const trialBalanceAccounts = useTrialBalanceAccounts(engagementId ?? '');
   const [document, setDocument] = useState<PdfDocumentRecord | null>(null);
   const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(null);
   const [sourceBytes, setSourceBytes] = useState<Uint8Array | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => Math.max(1, Number(new URLSearchParams(window.location.search).get('page')) || 1));
   const [zoom, setZoom] = useState(1);
   const [editing, setEditing] = useState(popout);
   const [activePanel, setActivePanel] = useState<ToolId>('annotations');
@@ -981,6 +987,17 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, stamped] }, { kind: stamped.kind, title: stamped.label || stamped.value || `${stamped.kind.replace('-', ' ')} added`, page: stamped.page, color: stamped.color, targetId: stamped.id }));
   }, []);
 
+  const openTrialBalanceLink = async (annotation: PdfAnnotation) => {
+    const link = resolveTrialBalanceLink(annotation, trialBalanceAccounts);
+    if (!link || !engagementId) return;
+    if (!manualSave && JSON.stringify(editState) !== lastPersisted.current) {
+      if (!await saveQueue.enqueue(structuredClone(editState))) return;
+    }
+    const targetPage = Math.max(1, visiblePages.indexOf(annotation.page) + 1);
+    const params = new URLSearchParams({ account: link.accountNo, column: link.column, document: documentReturnPath(location.pathname, location.search, targetPage) });
+    navigate(`/engagements/${engagementId}/trial-balance?${params}`);
+  };
+
   const confirmTrialBalanceAccount = useCallback((account: TrialBalanceAccount, column: TrialBalanceColumn) => {
     if (!pendingAnnotation) return;
     const link = selectTrialBalanceAmount(account, column);
@@ -994,6 +1011,8 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     });
     setSelectedAnnotationId(annotation.id);
     setSelectedTbCell(`${account.accNo}:${column}`);
+    setPendingAnnotation(null);
+    setPendingValue('');
   }, [pendingAnnotation]);
 
   const confirmPendingAnnotation = useCallback(() => {
@@ -1777,7 +1796,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       const heading = activePanel === 'links' ? 'HYPERLINKS' : 'TRIAL BALANCE';
       const hint = activePanel === 'trial-balance' ? 'Click anywhere on the page to drop a link, then pick a trial balance account.' : 'Click anywhere on the page to drop a link, then attach a web address.';
       const cta = activePanel === 'trial-balance' ? 'Add trial balance link' : 'Add link';
-      return <div className="space-y-3"><p className="text-xs font-semibold text-foreground">{heading}</p><p className="text-xs text-foreground">{hint}</p><Button variant={activeKind === kind ? 'default' : 'secondary'} aria-pressed={activeKind === kind} className="w-full" onClick={() => setActiveKind(activeKind === kind ? null : kind)}>{cta}</Button>{editState.annotations.filter((item) => item.kind === kind).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => { setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }} onRename={(label) => updateAnnotation(item.id, { label, value: label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>;
+      return <div className="space-y-3"><p className="text-xs font-semibold text-foreground">{heading}</p><p className="text-xs text-foreground">{hint}</p><Button variant={activeKind === kind ? 'default' : 'secondary'} aria-pressed={activeKind === kind} className="w-full" onClick={() => setActiveKind(activeKind === kind ? null : kind)}>{cta}</Button>{editState.annotations.filter((item) => item.kind === kind).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => { if (kind === 'trial-balance') { void openTrialBalanceLink(item); return; } setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }} onRename={(label) => updateAnnotation(item.id, { label, value: label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>;
     }
     if (activePanel === 'redact') return (
       <div className="space-y-4">
@@ -2086,7 +2105,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(effectiveZoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
           </div>
           {editing && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
-          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
+          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
         </section>
         {editing && <aside style={{ width: toolsCollapsed ? 48 : editPanelWidth }} className={cn("relative flex min-h-0 shrink-0 border-l border-border bg-card", !toolsCollapsed && "pdf-edit-panel min-w-[360px] max-w-[calc(100vw-64px)]")}>
           {toolsCollapsed ? <div className="flex w-12 justify-center pt-2"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="Expand Tools Panel" onClick={() => setToolsCollapsed(false)}><ToolsPanelIcon /></Button></TooltipTrigger><TooltipContent side="left">Expand Tools Panel</TooltipContent></Tooltip></div> : <>
@@ -2153,8 +2172,8 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
                           key={account.accNo + account.description}
                           className="border-t border-border"
                         >
-                          <td className="whitespace-nowrap px-2 py-1.5 text-foreground">{account.accNo}</td>
-                          <td className="w-full px-2 py-1.5 text-foreground"><div className="max-w-[200px] truncate" title={account.description}>{account.description}</div></td>
+                          <td className="p-0 text-foreground"><Button variant="ghost" className="h-9 w-full justify-start rounded-none px-2 text-xs font-normal text-foreground" onClick={() => { const column = defaultTrialBalanceColumn(account); if (column) confirmTrialBalanceAccount(account, column); }}>{account.accNo}</Button></td>
+                          <td className="w-full p-0 text-foreground"><Button variant="ghost" title={account.description} className="h-9 w-full justify-start rounded-none px-2 text-xs font-normal text-foreground" onClick={() => { const column = defaultTrialBalanceColumn(account); if (column) confirmTrialBalanceAccount(account, column); }}><span className="max-w-[200px] truncate">{account.description}</span></Button></td>
                           {trialBalanceColumns.map((column) => {
                             const amount = trialBalanceAmount(account, column);
                             const empty = amount == null || !Number.isFinite(amount);
