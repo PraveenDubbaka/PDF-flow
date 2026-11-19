@@ -1,6 +1,7 @@
 import { Sidebar } from '@/components/Sidebar';
 import { GlobalHeader } from '@/components/GlobalHeader';
 import { DocumentLinkReturn } from '@/components/pdf/DocumentLinkReturn';
+import { useParams, useSearchParams } from 'react-router-dom';
 
 
 interface LayoutProps {
@@ -14,6 +15,9 @@ interface LayoutProps {
 }
 
 export function Layout({ children, title, headerContent, showActions = false, showBackButton = false, onBack, hideSidebar = false }: LayoutProps) {
+ const { engagementId } = useParams();
+ const [linkParams] = useSearchParams();
+ const linkedDocument = linkParams.get('document')?.startsWith(`/engagements/${engagementId}/pdf/`) === true;
  return (
  <div className="flex h-screen" style={{ backgroundImage: 'url(/portal-bg.svg)', backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}>
  {!hideSidebar && (
@@ -32,9 +36,9 @@ export function Layout({ children, title, headerContent, showActions = false, sh
 
  {/* Content area: transparent flex row — each card floats on gradient */}
  <DocumentLinkReturn />
- <div className="content-wrapper flex flex-1 overflow-hidden">
+ <div className={`content-wrapper flex flex-1 overflow-hidden ${linkedDocument ? 'max-sm:[&>#sidebar-secondary-portal]:hidden max-sm:[&>#right-panel-portal]:hidden' : ''}`}>
  <div id="sidebar-secondary-portal" className="flex shrink-0 h-full" />
- <main className={`app-main flex-1 overflow-auto text-foreground rounded-xl bg-background shadow-[0_4px_24px_rgba(0,0,0,0.35)] mb-1 ${hideSidebar ? '' : 'mr-1'}`}>
+ <main className={`app-main min-w-0 flex-1 overflow-auto text-foreground rounded-xl bg-background shadow-[0_4px_24px_rgba(0,0,0,0.35)] mb-1 ${hideSidebar ? '' : 'mr-1'}`}>
  {children}
  </main>
  <div id="right-panel-portal" className="flex shrink-0 h-full pb-1" />

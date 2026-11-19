@@ -19,5 +19,5 @@
 - Share the trial balance seed rows and publish displayed account amounts to an engagement-scoped reactive store; this keeps PDF link tooltips and the Trial Balance page on the same source without altering adjustment logic.
 - Carry linked account, column and a same-engagement PDF return URL in trial balance navigation; scroll and briefly highlight the target, retaining the PDF page on return.
 
-- Share engagement sidebar seed trees with the hyperlink picker, attach engagement-local documents/custom sections, and persist only relative target identity plus line/column; this keeps links scoped and amounts resolved from lead-sheet rows.
-- Use a shared same-engagement document-return strip on destination layouts; highlight linked lead-sheet rows/columns only during linked navigation so ordinary destination views stay unchanged.
+- Share engagement sidebar seed trees and worksheet templates with the hyperlink picker, attach selected procedure checklists and engagement-local documents/custom sections, and persist only relative target identity plus line/column; this keeps links scoped and amounts resolved from lead-sheet rows.
+- Use a shared same-engagement document-return strip on destination layouts and hide secondary portals on phones during linked visits; this keeps the highlighted target visible without changing ordinary destination views.

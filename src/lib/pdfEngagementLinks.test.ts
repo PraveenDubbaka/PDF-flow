@@ -1,10 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { engagementSidebarTrees } from './engagementLinkTree';
-import { leadSheetRows, leadSheetAmount, selectEngagementTarget, engagementLinkLabel, engagementLinkTooltip, engagementTargetPath } from './pdfEngagementLinks';
+import { getEngagementLinkTree, leadSheetRows, leadSheetAmount, selectEngagementTarget, engagementLinkLabel, engagementLinkTooltip, engagementTargetPath } from './pdfEngagementLinks';
 
 const node = { id: 'pr-ca-b', code: 'B', label: 'Accounts receivable', route: 'procedure/pr-ca-b' };
 
 describe('Engagement hyperlinks', () => {
+  it('mirrors selected procedure checklists and attached documents, without Trial Balance', () => {
+    localStorage.setItem('audit-590-wp-proc-map-AUD-audit', JSON.stringify({ 'aud-wp-a': ['gca-ws-proc-cash-grp'] }));
+    localStorage.setItem('engagement-node-docs-AUD-audit', JSON.stringify({ 'aud-wp-a': [{ id: 'doc-1', name: 'Cash.pdf' }] }));
+    const flatten = (nodes: ReturnType<typeof getEngagementLinkTree>): ReturnType<typeof getEngagementLinkTree> => nodes.flatMap((node) => [node, ...flatten(node.children ?? [])]);
+    const nodes = flatten(getEngagementLinkTree('AUD-audit'));
+    expect(nodes.find((node) => node.id === 'gca-ws-proc-cash-bank')?.code).toBe('A-2');
+    expect(nodes.find((node) => node.id === 'doc-1')?.route).toBe('pdf/doc-1');
+    expect(nodes.some((node) => node.route === 'trial-balance')).toBe(false);
+    localStorage.removeItem('audit-590-wp-proc-map-AUD-audit');
+    localStorage.removeItem('engagement-node-docs-AUD-audit');
+  });
   it('keeps Trial Balance out of selectable engagement targets', () => {
     expect(selectEngagementTarget({ id: 'tb', label: 'Trial Balance', route: 'trial-balance' })).toBeNull();
   });

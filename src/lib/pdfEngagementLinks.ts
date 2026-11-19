@@ -2,6 +2,7 @@ import { engagementSidebarTrees, type SectionNode } from './engagementLinkTree';
 import { TEMPLATE_CONFIG } from './engagementTemplatesData';
 import { getAccountsForProcedure, type Row } from './tbGroups';
 import { formatTrialBalanceAmount, type TrialBalanceColumn } from './pdfTrialBalance';
+import { initialGlobalWorksheets, type WorksheetTemplate } from '@/data/globalWorksheets';
 
 export interface PdfEngagementLink {
   targetId: string;
@@ -24,8 +25,25 @@ export function getEngagementLinkTree(engagementId: string): SectionNode[] {
     : type === 'audit-ca' || (!type && engagementId.startsWith('AUD-')) ? trees.auditEngagementTree : trees.engagementTree;
   const docs = read<Record<string, { id: string; name: string; type?: string }[]>>(`engagement-node-docs-${engagementId}`, {});
   const custom = read<{ id: string; name: string; category: 'checklist' | 'letter' | 'folder'; parentId: string }[]>(`engagement-custom-sections-${engagementId}`, []);
+  const procedureMap = read<Record<string, string[]>>(`audit-590-wp-proc-map-${engagementId}`, {});
+  const findWorksheet = (nodes: WorksheetTemplate[], id: string): WorksheetTemplate | undefined => {
+    for (const node of nodes) {
+      if (node.id === id) return node;
+      const found = findWorksheet(node.children ?? [], id);
+      if (found) return found;
+    }
+  };
+  const procedureChildren = (node: SectionNode): SectionNode[] => {
+    if (!node.id.startsWith('aud-wp-')) return [];
+    const selected = (procedureMap[node.id] ?? []).flatMap((id) => {
+      const item = findWorksheet(initialGlobalWorksheets, id);
+      return item ? item.type === 'folder' ? item.children ?? [] : [item] : [];
+    });
+    return selected.filter((item, index) => selected.findIndex((other) => other.id === item.id) === index).map((item, index) => ({ id: item.id, code: `${node.code}-${index + 1}`, label: item.name, icon: 'worksheet', route: `gca-proc/${item.id}` }));
+  };
   const attach = (node: SectionNode): SectionNode => ({ ...node, children: [
     ...(node.children ?? []).filter((child) => child.route !== 'trial-balance').map(attach),
+    ...procedureChildren(node).map(attach),
     ...custom.filter((child) => child.parentId === node.id).map((child) => attach({ id: child.id, label: child.name, code: child.name.slice(0, 2).toUpperCase(), icon: child.category, route: child.category === 'folder' ? undefined : `checklist/${child.id}` })),
     ...(docs[node.id] ?? []).filter((doc) => doc.type !== 'note').map((doc, index) => ({ id: doc.id, label: doc.name, code: `${node.code ?? 'D'}.${index + 1}`, icon: 'doc' as const, route: `pdf/${doc.id}` })),
   ] });
