@@ -8,6 +8,7 @@ export type Row = {
  adj: number;
  final: number;
  py1: number;
+ py2?: number | null;
  changePct: string;
  ref?: string;
 };
@@ -33,6 +34,8 @@ export const mk = (
  adj,
  final: original + adj,
  py1,
+ // Mock prior-prior year figures; shared by picker and lead-sheet destination.
+ py2: Math.round(py1 * 0.9 * 100) / 100,
  changePct,
 });
 

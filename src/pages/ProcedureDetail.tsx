@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { loadEngagements } from "@/store/engagementsStore";
 import { Layout } from "@/components/Layout";
 import { useSecondaryPanel } from "@/hooks/useSecondaryPanel";
@@ -35,6 +35,8 @@ import {
 } from "lucide-react";
 import xeroLogo from "@/assets/xero-logo.png";
 import quickbooksLogo from "@/assets/quickbooks-intuit-logo.png";
+import { leadSheetRows } from '@/lib/pdfEngagementLinks';
+import { formatTrialBalanceAmount } from '@/lib/pdfTrialBalance';
 import { getAccountsForProcedure } from "@/lib/tbGroups";
 
 
@@ -69,6 +71,16 @@ const formatChangePct = (final: number, py1: number): string => {
 export default function ProcedureDetail() {
  const { engagementId, procedureId } = useParams<{ engagementId: string; procedureId: string }>();
  const navigate = useNavigate();
+ const [linkParams] = useSearchParams();
+ const linkedLine = linkParams.get('line');
+ const linkedColumn = linkParams.get('column');
+ const [highlightLink, setHighlightLink] = useState(false);
+ useEffect(() => {
+   if (!linkedLine) return;
+   setHighlightLink(true);
+   const timer = setTimeout(() => setHighlightLink(false), 3000);
+   return () => clearTimeout(timer);
+ }, [linkedLine, linkedColumn]);
  const { isCollapsed: isPanelCollapsed, toggle: togglePanel } = useSecondaryPanel();
  const [comment, setComment] = useState("");
 
@@ -103,7 +115,8 @@ export default function ProcedureDetail() {
  }, [engagementId]);
 
  const procedureInfo = procedureId ? getAccountsForProcedure(procedureId) : null;
- const accounts = procedureInfo?.rows || [];
+ const accounts = procedureId ? leadSheetRows(procedureId) : [];
+ const showPy2 = linkedColumn === 'PY2';
 
  // Compute totals
  const totals = accounts.reduce(
@@ -241,7 +254,7 @@ export default function ProcedureDetail() {
  <div className="border border-border rounded-lg overflow-hidden bg-card overflow-x-auto">
  <div className="min-w-[960px]">
  {/* Table Header */}
- <div className="grid grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_90px_60px_80px_160px] bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
+ <div className={`grid ${showPy2 ? "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_110px_90px_60px_80px_160px]" : "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_90px_60px_80px_160px]"} bg-muted border-b border-border text-xs font-semibold text-muted-foreground`}>
  <div className="flex items-center justify-center py-2.5">
  <Checkbox className="h-4 w-4" />
  </div>
@@ -251,6 +264,7 @@ export default function ProcedureDetail() {
  <div className="py-2.5 px-2 text-right font-bold text-foreground">Adj</div>
  <div className="py-2.5 px-2 text-right font-bold text-foreground">Final</div>
  <div className="py-2.5 px-2 text-right">PY1</div>
+ {showPy2 && <div className="py-2.5 px-2 text-right">PY2</div>}
  <div className="py-2.5 px-2 text-right flex items-center justify-end gap-1">
  Change(%)
  <ChevronDown className="h-3 w-3" />
@@ -264,17 +278,19 @@ export default function ProcedureDetail() {
  {accounts.map((row) => (
  <div
  key={row.id}
- className="grid grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_90px_60px_80px_160px] border-b border-border hover:bg-muted/30 transition-colors text-sm"
+ data-lead-line={row.id}
+ className={`grid ${showPy2 ? "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_110px_90px_60px_80px_160px]" : "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_90px_60px_80px_160px]"} border-b border-border hover:bg-muted/30 transition-colors text-sm ${highlightLink && row.id === linkedLine ? "bg-primary/10 ring-1 ring-inset ring-primary" : ""}`}
  >
  <div className="flex items-center justify-center py-2.5">
  <Checkbox className="h-4 w-4" />
  </div>
  <div className="py-2.5 px-2 text-foreground">{row.accNo}</div>
  <div className="py-2.5 px-2 text-foreground">{row.description}</div>
- <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(row.original)}</div>
+ <div data-lead-column="Original" className={`py-2.5 px-2 text-right text-foreground ${highlightLink && row.id === linkedLine && linkedColumn === "Original" ? "bg-primary/20 ring-2 ring-inset ring-primary" : ""}`}>{formatNumber(row.original)}</div>
  <div className="py-2.5 px-2 text-right font-bold text-foreground">{formatNumber(row.adj)}</div>
  <div className="py-2.5 px-2 text-right font-bold text-foreground">{formatNumber(row.final)}</div>
- <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(row.py1)}</div>
+ <div data-lead-column="PY1" className={`py-2.5 px-2 text-right text-foreground ${highlightLink && row.id === linkedLine && linkedColumn === "PY1" ? "bg-primary/20 ring-2 ring-inset ring-primary" : ""}`}>{formatNumber(row.py1)}</div>
+ {showPy2 && <div data-lead-column="PY2" className={`py-2.5 px-2 text-right text-foreground ${highlightLink && row.id === linkedLine ? "bg-primary/20 ring-2 ring-inset ring-primary" : ""}`}>{formatTrialBalanceAmount(row.py2)}</div>}
  <div className="py-2.5 px-2 text-right text-foreground">{formatChangePct(row.final, row.py1)}</div>
  <div className="py-2.5 px-2 text-center text-muted-foreground">{row.ref ?? "-"}</div>
  <div className="py-2.5 px-2 text-center flex items-center justify-center gap-1">
@@ -302,7 +318,7 @@ export default function ProcedureDetail() {
  ))}
 
  {/* Total Row */}
- <div className="grid grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_90px_60px_80px_160px] bg-muted/50 text-sm font-bold">
+ <div className={`grid ${showPy2 ? "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_110px_90px_60px_80px_160px]" : "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_90px_60px_80px_160px]"} bg-muted/50 text-sm font-bold`}>
  <div className="py-2.5" />
  <div className="py-2.5" />
  <div className="py-2.5 px-2 text-foreground">Total</div>
@@ -310,6 +326,7 @@ export default function ProcedureDetail() {
  <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(totals.adj)}</div>
  <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(totals.final)}</div>
  <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(totals.py1)}</div>
+ {showPy2 && <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(accounts.reduce((total, row) => total + (row.py2 ?? 0), 0))}</div>}
  <div className="py-2.5 px-2" />
  <div className="py-2.5 px-2" />
  <div className="py-2.5 px-2" />

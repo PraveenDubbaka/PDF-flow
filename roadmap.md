@@ -9,3 +9,7 @@
 - [x] Verify persistence, controls, and panel behavior in the live editor.
 - [x] Add Original/PY1/PY2 cell selection, saved account/column labels, and wider X-only trial balance popup; verify formatting and persistence.
 - [x] Auto-close amount/default account selection; live hover amount; linked account/column navigation with Back to document preserving page.
+
+- [x] Hyperlinks Web URL/Engagement target picker matching sidebar, live line amounts and legacy links.
+- [x] General Trial Balance link with existing account popup unchanged.
+- [x] Target highlighting, same-page document return, mock coverage and end-to-end verification.

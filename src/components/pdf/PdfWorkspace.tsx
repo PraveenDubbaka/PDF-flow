@@ -38,6 +38,9 @@ import { ResizableCalculationStamp } from '@/components/pdf/ResizableCalculation
 import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
 import { PdfAutoSave, PdfSaveStatus, requiresManualPdfSave } from '@/lib/pdfAutoSave';
+import { EngagementLinkPicker } from '@/components/pdf/EngagementLinkPicker';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { engagementLinkLabel, engagementLinkTooltip, engagementTargetPath, type PdfEngagementLink } from '@/lib/pdfEngagementLinks';
 import { useTrialBalanceAccounts } from '@/lib/trialBalanceSource';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -534,7 +537,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           onClick={(event) => {
             event.stopPropagation();
             if (suppressClick.current) { suppressClick.current = false; return; }
-            if (annotation.kind === 'trial-balance' && !activeKind) { onTrialBalanceLink(annotation); return; }
+            if ((annotation.kind === 'trial-balance' || annotation.engagementLink) && !activeKind) { onTrialBalanceLink(annotation); return; }
             onSelect(annotation.id);
             if (annotation.kind === 'link' && !activeKind && annotation.value && /^https?:\/\//i.test(annotation.value)) {
               window.open(annotation.value, '_blank', 'noopener,noreferrer');
@@ -566,7 +569,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             backgroundColor: annotation.kind === 'highlight' ? annotation.color : undefined,
             boxShadow: annotation.kind === 'calculation' && (pulsingId === annotation.id || hoveredCalcId === annotation.id) ? `0 0 0 3px ${annotation.color}66` : undefined,
           }}
-          title={annotation.kind === 'trial-balance' ? (() => { const link = resolveTrialBalanceLink(annotation, trialBalanceAccounts); return link ? trialBalanceLinkTooltip(link, trialBalanceAccounts) : annotation.label; })() : annotation.kind === 'link' ? annotation.value ?? annotation.label : annotation.label}
+          title={annotation.kind === 'trial-balance' ? (() => { const link = resolveTrialBalanceLink(annotation, trialBalanceAccounts); return link ? trialBalanceLinkTooltip(link, trialBalanceAccounts) : annotation.label; })() : annotation.kind === 'link' ? annotation.engagementLink ? engagementLinkTooltip(annotation.engagementLink) : annotation.value ?? annotation.label : annotation.label}
         >
           {annotation.kind === 'freehand' && annotation.points && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={annotation.points.map((p) => `${(p.x - annotation.x) / annotation.width * 100},${(p.y - annotation.y) / annotation.height * 100}`).join(' ')} fill="none" stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" /></svg>}
           {annotation.kind === 'strikeout' && annotation.regions && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">{annotation.regions.map((r, index) => <line key={index} x1={(r.x - annotation.x) / annotation.width * 100} x2={(r.x + r.width - annotation.x) / annotation.width * 100} y1={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} y2={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />)}</svg>}
@@ -581,10 +584,10 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             </>
           )}
           {annotation.kind === 'link' && (
-            <>
+            <Tooltip><TooltipTrigger asChild><span className="flex min-w-0 items-center gap-1">
               <Link2 className="h-3 w-3 shrink-0" style={{ color: annotation.color }} />
               <span className="truncate text-[10px] font-medium underline" style={{ color: annotation.color }}>{annotation.value ?? annotation.label}</span>
-            </>
+            </span></TooltipTrigger><TooltipContent>{annotation.engagementLink ? engagementLinkTooltip(annotation.engagementLink) : annotation.value ?? annotation.label}</TooltipContent></Tooltip>
           )}
           {annotation.kind === 'trial-balance' && (
             <Tooltip><TooltipTrigger asChild><span className="flex min-w-0 items-center gap-1">
@@ -705,6 +708,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [pendingAnnotation, setPendingAnnotation] = useState<PdfAnnotation | null>(null);
   const [pendingValue, setPendingValue] = useState('');
+  const [linkTab, setLinkTab] = useState('web');
   const [selectedTbCell, setSelectedTbCell] = useState<string | null>(null);
 
   const [editState, setEditState] = useState<PdfEditState>(emptyPdfEditState());
@@ -974,6 +978,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     if (needsValue) {
       setPendingAnnotation(annotation);
       setPendingValue('');
+      setLinkTab('web');
       setSelectedTbCell(null);
       if (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'callout') setActiveKind(null);
       return;
@@ -989,12 +994,19 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
 
   const openTrialBalanceLink = async (annotation: PdfAnnotation) => {
     const link = resolveTrialBalanceLink(annotation, trialBalanceAccounts);
-    if (!link || !engagementId) return;
+    if ((!link && !annotation.trialBalanceGeneral && !annotation.engagementLink) || !engagementId) return;
     if (!manualSave && JSON.stringify(editState) !== lastPersisted.current) {
       if (!await saveQueue.enqueue(structuredClone(editState))) return;
     }
     const targetPage = Math.max(1, visiblePages.indexOf(annotation.page) + 1);
-    const params = new URLSearchParams({ account: link.accountNo, column: link.column, document: documentReturnPath(location.pathname, location.search, targetPage) });
+    const returnPath = documentReturnPath(location.pathname, location.search, targetPage);
+    if (annotation.engagementLink) {
+      const target = engagementTargetPath(engagementId, annotation.engagementLink, returnPath);
+      if (target) navigate(target);
+      return;
+    }
+    const params = new URLSearchParams({ document: returnPath });
+    if (link && !annotation.trialBalanceGeneral) { params.set('account', link.accountNo); params.set('column', link.column); }
     navigate(`/engagements/${engagementId}/trial-balance?${params}`);
   };
 
@@ -1014,6 +1026,15 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     setPendingAnnotation(null);
     setPendingValue('');
   }, [pendingAnnotation]);
+
+  const confirmStructuredLink = (fields: Partial<PdfAnnotation>, label: string) => {
+    if (!pendingAnnotation) return;
+    const annotation = { ...pendingAnnotation, ...fields, label, value: label };
+    setEditState((current) => withHistory({ ...current, annotations: [...current.annotations, annotation] }, { kind: annotation.kind, title: label, page: annotation.page, color: annotation.color, targetId: annotation.id }));
+    setSelectedAnnotationId(annotation.id);
+    setPendingAnnotation(null);
+    setPendingValue('');
+  };
 
   const confirmPendingAnnotation = useCallback(() => {
     const value = pendingValue.trim();
@@ -1796,7 +1817,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       const heading = activePanel === 'links' ? 'HYPERLINKS' : 'TRIAL BALANCE';
       const hint = activePanel === 'trial-balance' ? 'Click anywhere on the page to drop a link, then pick a trial balance account.' : 'Click anywhere on the page to drop a link, then attach a web address.';
       const cta = activePanel === 'trial-balance' ? 'Add trial balance link' : 'Add link';
-      return <div className="space-y-3"><p className="text-xs font-semibold text-foreground">{heading}</p><p className="text-xs text-foreground">{hint}</p><Button variant={activeKind === kind ? 'default' : 'secondary'} aria-pressed={activeKind === kind} className="w-full" onClick={() => setActiveKind(activeKind === kind ? null : kind)}>{cta}</Button>{editState.annotations.filter((item) => item.kind === kind).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => { if (kind === 'trial-balance') { void openTrialBalanceLink(item); return; } setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }} onRename={(label) => updateAnnotation(item.id, { label, value: label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>;
+      return <div className="space-y-3"><p className="text-xs font-semibold text-foreground">{heading}</p><p className="text-xs text-foreground">{hint}</p><Button variant={activeKind === kind ? 'default' : 'secondary'} aria-pressed={activeKind === kind} className="w-full" onClick={() => setActiveKind(activeKind === kind ? null : kind)}>{cta}</Button>{editState.annotations.filter((item) => item.kind === kind).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => { if (kind === 'trial-balance' || item.engagementLink) { void openTrialBalanceLink(item); return; } setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }} onRename={(label) => updateAnnotation(item.id, { label, value: label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>;
     }
     if (activePanel === 'redact') return (
       <div className="space-y-4">
@@ -2137,13 +2158,16 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         </AlertDialogContent>
       </AlertDialog>
       <Dialog open={!!pendingAnnotation} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
-        <DialogContent className={pendingAnnotation?.kind === 'trial-balance' ? 'pdf-tb-dialog w-[880px] max-w-[calc(100vw-32px)]' : 'max-w-sm'} onEscapeKeyDown={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }} onInteractOutside={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }}>
+        <DialogContent className={pendingAnnotation?.kind === 'trial-balance' || (pendingAnnotation?.kind === 'link' && linkTab === 'engagement') ? 'pdf-tb-dialog w-[880px] max-w-[calc(100vw-32px)]' : 'max-w-sm'} onEscapeKeyDown={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }} onInteractOutside={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>
-              {pendingAnnotation?.kind === 'link' ? 'Link to web URL' : pendingAnnotation?.kind === 'trial-balance' ? 'Link to Trial Balance' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
+              {pendingAnnotation?.kind === 'link' ? 'Add link' : pendingAnnotation?.kind === 'trial-balance' ? 'Link to Trial Balance' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
             </DialogTitle>
           </DialogHeader>
-          {pendingAnnotation?.kind === 'trial-balance' ? (
+          {pendingAnnotation?.kind === 'link' && <Tabs value={linkTab} onValueChange={setLinkTab}><TabsList className="w-full"><TabsTrigger value="web" className="flex-1">Web URL</TabsTrigger><TabsTrigger value="engagement" className="flex-1">Engagement</TabsTrigger></TabsList></Tabs>}
+          {pendingAnnotation?.kind === 'link' && linkTab === 'engagement' ? (
+            <EngagementLinkPicker engagementId={engagementId ?? ''} onSelect={(link: PdfEngagementLink) => confirmStructuredLink({ engagementLink: link }, engagementLinkLabel(link))} />
+          ) : pendingAnnotation?.kind === 'trial-balance' ? (
             <div className="min-w-0 space-y-2">
               <Input
                 autoFocus
@@ -2161,6 +2185,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
                     </tr>
                   </thead>
                   <tbody>
+                    <tr className="border-t border-border"><td colSpan={5} className="p-0"><Button variant="ghost" className="h-9 w-full justify-start rounded-none px-2 text-xs font-normal" onClick={() => confirmStructuredLink({ trialBalanceGeneral: true }, 'Trial Balance')}>Trial Balance (general)</Button></td></tr>
                     {trialBalanceAccounts
                       .filter((account) => {
                         const query = pendingValue.trim().toLowerCase();
@@ -2192,6 +2217,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             </div>
           ) : (
           <>
+          {pendingAnnotation?.kind === 'link' && <Label>Link to web URL</Label>}
           <Input
             autoFocus
             value={pendingValue}
@@ -2225,7 +2251,7 @@ function AnnotationRow({ item, selected, onSelect, onRename, onDelete, onColor }
   const [renaming, setRenaming] = useState(false);
   const [picking, setPicking] = useState(false);
   const [draft, setDraft] = useState(item.label ?? item.value ?? '');
-  const KindIcon = KIND_ICONS[item.kind] ?? MousePointer2;
+  const KindIcon = item.engagementLink ? FileText : item.kind === 'link' ? ExternalLink : KIND_ICONS[item.kind] ?? MousePointer2;
   return (
     <div className={cn('rounded-[8px] border bg-background px-2 py-2', selected ? 'border-primary' : 'border-border')} onClick={onSelect}>
       <div className="flex items-center gap-2">
@@ -2254,8 +2280,8 @@ function AnnotationRow({ item, selected, onSelect, onRename, onDelete, onColor }
           className="h-5 w-5 shrink-0 rounded-[5px] border border-border"
           style={{ backgroundColor: item.color }}
         />
-        {onRename && <Button variant="ghost" size="icon-sm" onClick={() => setRenaming(true)} aria-label="Rename"><Pencil /></Button>}
-        <Button variant="ghost" size="icon-sm" onClick={onDelete} aria-label="Delete"><Trash2 /></Button>
+        {onRename && <Button variant="ghost" size="icon-sm" onClick={(event) => { if (item.engagementLink || item.trialBalanceGeneral) event.stopPropagation(); setRenaming(true); }} aria-label="Rename"><Pencil /></Button>}
+        <Button variant="ghost" size="icon-sm" onClick={(event) => { if (item.engagementLink || item.trialBalanceGeneral) event.stopPropagation(); onDelete(); }} aria-label="Delete"><Trash2 /></Button>
       </div>
       {picking && onColor && (
         <div className="mt-2 flex gap-2 border-t border-border pt-2">

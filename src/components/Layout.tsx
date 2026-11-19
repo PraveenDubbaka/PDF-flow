@@ -1,5 +1,6 @@
 import { Sidebar } from '@/components/Sidebar';
 import { GlobalHeader } from '@/components/GlobalHeader';
+import { DocumentLinkReturn } from '@/components/pdf/DocumentLinkReturn';
 
 
 interface LayoutProps {
@@ -30,6 +31,7 @@ export function Layout({ children, title, headerContent, showActions = false, sh
  </div>
 
  {/* Content area: transparent flex row — each card floats on gradient */}
+ <DocumentLinkReturn />
  <div className="content-wrapper flex flex-1 overflow-hidden">
  <div id="sidebar-secondary-portal" className="flex shrink-0 h-full" />
  <main className={`app-main flex-1 overflow-auto text-foreground rounded-xl bg-background shadow-[0_4px_24px_rgba(0,0,0,0.35)] mb-1 ${hideSidebar ? '' : 'mr-1'}`}>
