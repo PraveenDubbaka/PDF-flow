@@ -3,7 +3,7 @@ import type { Json } from '@/integrations/supabase/types';
 
 export const PDF_BUCKET = 'engagement-pdfs';
 
-export type PdfAnnotationKind = 'highlight' | 'underline' | 'strikeout' | 'freehand' | 'text' | 'rectangle' | 'circle' | 'arrow' | 'comment' | 'link' | 'trial-balance' | 'redaction' | 'image' | 'calculation';
+export type PdfAnnotationKind = 'highlight' | 'underline' | 'strikeout' | 'squiggly' | 'callout' | 'freehand' | 'text' | 'rectangle' | 'circle' | 'arrow' | 'comment' | 'link' | 'trial-balance' | 'redaction' | 'image' | 'calculation';
 
 export interface PdfBookmark {
   id: string;

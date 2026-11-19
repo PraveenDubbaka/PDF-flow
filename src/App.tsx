@@ -26,6 +26,7 @@ import EngagementTemplates from "./pages/EngagementTemplates";
 import FinancialStatementTemplates from "./pages/FinancialStatementTemplates";
 import AuditDependencyRegister from "./pages/AuditDependencyRegister";
 import NotFound from "./pages/NotFound";
+import PdfEditorWindow from "./pages/PdfEditorWindow";
 import { EngagementsProvider } from "./store/EngagementsContext";
 
 const queryClient = new QueryClient();
@@ -50,6 +51,7 @@ const App = () => (
  <Route path="/engagements/:engagementId" element={<EngagementDetail />} />
  <Route path="/engagements/:engagementId/checklist/:checklistKey" element={<EngagementDetail />} />
  <Route path="/engagements/:engagementId/pdf/:pdfDocumentId" element={<EngagementDetail />} />
+ <Route path="/engagements/:engagementId/pdf/:pdfDocumentId/window" element={<PdfEditorWindow />} />
  <Route path="/engagements/create-new" element={<CreateNewEngagement />} />
          <Route path="/engagements/create" element={<CreateEngagement />} />
  <Route path="/engagements/:engagementId/trial-balance" element={<TrialBalance />} />

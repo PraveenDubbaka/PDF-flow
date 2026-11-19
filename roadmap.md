@@ -1,4 +1,9 @@
-# Stamp wrapping and panel reflow
-- [x] Wrap stamp labels at 240px, with shared label/value columns and first-line values in preview, page and export.
-- [x] Enforce 360px panel minimum and reflow every tool without clipping.
-- [x] Verify long labels, large values, preview fitting and all tools at minimum width.
+# PDF editor UAT feedback
+- [x] Reorder tools and open on Annotations.
+- [x] Auto-save with status, Done, and a password-protection demo toggle.
+- [x] Label annotation buttons and provide distinct icons, including Squiggly and Callout.
+- [x] Trial balance popup: Original, exact two-decimal formatting, 380px, header-close only.
+- [x] Italic Type heading calculator placeholder.
+- [x] Working Edit in window in both modes, retaining edits when closed.
+- [x] Collapsible tools panel preserving tab and width without horizontal scroll.
+- [x] Verify persistence, controls, and panel behavior in the live editor.

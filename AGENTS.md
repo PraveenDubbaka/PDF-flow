@@ -13,3 +13,5 @@
 - Format calculator numeric drafts with caret-preserving grouping and reserve a shared amount/result grid track so large values stay readable without changing arithmetic.
 - Keep Luka as a normal entry in the PDF tool rail list, distinguished only by its brighter brand-gradient icon with a soft glow (dimmer in dark mode), so it matches the other tools' button treatment.
 - Size the calculator amount column from the longest formatted value (shared by every amount input and the result box) and keep descriptions single-line with ellipsis truncation, so large values stay aligned and descriptions never wrap.
+- Serialize PDF edit-state auto-saves, acknowledge only successful writes, and synchronize open editor windows through a document-scoped BroadcastChannel; this prevents stale writes and preserves edits on Done or window close.
+- Use a dedicated PDF editor-window route sharing PdfWorkspace, with manual saving reserved for protected PDFs and the prototype protection toggle; this keeps in-window tools and persistence consistent with the engagement.

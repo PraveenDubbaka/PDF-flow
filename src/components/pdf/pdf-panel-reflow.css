@@ -61,3 +61,42 @@
     flex-wrap: nowrap;
   }
 }
+.pdf-save-status {
+  font-size: 12px !important;
+  color: hsl(var(--calculator-muted, 220 9% 46%)) !important;
+}
+.pdf-save-status[data-status='error'] {
+  color: hsl(var(--destructive)) !important;
+}
+.pdf-save-status[data-status='saved'] {
+  animation: pdf-save-status-fade 3s forwards;
+}
+@keyframes pdf-save-status-fade {
+  0%, 85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pdf-save-status[data-status='saved'] { animation: none; }
+}
+.pdf-annotation-grid button {
+  width: 100%;
+  height: 56px;
+  min-width: 0;
+  padding: 4px 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.pdf-annotation-grid .pdf-annotation-label {
+  font-size: 10px !important;
+  font-weight: 400;
+  line-height: 12px;
+  white-space: nowrap;
+  color: hsl(var(--calculator-muted, 220 9% 46%)) !important;
+}
+.pdf-annotation-grid button[aria-pressed='true'] .pdf-annotation-label {
+  color: hsl(var(--primary-foreground)) !important;
+}
+.dark .pdf-save-status,
+.dark .pdf-annotation-grid .pdf-annotation-label {
+  --calculator-muted: 220 10% 70%;
+}

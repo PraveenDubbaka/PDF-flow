@@ -5,7 +5,7 @@ import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle,
   Copy, Crosshair, Download, ExternalLink, FileText, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
   History, MessageSquare, MousePointer2, Pen, Pencil, Plus, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Sparkles, Square,
-  Strikethrough, TextCursorInput, Trash2, Underline, X, ZoomIn, ZoomOut,
+  Strikethrough, TextCursorInput, Trash2, Underline, X, ZoomIn, ZoomOut, Check, ArrowUpRight, PencilLine, MessageSquareText,
 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import { PDFDocument, degrees, rgb, StandardFonts, pushGraphicsState, popGraphicsState, rectangle, clip, endPath } from 'pdf-lib';
@@ -36,8 +36,10 @@ import { CalculationPreview } from '@/components/pdf/CalculationPreview';
 import { ResizableCalculationStamp } from '@/components/pdf/ResizableCalculationStamp';
 import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
+import { PdfAutoSave, PdfSaveStatus, requiresManualPdfSave, formatOriginalAmount } from '@/lib/pdfAutoSave';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'trial-balance' | 'comments' | 'redact' | 'security' | 'details' | 'ocr' | 'calculations' | 'luka';
 type TextItemLike = { str: string; width: number; height: number; transform: number[] };
@@ -58,31 +60,42 @@ const withHistory = (state: PdfEditState, entry: Parameters<typeof makeHistory>[
 });
 
 const TOOLS: { id: ToolId; label: string; icon: React.ElementType }[] = [
-  { id: 'pages', label: 'Pages', icon: BookOpen },
-  { id: 'search', label: 'Search', icon: Search },
-  { id: 'images', label: 'Images', icon: Image },
   { id: 'annotations', label: 'Annotations', icon: Pencil },
   { id: 'links', label: 'Hyperlinks', icon: Link2 },
   { id: 'trial-balance', label: 'Trial balance', icon: FileText },
+  { id: 'calculations', label: 'Calculator', icon: Calculator },
+  { id: 'pages', label: 'Pages', icon: BookOpen },
+  { id: 'search', label: 'Search', icon: Search },
+  { id: 'images', label: 'Images', icon: Image },
   { id: 'comments', label: 'Comments', icon: MessageSquare },
   { id: 'redact', label: 'Redact and watermark', icon: ShieldCheck },
   { id: 'security', label: 'Security and optimize', icon: LockKeyhole },
   { id: 'details', label: 'Bookmarks and properties', icon: Bookmark },
   { id: 'ocr', label: 'Make searchable', icon: ScanText },
-  { id: 'calculations', label: 'Calculations', icon: Calculator },
   { id: 'luka', label: 'Ask Luka', icon: Sparkles },
 ];
 
+function SquigglyIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M5 4h14M12 4v11M7 15h10M3 20q2-4 4 0t4 0t4 0t4 0" /></svg>;
+}
+function TextBoxIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M7 7h10M12 7v10M9 17h6" /></svg>;
+}
+function ToolsPanelIcon() {
+  return <svg fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.25 7c0-.69-.56-1.25-1.25-1.25H9.75v12.5H19c.69 0 1.25-.56 1.25-1.25zM3.75 17c0 .69.56 1.25 1.25 1.25h3.25V5.75H5c-.69 0-1.25.56-1.25 1.25zm18 0A2.75 2.75 0 0 1 19 19.75H5A2.75 2.75 0 0 1 2.25 17V7A2.75 2.75 0 0 1 5 4.25h14A2.75 2.75 0 0 1 21.75 7z" /></svg>;
+}
 const ANNOTATION_TOOLS: { kind: PdfAnnotationKind | 'select'; label: string; icon: React.ElementType }[] = [
   { kind: 'select', label: 'Select', icon: MousePointer2 },
   { kind: 'highlight', label: 'Highlight', icon: Highlighter },
   { kind: 'underline', label: 'Underline', icon: Underline },
   { kind: 'strikeout', label: 'Strikeout', icon: Strikethrough },
-  { kind: 'freehand', label: 'Freehand', icon: Pen },
-  { kind: 'text', label: 'Text', icon: TextCursorInput },
+  { kind: 'squiggly', label: 'Squiggly', icon: SquigglyIcon },
+  { kind: 'text', label: 'Text box', icon: TextBoxIcon },
+  { kind: 'freehand', label: 'Draw', icon: PencilLine },
   { kind: 'rectangle', label: 'Rectangle', icon: Square },
   { kind: 'circle', label: 'Circle', icon: Circle },
-  { kind: 'arrow', label: 'Arrow', icon: ArrowRight },
+  { kind: 'arrow', label: 'Arrow', icon: ArrowUpRight },
+  { kind: 'callout', label: 'Callout', icon: MessageSquareText },
 ];
 
 const COLORS = ['#ef4444', '#facc15', '#22c55e', '#2563eb', '#111827'];
@@ -246,7 +259,7 @@ function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, o
   );
 }
 
-const PLACE_NOUN: Partial<Record<PdfAnnotationKind, string>> = { link: 'link', comment: 'comment', 'trial-balance': 'TB link' };
+const PLACE_NOUN: Partial<Record<PdfAnnotationKind, string>> = { link: 'link', comment: 'comment', 'trial-balance': 'TB link', callout: 'callout' };
 
 function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations, hoveredCalcId, onHoverCalc, pulseCalc, placeNoun }: {
   placeNoun?: string | null;
@@ -537,6 +550,8 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             annotation.kind === 'highlight' && 'border-none opacity-40',
             annotation.kind === 'redaction' && 'bg-foreground border-foreground',
             annotation.kind === 'circle' && 'rounded-full',
+            annotation.kind === 'squiggly' && 'border-none',
+            annotation.kind === 'callout' && 'rounded-[4px] bg-card',
           )}
           style={{
             left: `${annotation.x}%`, top: `${annotation.y}%`,
@@ -550,6 +565,8 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
         >
           {annotation.kind === 'freehand' && annotation.points && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={annotation.points.map((p) => `${(p.x - annotation.x) / annotation.width * 100},${(p.y - annotation.y) / annotation.height * 100}`).join(' ')} fill="none" stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" /></svg>}
           {annotation.kind === 'strikeout' && annotation.regions && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">{annotation.regions.map((r, index) => <line key={index} x1={(r.x - annotation.x) / annotation.width * 100} x2={(r.x + r.width - annotation.x) / annotation.width * 100} y1={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} y2={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />)}</svg>}
+          {annotation.kind === 'squiggly' && <svg className="h-full w-full" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0 16 Q2.5 10 5 16 T10 16 T15 16 T20 16 T25 16 T30 16 T35 16 T40 16 T45 16 T50 16 T55 16 T60 16 T65 16 T70 16 T75 16 T80 16 T85 16 T90 16 T95 16 T100 16" fill="none" stroke={annotation.color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" /></svg>}
+          {annotation.kind === 'callout' && <span className="flex h-full items-center gap-1 px-1 text-xs" style={{ color: annotation.color }}><MessageSquareText className="h-4 w-4 shrink-0" />{annotation.label}</span>}
           {annotation.kind === 'comment'  && (
             <>
               <MessageSquare className="h-3 w-3" />
@@ -657,7 +674,7 @@ function multiply(a: number[], b: number[]) {
   ];
 }
 
-export function PdfWorkspace({ documentId }: { documentId: string }) {
+export function PdfWorkspace({ documentId, popout = false }: { documentId: string; popout?: boolean }) {
   const navigate = useNavigate();
   const { engagementId } = useParams<{ engagementId: string }>();
   const [document, setDocument] = useState<PdfDocumentRecord | null>(null);
@@ -668,8 +685,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [editing, setEditing] = useState(false);
-  const [activePanel, setActivePanel] = useState<ToolId>('pages');
+  const [editing, setEditing] = useState(popout);
+  const [activePanel, setActivePanel] = useState<ToolId>('annotations');
+  const [toolsCollapsed, setToolsCollapsed] = useState(false);
+  const [simulateProtected, setSimulateProtected] = useState(() => new URLSearchParams(window.location.search).get('protected') === '1');
+  const [saveStatus, setSaveStatus] = useState<PdfSaveStatus>('idle');
+  const [viewerWidth, setViewerWidth] = useState(0);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const [nativePageWidth, setNativePageWidth] = useState(765);
   const [activeKind, setActiveKind] = useState<PdfAnnotationKind | null>(null);
   const [activeColor, setActiveColor] = useState(COLORS[1]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
@@ -815,19 +838,81 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   }, [pdf, currentSourcePage]);
 
   const lastPersisted = useRef<string>('');
-  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const manualSave = requiresManualPdfSave(simulateProtected, editState.passwords);
+  const syncChannel = useRef<BroadcastChannel | null>(null);
+  const saveQueue = useMemo(() => new PdfAutoSave<PdfEditState>(
+    (state) => persistPdfEditState(documentId, state),
+    (status, state) => {
+      setSaveStatus(status);
+      if (state) {
+        lastPersisted.current = JSON.stringify(state);
+        setSavedState(structuredClone(state));
+        syncChannel.current?.postMessage(state);
+      }
+    },
+  ), [documentId]);
 
   useEffect(() => {
-    if (!document) return;
-    const serialized = JSON.stringify(editState);
-    if (!lastPersisted.current || serialized === lastPersisted.current) return;
-    if (persistTimer.current) clearTimeout(persistTimer.current);
-    persistTimer.current = setTimeout(() => {
-      lastPersisted.current = serialized;
-      void persistPdfEditState(document.id, editState).catch((reason) => console.error('PDF state save failed:', reason));
-    }, 700);
-    return () => { if (persistTimer.current) clearTimeout(persistTimer.current); };
-  }, [document, editState]);
+    const channel = new BroadcastChannel(`pdf-editor-${documentId}`);
+    syncChannel.current = channel;
+    channel.onmessage = (event: MessageEvent<PdfEditState>) => {
+      lastPersisted.current = JSON.stringify(event.data);
+      setEditState(event.data);
+      setSavedState(structuredClone(event.data));
+      setProperties(event.data.properties ?? emptyPdfEditState().properties ?? properties);
+    };
+    return () => { channel.close(); syncChannel.current = null; };
+  }, [documentId]);
+
+  useEffect(() => {
+    if (!document || manualSave || JSON.stringify(editState) === lastPersisted.current) return;
+    void saveQueue.enqueue(structuredClone(editState));
+  }, [document, editState, manualSave, saveQueue]);
+
+  useEffect(() => {
+    if (saveStatus !== 'saved') return;
+    const timer = window.setTimeout(() => setSaveStatus('idle'), 3000);
+    return () => window.clearTimeout(timer);
+  }, [saveStatus]);
+
+  useEffect(() => {
+    if (loading || !viewerRef.current) return;
+    const observer = new ResizeObserver(([entry]) => setViewerWidth(entry.contentRect.width));
+    observer.observe(viewerRef.current);
+    return () => observer.disconnect();
+  }, [loading]);
+
+  useEffect(() => {
+    if (!pdf) return;
+    let cancelled = false;
+    void pdf.getPage(currentSourcePage).then((target) => {
+      if (!cancelled) setNativePageWidth(target.getViewport({ scale: 1.25, rotation: (target.rotate + (editState.rotations[String(currentSourcePage)] ?? 0)) % 360 }).width);
+    });
+    return () => { cancelled = true; };
+  }, [pdf, currentSourcePage, editState.rotations]);
+  const effectiveZoom = toolsCollapsed && viewerWidth ? Math.min(zoom, Math.max(0.1, (viewerWidth - 48) / nativePageWidth)) : zoom;
+
+  const finishEditing = async () => {
+    if (!manualSave && JSON.stringify(editState) !== lastPersisted.current) {
+      if (!await saveQueue.enqueue(structuredClone(editState))) return;
+    }
+    setEditing(false);
+    setActiveKind(null);
+    setCalcPlacement(false);
+    setCalcPick(null);
+  };
+
+  const openEditorWindow = () => {
+    if (!engagementId) return;
+    const url = `${window.location.origin}/engagements/${engagementId}/pdf/${documentId}/window${simulateProtected ? '?protected=1' : ''}`;
+    const newWindow = window.open('about:blank', '_blank', 'popup,width=1280,height=900');
+    if (!newWindow) return;
+    void (async () => {
+      if (!manualSave && JSON.stringify(editState) !== lastPersisted.current) await saveQueue.enqueue(structuredClone(editState));
+      newWindow.opener = null;
+      newWindow.location.replace(url);
+    })();
+  };
 
   const logHistory = useCallback((entry: Parameters<typeof makeHistory>[0]) => {
     setEditState((current) => withHistory(current, entry));
@@ -877,11 +962,11 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       setActiveKind(null);
       return;
     }
-    const needsValue = (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'text') && !annotation.label && !annotation.value;
+    const needsValue = (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'text' || annotation.kind === 'callout') && !annotation.label && !annotation.value;
     if (needsValue) {
       setPendingAnnotation(annotation);
       setPendingValue('');
-      if (annotation.kind === 'link' || annotation.kind === 'trial-balance') setActiveKind(null);
+      if (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'callout') setActiveKind(null);
       return;
     }
     if (annotation.kind === 'redaction') setActiveKind(null);
@@ -1306,6 +1391,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
           copiedPage.drawEllipse({ x: x + boxWidth / 2, y: y + boxHeight / 2, xScale: boxWidth / 2, yScale: boxHeight / 2, borderColor: color, borderWidth: 1.5 });
         } else if (item.kind === 'underline') {
           copiedPage.drawLine({ start: { x, y }, end: { x: x + boxWidth, y }, color, thickness: 1.5 });
+        } else if (item.kind === 'squiggly') {
+          for (let step = 0; step < boxWidth; step += 3) copiedPage.drawLine({ start: { x: x + step, y: y + (Math.floor(step / 3) % 2 ? 2 : 0) }, end: { x: x + Math.min(step + 3, boxWidth), y: y + (Math.floor(step / 3) % 2 ? 0 : 2) }, color, thickness: 1 });
+        } else if (item.kind === 'callout') {
+          copiedPage.drawRectangle({ x, y, width: boxWidth, height: boxHeight, borderColor: color, borderWidth: 1 });
+          copiedPage.drawLine({ start: { x, y }, end: { x: x - 6, y: y - 6 }, color, thickness: 1 });
+          if (item.label) copiedPage.drawText(item.label, { x: x + 3, y: y + boxHeight / 2, size: 10, font, color, maxWidth: Math.max(1, boxWidth - 6) });
         } else if (item.kind === 'strikeout') {
           const regions = item.regions ?? [{ x: item.x, y: item.y, width: item.width, height: item.height }];
           for (const region of regions) copiedPage.drawLine({ start: { x: width * region.x / 100, y: height - height * (region.y + region.height / 2) / 100 }, end: { x: width * (region.x + region.width) / 100, y: height - height * (region.y + region.height / 2) / 100 }, color, thickness: 1.5 });
@@ -1394,7 +1485,10 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
       setDocument(saved);
       setSourceBytes(bytes);
       setSavedState(structuredClone(nextState));
-      setEditing(false);
+      lastPersisted.current = JSON.stringify(nextState);
+      setEditState(nextState);
+      syncChannel.current?.postMessage(nextState);
+      if (!popout) setEditing(false);
       setActiveKind(null);
       toast.success(`Saved PDF version ${saved.current_version}`);
     } catch (reason) {
@@ -1418,7 +1512,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
   };
 
   const downloadPdf = async () => {
-    const bytes = editing ? await createSavedBytes() : sourceBytes;
+    const bytes = await createSavedBytes();
     if (!bytes || !document) return;
     const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'application/pdf' }));
     const anchor = window.document.createElement('a');
@@ -1626,7 +1720,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
     );
     if (activePanel === 'annotations') return (
       <div className="space-y-3">
-        <div className="grid grid-cols-5 gap-2">{ANNOTATION_TOOLS.map(({ kind, label, icon: Icon }) => <Tooltip key={kind}><TooltipTrigger asChild><Button variant={(kind === 'select' ? activeKind === null : activeKind === kind) ? 'default' : 'secondary'} size="icon" onClick={() => setActiveKind(kind === 'select' ? null : kind as PdfAnnotationKind)} aria-label={label}><Icon /></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>)}</div>
+        <div className="pdf-annotation-grid grid grid-cols-4 gap-2">{ANNOTATION_TOOLS.map(({ kind, label, icon: Icon }) => <Tooltip key={kind}><TooltipTrigger asChild><Button variant={(kind === 'select' ? activeKind === null : activeKind === kind) ? 'default' : 'secondary'} aria-pressed={kind === 'select' ? activeKind === null : activeKind === kind} onClick={() => setActiveKind(kind === 'select' ? null : kind as PdfAnnotationKind)} aria-label={label}><Icon /><span className="pdf-annotation-label">{label}</span></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>)}</div>
         <div className="flex gap-2">{COLORS.map((color) => <button key={color} type="button" aria-label={`Colour ${color}`} onClick={() => { setActiveColor(color); if (selectedAnnotationId) updateAnnotation(selectedAnnotationId, { color }); }} className={cn('h-6 w-6 rounded-[6px] border', activeColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}</div>
         <div className="space-y-2">{editState.annotations.filter((item) => !['comment', 'link', 'trial-balance', 'image', 'calculation'].includes(item.kind)).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => setSelectedAnnotationId(item.id)} onRename={(label) => updateAnnotation(item.id, { label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>
       </div>
@@ -1742,7 +1836,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
             {showCalcHeader ? (
               <div className="mb-3.5 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between"><Label htmlFor="calc-header" className={cn(sectionLabel, 'flex h-9 items-center')}>Header</Label><Button variant="ghost" className="calc-text-action h-9 px-0" onClick={() => { setCalcTitle(''); setShowCalcHeader(false); }}>Remove header</Button></div>
-                <Input id="calc-header" className="h-8 text-[13px]" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="e.g. Total charges" />
+                <Input id="calc-header" className="h-8 text-[13px] placeholder:italic" value={calcTitle} onChange={(event) => setCalcTitle(event.target.value)} placeholder="Type heading" />
               </div>
             ) : null}
             <div className={cn(lineGrid, sectionLabel, 'calc-column-labels -mb-0.5')} style={gridStyle}><span>Description</span><span className="pr-2 text-right">Amount</span><span /></div>
@@ -1968,14 +2062,14 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </Popover>
         <div className="flex items-center gap-2">
           {editing ? <>
-            <Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button>
-            <Button variant="secondary" size="sm" onClick={() => { setEditState(structuredClone(savedState)); setProperties(savedState.properties ?? emptyPdfEditState().properties ?? { title: '', author: '', subject: '', keywords: '', creator: '' }); setEditing(false); setActiveKind(null); }}><X />Cancel</Button>
-            <Button variant="secondary" size="sm" onClick={() => blobUrl && window.open(blobUrl, '_blank', 'noopener,noreferrer')}><ExternalLink />Edit in window</Button>
+            {manualSave ? <Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button> : saveStatus !== 'idle' && <span role="status" data-status={saveStatus} className="pdf-save-status flex items-center gap-1.5">{saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saveStatus === 'saved' ? <Check className="h-3.5 w-3.5" /> : null}{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'All changes saved' : 'Changes not saved'}</span>}
+            {!popout && <Button variant="secondary" size="sm" onClick={() => void finishEditing()}>Done</Button>}
           </> : <>
             <Button variant="secondary" size="sm" onClick={() => setEditing(true)}><Pencil />Edit</Button>
             <Button variant="secondary" size="sm" onClick={() => void downloadPdf()}><Download />Download</Button>
             <Button variant="destructive" size="sm" disabled={deleting} onClick={() => setConfirmDelete(true)}><Trash2 />Delete</Button>
           </>}
+          {!popout && <Button variant="secondary" size="sm" onClick={openEditorWindow}><ExternalLink />Edit in window</Button>}
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
@@ -1983,18 +2077,23 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
             <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button></div>
-            <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(zoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
+            <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(effectiveZoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
           </div>
           {editing && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
-          <div className="min-h-0 flex-1 overflow-auto bg-muted/30"><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={zoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
+          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
         </section>
-        {editing && <aside style={{ width: editPanelWidth }} className="pdf-edit-panel relative flex min-h-0 min-w-[360px] max-w-[calc(100vw-64px)] shrink-0 border-l border-border bg-card">
+        {editing && <aside style={{ width: toolsCollapsed ? 48 : editPanelWidth }} className={cn("relative flex min-h-0 shrink-0 border-l border-border bg-card", !toolsCollapsed && "pdf-edit-panel min-w-[360px] max-w-[calc(100vw-64px)]")}>
+          {toolsCollapsed ? <div className="flex w-12 justify-center pt-2"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="Expand Tools Panel" onClick={() => setToolsCollapsed(false)}><ToolsPanelIcon /></Button></TooltipTrigger><TooltipContent side="left">Expand Tools Panel</TooltipContent></Tooltip></div> : <>
           <div role="separator" aria-label="Resize edit panel" aria-orientation="vertical" tabIndex={0} className="absolute -left-1 top-0 z-40 h-full w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20" onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setEditPanelWidth((width) => Math.max(360, Math.min(window.innerWidth - 64, width + (event.key === 'ArrowLeft' ? 16 : -16)))); } }} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.dataset.startX = String(event.clientX); event.currentTarget.dataset.startWidth = String(editPanelWidth); }} onPointerMove={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; setEditPanelWidth(Math.max(360, Math.min(window.innerWidth - 64, Number(event.currentTarget.dataset.startWidth) + Number(event.currentTarget.dataset.startX) - event.clientX))); }} onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
           <div className="flex w-12 shrink-0 flex-col border-r border-border">
+            <div className="flex justify-center pt-2"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="Collapse Tools Panel" onClick={() => setToolsCollapsed(true)}><ToolsPanelIcon /></Button></TooltipTrigger><TooltipContent side="left">Collapse Tools Panel</TooltipContent></Tooltip></div>
             <ScrollArea className="min-h-0 flex-1"><div className="flex flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" className={activePanel === id ? undefined : 'hover:bg-muted'} onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? <LukaIcon size={22} bare glow /> : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
           </div>
-          {activePanel === 'luka' ? <div className="pdf-edit-panel-content min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="pdf-edit-panel-scroll h-full min-w-0 flex-1"><div className={cn("pdf-edit-panel-content min-w-0", activePanel === 'calculations' ? "p-4" : "p-3")}>
+          <div className="flex min-w-0 flex-1 flex-col">
+          <label className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 text-xs"><Checkbox checked={simulateProtected} onCheckedChange={(value) => setSimulateProtected(value === true)} />Simulate password-protected PDF</label>
+          {activePanel === 'luka' ? <div className="pdf-edit-panel-content min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="pdf-edit-panel-scroll min-h-0 flex-1 min-w-0 flex-1"><div className={cn("pdf-edit-panel-content min-w-0", activePanel === 'calculations' ? "p-4" : "p-3")}>
             {panelContent}</div></ScrollArea>}
+          </div></>}
         </aside>}
       </div>
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
@@ -2014,7 +2113,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
         </AlertDialogContent>
       </AlertDialog>
       <Dialog open={!!pendingAnnotation} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className={pendingAnnotation?.kind === 'trial-balance' ? 'w-[380px] max-w-[calc(100vw-32px)]' : 'max-w-sm'} onEscapeKeyDown={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }} onInteractOutside={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>
               {pendingAnnotation?.kind === 'link' ? 'Link to web URL' : pendingAnnotation?.kind === 'trial-balance' ? 'Link to Trial Balance' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
@@ -2034,7 +2133,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                     <tr className="text-left text-foreground">
                       <th className="px-2 py-1.5 font-semibold">Acc No.</th>
                       <th className="px-2 py-1.5 font-semibold">Description</th>
-                      <th className="px-2 py-1.5 text-right font-semibold">Balance</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">Original</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2052,15 +2151,12 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
                         >
                           <td className="px-2 py-1.5 text-foreground">{account.accNo}</td>
                           <td className="px-2 py-1.5 text-foreground">{account.description}</td>
-                          <td className="px-2 py-1.5 text-right text-foreground">{account.balance.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right text-foreground">{formatOriginalAmount(account.balance)}</td>
                         </tr>
                       ))}
                   </tbody>
                 </table>
               </div>
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => { setPendingAnnotation(null); setPendingValue(''); }}>Cancel</Button>
-              </DialogFooter>
             </div>
           ) : (
           <>
@@ -2088,7 +2184,7 @@ export function PdfWorkspace({ documentId }: { documentId: string }) {
 
 const KIND_ICONS: Record<string, React.ElementType> = {
   highlight: Highlighter, underline: Underline, strikeout: Strikethrough, freehand: Pen,
-  text: TextCursorInput, rectangle: Square, circle: Circle, arrow: ArrowRight,
+  text: TextBoxIcon, squiggly: SquigglyIcon, callout: MessageSquareText, rectangle: Square, circle: Circle, arrow: ArrowUpRight,
   comment: MessageSquare, link: Link2, 'trial-balance': Landmark, redaction: Square,
   image: Image, calculation: Calculator,
 };
