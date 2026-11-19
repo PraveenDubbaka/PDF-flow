@@ -14,3 +14,4 @@
 - [x] General Trial Balance link with existing account popup unchanged.
 - [x] Target highlighting, same-page document return, mock coverage and end-to-end verification.
 - [x] Add link: fixed tab width, content-fitting height with a 60vh engagement cap, fixed search and 13px/32px controls; verify in the live editor.
+- [x] Remove Engagement tree chevrons, separate folder/lead-sheet clicks, preserve guides and verify link selection.

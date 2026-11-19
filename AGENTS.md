@@ -22,3 +22,4 @@
 - Share engagement sidebar seed trees and worksheet templates with the hyperlink picker, attach selected procedure checklists and engagement-local documents/custom sections, and persist only relative target identity plus line/column; this keeps links scoped and amounts resolved from lead-sheet rows.
 - Use a shared same-engagement document-return strip on destination layouts and hide secondary portals on phones during linked visits; this keeps the highlighted target visible without changing ordinary destination views.
 - Keep Add link tab sizing in the shared dialog and scroll only the engagement picker list; scoped controls and intrinsic amount columns prevent tab jumps and clipped amounts without affecting other dialogs.
+- Keep Engagement picker expansion separate from target selection: full-row folder toggles and trailing lead-sheet plus/minus toggles replace chevrons, so folders never place links and lead-sheet names remain selectable.
