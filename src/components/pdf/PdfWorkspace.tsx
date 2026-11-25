@@ -2224,7 +2224,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             </div>
             <div className="flex gap-2">
               {editingWatermarkId && <Button variant="secondary" className="flex-1" onClick={() => setEditingWatermarkId(null)}>Cancel</Button>}
-              <Button className="flex-1" disabled={!watermarkText.trim()} onClick={saveWatermark}><Save />{editingWatermarkId ? 'Update watermark' : 'Apply to all pages'}</Button>
+              <Button className="flex-1" disabled={!watermarkText.trim()} onClick={saveWatermark}><Save />{editingWatermarkId ? 'Update' : 'Apply to all pages'}</Button>
             </div>
             <div className="space-y-1.5 pt-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground">Watermarks ({activeWatermarks.length})</p>
@@ -2237,7 +2237,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
                     <p className="truncate text-[11px] text-foreground">{wm.fontSize}pt · {Math.round(wm.opacity * 100)}% · {wm.rotation}°</p>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => { setEditingWatermarkId(wm.id); setWatermarkText(wm.text); setWatermarkOpacity(wm.opacity); setWatermarkRotation(wm.rotation); setWatermarkFontSize(wm.fontSize); setWatermarkColor(wm.color); }}>Edit</Button>
-                  <Button variant="ghost" size="icon-sm" aria-label={`Remove watermark ${wm.text}`} onClick={() => removeWatermark(wm)}><Trash2 /></Button>
+                  <Button variant="ghost" size="sm" aria-label={`Remove watermark ${wm.text}`} onClick={() => removeWatermark(wm)}>Remove</Button>
                 </div>
               ))}
             </div>
@@ -2586,14 +2586,14 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       <AlertDialog open={!!pendingRedaction} onOpenChange={(open) => { if (!open) setPendingRedaction(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Apply redaction?</AlertDialogTitle>
+            <AlertDialogTitle>Add redaction?</AlertDialogTitle>
             <AlertDialogDescription>
-              Redaction permanently removes the underlying content in this area on export. You can still move, resize or delete this box before exporting.
+              Redaction permanently removes content on export.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmPendingRedaction}>Apply redaction</AlertDialogAction>
+            <AlertDialogAction onClick={confirmPendingRedaction}>Add redaction</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
