@@ -1,4 +1,4 @@
-import { useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Ban, Bold, Highlighter, Italic, PaintBucket, Palette, Strikethrough, Underline } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -7,12 +7,23 @@ const FONT_SIZES = [10, 12, 14, 16, 20, 24] as const;
 
 type PickerMenu = 'text' | 'highlight' | 'fill' | null;
 
-function applyInlineStyle(editor: HTMLDivElement | null, styleProp: 'fontSize' | 'color' | 'backgroundColor', value: string | null) {
+function applyInlineStyle(
+  editor: HTMLDivElement | null,
+  styleProp: 'fontSize' | 'color' | 'backgroundColor',
+  value: string | null,
+  savedRange?: Range | null,
+) {
   if (!editor) return;
   editor.focus();
   const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return;
-  const range = selection.getRangeAt(0);
+  if (!selection) return;
+  let range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  if ((!range || !editor.contains(range.commonAncestorContainer) || range.collapsed) && savedRange && editor.contains(savedRange.commonAncestorContainer) && !savedRange.collapsed) {
+    selection.removeAllRanges();
+    selection.addRange(savedRange);
+    range = savedRange;
+  }
+  if (!range) return;
   if (!editor.contains(range.commonAncestorContainer)) return;
   if (range.collapsed) return;
   const span = document.createElement('span');
@@ -48,6 +59,21 @@ export function PdfTextFormatToolbar({
 }) {
   const [openMenu, setOpenMenu] = useState<PickerMenu>(null);
   const [fontSize, setFontSize] = useState<number>(12);
+  const savedRangeRef = useRef<Range | null>(null);
+
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const editor = editorRef.current;
+      const selection = window.getSelection();
+      if (!editor || !selection || selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
+      if (editor.contains(range.commonAncestorContainer) && !range.collapsed) {
+        savedRangeRef.current = range.cloneRange();
+      }
+    };
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => document.removeEventListener('selectionchange', onSelectionChange);
+  }, [editorRef]);
 
   const exec = (command: 'bold' | 'italic' | 'underline' | 'strikeThrough') => {
     editorRef.current?.focus();
@@ -78,7 +104,7 @@ export function PdfTextFormatToolbar({
         onChange={(event) => {
           const next = Number(event.target.value);
           setFontSize(next);
-          applyInlineStyle(editorRef.current, 'fontSize', `${next}px`);
+          applyInlineStyle(editorRef.current, 'fontSize', `${next}px`, savedRangeRef.current);
           onFormatChange();
         }}
         className="h-7 rounded-[6px] border border-border bg-background px-1.5 text-[12px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
