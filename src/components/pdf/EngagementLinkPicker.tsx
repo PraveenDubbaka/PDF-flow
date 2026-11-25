@@ -14,11 +14,31 @@ import { type SectionNode } from '@/lib/engagementLinkTree';
 import { getEngagementLinkTree, leadSheetRows, leadSheetAmount, selectEngagementTarget, type PdfEngagementLink } from '@/lib/pdfEngagementLinks';
 import { trialBalanceColumns, formatTrialBalanceAmount } from '@/lib/pdfTrialBalance';
 
-export function EngagementLinkPicker({ engagementId, onSelect }: { engagementId: string; onSelect: (link: PdfEngagementLink) => void }) {
+export type EngagementPickerMode = 'engagement' | 'lead-sheets';
+
+const isLeadSheetNode = (node: SectionNode) => node.route?.startsWith('procedure/') === true;
+
+function filterNodesByMode(nodes: SectionNode[], mode: EngagementPickerMode): SectionNode[] {
+  if (mode === 'engagement') {
+    return nodes.flatMap((node) => {
+      if (isLeadSheetNode(node)) return [];
+      const children = node.children ? filterNodesByMode(node.children, mode) : undefined;
+      return [{ ...node, ...(children ? { children } : {}) }];
+    });
+  }
+  return nodes.flatMap((node) => {
+    if (isLeadSheetNode(node)) return [{ ...node, children: [] }];
+    const children = node.children ? filterNodesByMode(node.children, mode) : [];
+    if (!children.length) return [];
+    return [{ ...node, children }];
+  });
+}
+
+export function EngagementLinkPicker({ engagementId, onSelect, mode = 'engagement' }: { engagementId: string; onSelect: (link: PdfEngagementLink) => void; mode?: EngagementPickerMode }) {
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [searchCollapsed, setSearchCollapsed] = useState<Set<string>>(new Set());
-  const tree = useMemo(() => getEngagementLinkTree(engagementId), [engagementId]);
+  const tree = useMemo(() => filterNodesByMode(getEngagementLinkTree(engagementId), mode), [engagementId, mode]);
   const query = search.trim().toLowerCase();
   const matches = (node: SectionNode): boolean => `${node.code ?? ''} ${node.label}`.toLowerCase().includes(query)
     || (node.children ?? []).some(matches)
@@ -53,5 +73,7 @@ export function EngagementLinkPicker({ engagementId, onSelect }: { engagementId:
       </div>}
     </div>;
   };
-  return <div className="flex min-h-0 min-w-0 flex-col gap-2"><Input className="shrink-0" autoFocus aria-label="Search engagement items" placeholder="Search name or reference number" value={search} onChange={(event) => { setSearch(event.target.value); setSearchCollapsed(new Set()); }} /><div className="min-h-0 overflow-auto">{tree.map(render)}{!tree.some(matches) && <p className="p-3 text-xs text-foreground">No results</p>}</div></div>;
+  const searchLabel = mode === 'lead-sheets' ? 'Search lead sheets' : 'Search engagement items';
+  const placeholder = mode === 'lead-sheets' ? 'Search lead sheet or line item' : 'Search name or reference number';
+  return <div className="flex min-h-0 min-w-0 flex-col gap-2"><Input className="shrink-0" autoFocus aria-label={searchLabel} placeholder={placeholder} value={search} onChange={(event) => { setSearch(event.target.value); setSearchCollapsed(new Set()); }} /><div className="min-h-0 overflow-auto">{tree.map(render)}{!tree.some(matches) && <p className="p-3 text-xs text-foreground">No results</p>}</div></div>;
 }

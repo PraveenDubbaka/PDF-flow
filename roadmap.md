@@ -17,3 +17,10 @@
 - [x] Remove Engagement tree chevrons, separate folder/lead-sheet clicks, preserve guides and verify link selection.
 - [x] Replace the view-mode Edit + Edit in window buttons with one split button (Edit | chevron menu with Edit in Window); keep edit mode unchanged; verify in the live editor.
 - [x] Restyle the split-button menu to the design system: standard menu component, 1px border, 8px radius, standard shadow, 4px below right-aligned, 32px 13px item; verify in both themes.
+- [x] 1. Move procedure lead sheet links from Hyperlink > Engagement to Trial Balance (Accounts / Lead sheets tabs).
+- [x] 2. Calculator: editable Result and Difference labels across panel, preview, placed stamps, and export.
+- [x] 3. Text box and Callout: inline rich text formatting toolbar and box background fill (with PDF export).
+- [x] 4. Signature annotation tool (reviewer label + date) on canvas, list, and PDF export.
+- [x] 5. Undo / Redo buttons and shortcuts for annotations, redactions, and watermarks.
+- [x] 6. Print button in header printing the edited PDF document.
+- [x] 7. Editable/resizable redactions with grouped list + optional confirmation, and multi-watermark editing with font size & colour.

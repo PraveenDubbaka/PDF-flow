@@ -24,3 +24,6 @@
 - Keep Add link tab sizing in the shared dialog and scroll only the engagement picker list; scoped controls and intrinsic amount columns prevent tab jumps and clipped amounts without affecting other dialogs.
 - Keep Engagement picker expansion separate from target selection: full-row folder toggles and trailing lead-sheet plus/minus toggles replace chevrons, so folders never place links and lead-sheet names remain selectable.
 - Render the view-mode Edit entry as one shared split-button component whose chevron half opens the pop-out editor menu; this keeps a single header control with per-part hover/focus while edit mode keeps its separate Done and Edit in window actions.
+- Scope EngagementLinkPicker by mode so Hyperlink > Engagement hides procedure lead sheets while Trial Balance > Lead sheets reuses the same tree, line-item toggles, tooltips, and procedure navigation.
+- Manage PDF annotation, calculation, redaction, and watermark undo/redo through a dedicated snapshot stack (`src/lib/pdfUndo.ts`) that leaves non-annotation page state intact and records drag/resize commits once on release.
+- Persist multiple PDF watermarks in `edit_state.watermarks` (migrating legacy single `watermark` on read) and draw all watermarks on both the live page canvas and exported/printed PDF bytes.

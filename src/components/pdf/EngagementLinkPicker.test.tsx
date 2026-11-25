@@ -14,27 +14,30 @@ vi.mock('@/lib/pdfEngagementLinks', async (importOriginal) => ({
 }));
 
 afterEach(cleanup);
-const setup = () => {
+const setup = (mode: 'engagement' | 'lead-sheets' = 'engagement') => {
   const onSelect = vi.fn();
-  render(<TooltipProvider><EngagementLinkPicker engagementId="demo" onSelect={onSelect} /></TooltipProvider>);
+  render(<TooltipProvider><EngagementLinkPicker engagementId="demo" mode={mode} onSelect={onSelect} /></TooltipProvider>);
   return onSelect;
 };
 
 describe('Engagement tree click behavior', () => {
   it('expands and collapses folders without selecting a link, even when a folder has a route', () => {
-    const onSelect = setup();
+    const onSelect = setup('engagement');
     fireEvent.click(screen.getByRole('button', { name: 'Section' }));
     fireEvent.click(screen.getByRole('button', { name: 'Subfolder' }));
     expect(screen.getByRole('button', { name: 'Letter' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Accounts receivable/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Subfolder' }));
     expect(screen.queryByRole('button', { name: 'Letter' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Section' }));
-    expect(screen.queryByRole('button', { name: /Accounts receivable/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Subfolder' })).not.toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });
-  it('toggles lead-sheet line items independently from selecting its name', () => {
-    const onSelect = setup();
+  it('shows only lead sheets in lead-sheets mode and toggles line items independently from selecting its name', () => {
+    const onSelect = setup('lead-sheets');
     fireEvent.click(screen.getByRole('button', { name: 'Section' }));
+    expect(screen.queryByRole('button', { name: 'Checklist' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Subfolder' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show line items' }));
     expect(screen.getByRole('button', { name: /B\.1 Accounts Receivable \(A\/R\) · PY2:/ })).toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
@@ -44,14 +47,14 @@ describe('Engagement tree click behavior', () => {
     expect(onSelect).toHaveBeenCalledWith({ targetId: 'pr-ca-b', route: 'procedure/pr-ca-b', reference: 'B', name: 'Accounts receivable' });
   });
   it.each([['Letter', 'checklist/letter'], ['Checklist', 'checklist/checklist'], ['Document', 'pdf/document']])('keeps %s selectable', (name, route) => {
-    const onSelect = setup();
+    const onSelect = setup('engagement');
     fireEvent.click(screen.getByRole('button', { name: 'Section' }));
     fireEvent.click(screen.getByRole('button', { name: 'Subfolder' }));
     fireEvent.click(screen.getByRole('button', { name }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ route }));
   });
   it('allows line items to collapse and reopen while searching', () => {
-    const onSelect = setup();
+    const onSelect = setup('lead-sheets');
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Accounts receivable' } });
     fireEvent.click(screen.getByRole('button', { name: 'Hide line items' }));
     expect(screen.queryByRole('button', { name: /· PY2:/ })).not.toBeInTheDocument();

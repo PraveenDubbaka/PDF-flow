@@ -5,7 +5,7 @@ import type { PdfEngagementLink } from '@/lib/pdfEngagementLinks';
 
 export const PDF_BUCKET = 'engagement-pdfs';
 
-export type PdfAnnotationKind = 'highlight' | 'underline' | 'strikeout' | 'squiggly' | 'callout' | 'freehand' | 'text' | 'rectangle' | 'circle' | 'arrow' | 'comment' | 'link' | 'trial-balance' | 'redaction' | 'image' | 'calculation';
+export type PdfAnnotationKind = 'highlight' | 'underline' | 'strikeout' | 'squiggly' | 'callout' | 'freehand' | 'text' | 'rectangle' | 'circle' | 'arrow' | 'signature' | 'comment' | 'link' | 'trial-balance' | 'redaction' | 'image' | 'calculation';
 
 export interface PdfBookmark {
   id: string;
@@ -30,6 +30,8 @@ export interface PdfCalculation {
   createdAt?: string;
   resultOverride?: number | null;
   compareLabel?: string;
+  resultLabel?: string;
+  differenceLabel?: string;
   visibleLines?: boolean[];
   showResult?: boolean;
   showCompare?: boolean;
@@ -78,6 +80,19 @@ export interface PdfAnnotation {
   trialBalanceLink?: PdfTrialBalanceLink;
   trialBalanceGeneral?: boolean;
   engagementLink?: PdfEngagementLink;
+  richText?: string;
+  fillColor?: string;
+  signerLabel?: string;
+  signedDate?: string;
+}
+
+export interface PdfWatermark {
+  id: string;
+  text: string;
+  opacity: number;
+  rotation: number;
+  fontSize: number;
+  color: string;
 }
 
 export interface PdfHistoryEntry {
@@ -101,6 +116,7 @@ export interface PdfEditState {
   ocrText?: Record<string, string>;
   calculations?: PdfCalculation[];
   watermark?: { text: string; opacity: number; rotation: number; applied: boolean };
+  watermarks?: PdfWatermark[];
   sanitize?: boolean;
   optimize?: boolean;
   passwords?: { user: string; owner: string };
@@ -136,6 +152,7 @@ export const emptyPdfEditState = (): PdfEditState => ({
   properties: { title: '', author: '', subject: '', keywords: '', creator: '' },
   ocrText: {},
   calculations: [],
+  watermarks: [],
   security: {
     allowPrinting: true,
     allowExtraction: false,
@@ -143,6 +160,25 @@ export const emptyPdfEditState = (): PdfEditState => ({
     allowAnnotations: true,
   },
 });
+
+export function resolveCalcLabel(value: string | undefined, fallback: string): string {
+  return value?.trim() || fallback;
+}
+
+export function getEditStateWatermarks(state: Pick<PdfEditState, 'watermark' | 'watermarks'>): PdfWatermark[] {
+  if (state.watermarks !== undefined) return state.watermarks;
+  if (state.watermark?.applied && state.watermark.text.trim()) {
+    return [{
+      id: 'legacy-watermark',
+      text: state.watermark.text,
+      opacity: Number.isFinite(state.watermark.opacity) ? state.watermark.opacity : 0.3,
+      rotation: Number.isFinite(state.watermark.rotation) ? state.watermark.rotation : 45,
+      fontSize: 48,
+      color: '#595959',
+    }];
+  }
+  return [];
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
