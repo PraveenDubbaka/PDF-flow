@@ -44,6 +44,7 @@ import { PdfSignatureDialog } from '@/components/pdf/PdfSignatureDialog';
 import { ResizableSignatureStamp } from '@/components/pdf/PdfSignatureStamp';
 import { buildSignatureAnnotationFields, formatSignatureCaption, formatSignatureListTitle, type SignatureDraft } from '@/lib/pdfSignature';
 import { drawSignatureStampToPdf } from '@/lib/pdfSignatureExport';
+import { createPdfPrinter, isMacPlatform, printGeneratedPdf } from '@/lib/pdfPrint';
 import { applyUndoSnapshot, captureUndoSnapshot, emptyUndoStack, popRedo, popUndo, pushUndo, type PdfUndoSnapshot, type UndoStack } from '@/lib/pdfUndo';
 import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
@@ -1912,34 +1913,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     if (printing) return;
     setPrinting(true);
     try {
-      const bytes = await createSavedBytes();
-      if (!bytes) return;
-      const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'application/pdf' }));
-      const iframe = window.document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      iframe.style.visibility = 'hidden';
-      iframe.setAttribute('aria-hidden', 'true');
-      const cleanup = () => {
-        window.setTimeout(() => {
-          iframe.remove();
-          URL.revokeObjectURL(url);
-        }, 1000);
-      };
-      iframe.onload = () => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch {
-          window.open(url, '_blank', 'noopener,noreferrer');
-        }
-        if (iframe.contentWindow) iframe.contentWindow.onafterprint = cleanup;
-        window.setTimeout(cleanup, 60000);
-      };
-      iframe.src = url;
-      window.document.body.appendChild(iframe);
+      await printGeneratedPdf(createSavedBytes, createPdfPrinter(() => toast.info(`Use ${isMacPlatform() ? '⌘P' : 'Ctrl+P'} to print`)));
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : 'Unable to print this PDF.');
     } finally {
@@ -2594,10 +2568,6 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         </Popover>
         <div className="flex items-center gap-2">
           {editing ? <>
-            <div className="flex items-center gap-0.5">
-              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" disabled={!undoStack.past.length} onClick={handleUndo} aria-label="Undo"><Undo2 /></Button></TooltipTrigger><TooltipContent>Undo (Ctrl/Cmd+Z)</TooltipContent></Tooltip>
-              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" disabled={!undoStack.future.length} onClick={handleRedo} aria-label="Redo"><Redo2 /></Button></TooltipTrigger><TooltipContent>Redo (Ctrl/Cmd+Shift+Z)</TooltipContent></Tooltip>
-            </div>
             {manualSave ? <Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button> : saveStatus !== 'idle' && <span role="status" data-status={saveStatus} className="pdf-save-status flex items-center gap-1.5">{saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saveStatus === 'saved' ? <Check className="h-3.5 w-3.5" /> : null}{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'All changes saved' : 'Changes not saved'}</span>}
             <Button variant="secondary" size="sm" disabled={printing} onClick={() => void printPdf()}>{printing ? <Loader2 className="animate-spin" /> : <Printer />}Print</Button>
             {!popout && <Button variant="secondary" size="sm" onClick={() => void finishEditing()}>Done</Button>}
@@ -2614,7 +2584,13 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         <aside className="hidden w-36 shrink-0 border-r border-border bg-muted/30 lg:block"><ScrollArea className="h-full p-2">{visiblePages.map((sourcePage, index) => <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} label={index + 1} rotation={editState.rotations[String(sourcePage)] ?? 0} active={page === index + 1} onClick={() => setPage(index + 1)} />)}</ScrollArea></aside>
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
-            <div className="flex items-center gap-2"><Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button></div>
+            <div className="flex items-center gap-2">
+              {editing && <><div className="flex items-center gap-2">
+                <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" disabled={!undoStack.past.length} onClick={handleUndo} aria-label="Undo"><Undo2 /></Button></TooltipTrigger><TooltipContent>Undo ({isMacPlatform() ? '⌘Z' : 'Ctrl+Z'})</TooltipContent></Tooltip>
+                <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" disabled={!undoStack.future.length} onClick={handleRedo} aria-label="Redo"><Redo2 /></Button></TooltipTrigger><TooltipContent>Redo ({isMacPlatform() ? '⌘⇧Z' : 'Ctrl+Shift+Z'})</TooltipContent></Tooltip>
+              </div><span aria-hidden="true" className="h-5 w-px bg-border" /></>}
+              <Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button>
+            </div>
             <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(effectiveZoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
           </div>
           {editing && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
