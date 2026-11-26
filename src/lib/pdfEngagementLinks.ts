@@ -1,7 +1,11 @@
 import { engagementSidebarTrees, type SectionNode } from './engagementLinkTree';
 import { TEMPLATE_CONFIG } from './engagementTemplatesData';
-import { getAccountsForProcedure, PROCEDURE_LS_MAP, type Row } from './tbGroups';
-import { type TrialBalanceColumn } from './pdfTrialBalance';
+import {
+  formatProcedureNumber,
+  getAccountsForProcedure,
+  type LeadSheetColumn,
+  type Row,
+} from './tbGroups';
 import { initialGlobalWorksheets, type WorksheetTemplate } from '@/data/globalWorksheets';
 
 export type PdfLinkType = 'web' | 'document' | 'engagement' | 'lead-sheet' | 'trial-balance';
@@ -12,7 +16,7 @@ export interface PdfEngagementLink {
   reference: string;
   name: string;
   lineId?: string;
-  column?: TrialBalanceColumn;
+  column?: LeadSheetColumn;
   kind?: 'document' | 'engagement' | 'lead-sheet';
   documentId?: string;
   leadSheetRef?: string;
@@ -31,27 +35,20 @@ export interface EngagementDocumentItem {
   link: PdfEngagementLink;
 }
 
-const MOCK_LEAD_SHEET_DOCUMENTS: Record<string, { id: string; name: string }[]> = {
-  A: [
-    { id: 'ls-doc-a-1', name: 'Bank Confirmation - RBC 2025.pdf' },
-    { id: 'ls-doc-a-2', name: 'Year-End Bank Reconciliation.xlsx' },
-  ],
-  B: [
-    { id: 'ls-doc-b-1', name: 'AR Aging Summary 2025.pdf' },
-    { id: 'ls-doc-b-2', name: 'Subsequent Cash Receipts Testing.xlsx' },
-  ],
-  BB: [
-    { id: 'ls-doc-bb-1', name: 'AP Subledger Listing 2025.pdf' },
-    { id: 'ls-doc-bb-2', name: 'Search for Unrecorded Liabilities.xlsx' },
-  ],
-  '20': [
-    { id: 'ls-doc-20-1', name: 'Revenue Cutoff Sample Support.pdf' },
-    { id: 'ls-doc-20-2', name: 'Deferred Revenue Rollforward.xlsx' },
-  ],
-};
-
 function read<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback; } catch { return fallback; }
+}
+
+export function isEngagementFolderNode(node: SectionNode): boolean {
+  if (node.route === 'trial-balance') return false;
+  return node.icon === 'folder' && (!node.route || (node.children?.length ?? 0) > 0);
+}
+
+export function resolveEngagementNodeRoute(node: SectionNode): string | null {
+  if (isEngagementFolderNode(node)) return null;
+  if (node.route) return node.route;
+  if (node.icon && node.icon !== 'folder') return `checklist/${node.id}`;
+  return null;
 }
 
 export function getEngagementLinkTree(engagementId: string): SectionNode[] {
@@ -79,12 +76,24 @@ export function getEngagementLinkTree(engagementId: string): SectionNode[] {
     return selected.filter((item, index) => selected.findIndex((other) => other.id === item.id) === index).map((item, index) => ({ id: item.id, code: `${node.code}-${index + 1}`, label: item.name, icon: 'worksheet', route: `gca-proc/${item.id}` }));
   };
   const attach = (node: SectionNode): SectionNode => ({ ...node, children: [
-    ...(node.children ?? []).filter((child) => child.route !== 'trial-balance').map(attach),
+    ...(node.children ?? []).map(attach),
     ...procedureChildren(node).map(attach),
     ...custom.filter((child) => child.parentId === node.id).map((child) => attach({ id: child.id, label: child.name, code: child.name.slice(0, 2).toUpperCase(), icon: child.category, route: child.category === 'folder' ? undefined : `checklist/${child.id}` })),
     ...(docs[node.id] ?? []).filter((doc) => doc.type !== 'note').map((doc, index) => ({ id: doc.id, label: doc.name, code: `${node.code ?? 'D'}.${index + 1}`, icon: 'doc' as const, route: `pdf/${doc.id}` })),
   ] });
-  return tree.filter((node) => node.route !== 'trial-balance').map(attach);
+  return tree.map(attach);
+}
+
+export function filterProcedureHierarchy(nodes: SectionNode[]): SectionNode[] {
+  return nodes.flatMap((node) => {
+    if (node.route?.startsWith('procedure/')) return [node];
+    const children = node.children ? filterProcedureHierarchy(node.children) : [];
+    return children.length > 0 ? [{ ...node, children }] : [];
+  });
+}
+
+export function getProcedureSectionTree(engagementId: string): SectionNode[] {
+  return filterProcedureHierarchy(getEngagementLinkTree(engagementId));
 }
 
 // Both picker and destination read the same lead-sheet rows; links never snapshot an amount.
@@ -92,28 +101,23 @@ export function leadSheetRows(procedureId: string): Row[] {
   return getAccountsForProcedure(procedureId)?.rows ?? [];
 }
 
-export function leadSheetAmount(row: Row, column: TrialBalanceColumn) {
-  return column === 'Original' ? row.original : column === 'PY1' ? row.py1 : row.py2;
+export function leadSheetAmount(row: Row, column: LeadSheetColumn): number | null | undefined {
+  if (column === 'Original') return row.original;
+  if (column === 'Adj') return row.adj;
+  if (column === 'Final') return row.final;
+  if (column === 'PY1') return row.py1;
+  return row.py2;
 }
 
 export function formatLeadSheetAmount(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '–';
-  const formatted = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return value < 0 ? `(${formatted})` : formatted;
+  return formatProcedureNumber(value);
 }
 
 export function leadSheetDocuments(engagementId: string, node: SectionNode): LeadSheetDocument[] {
-  const route = node.route ?? '';
-  const procedureId = route.startsWith('procedure/') ? route.slice('procedure/'.length) : node.id;
-  const lsCode = PROCEDURE_LS_MAP[procedureId] ?? node.code ?? '';
   const storedDocs = read<Record<string, { id: string; name: string; type?: string }[]>>(`engagement-node-docs-${engagementId}`, {});
-  const uploaded: LeadSheetDocument[] = (storedDocs[node.id] ?? [])
+  return (storedDocs[node.id] ?? [])
     .filter((doc) => doc.type !== 'note')
     .map((doc) => ({ id: doc.id, name: doc.name, route: `pdf/${doc.id}` }));
-  const mocks: LeadSheetDocument[] = (MOCK_LEAD_SHEET_DOCUMENTS[lsCode] ?? [])
-    .filter((mock) => !uploaded.some((doc) => doc.id === mock.id))
-    .map((mock) => ({ id: mock.id, name: mock.name, route: route || `procedure/${procedureId}` }));
-  return [...uploaded, ...mocks];
 }
 
 export function getLeadSheetNodes(engagementId: string): SectionNode[] {
@@ -176,17 +180,18 @@ export function selectLeadSheetDocument(node: SectionNode, doc: LeadSheetDocumen
   };
 }
 
-export function selectEngagementTarget(node: SectionNode, row?: Row, column?: TrialBalanceColumn): PdfEngagementLink | null {
-  if (!node.route || node.route === 'trial-balance') return null;
+export function selectEngagementTarget(node: SectionNode, row?: Row, column?: LeadSheetColumn): PdfEngagementLink | null {
+  const route = resolveEngagementNodeRoute(node);
+  if (!route) return null;
   if (row && column) {
     const amount = leadSheetAmount(row, column);
     if (amount == null || !Number.isFinite(amount)) return null;
   }
-  const isDoc = node.icon === 'doc' || node.route.startsWith('pdf/');
-  const isLeadSheet = node.route.startsWith('procedure/');
+  const isDoc = node.icon === 'doc' || route.startsWith('pdf/');
+  const isLeadSheet = route.startsWith('procedure/');
   return {
     targetId: node.id,
-    route: node.route,
+    route,
     reference: isDoc ? '' : (node.code ?? ''),
     name: row?.description ?? node.label,
     kind: isDoc ? 'document' : isLeadSheet ? 'lead-sheet' : 'engagement',
@@ -239,7 +244,7 @@ export function engagementLinkTooltip(link: PdfEngagementLink) {
 
 export function engagementTargetPath(engagementId: string, link: PdfEngagementLink, returnPath: string) {
   // Stored target routes are relative to this engagement, never arbitrary navigation URLs.
-  if (!/^(checklist|procedure|pdf|gca-proc)\/[^/?#]+$/.test(link.route)) return null;
+  if (link.route !== 'trial-balance' && !/^(checklist|procedure|pdf|gca-proc)\/[^/?#]+$/.test(link.route)) return null;
   const params = new URLSearchParams({ document: returnPath, target: link.targetId, name: engagementLinkLabel(link) });
   if (link.lineId) params.set('line', link.lineId);
   if (link.column) params.set('column', link.column);

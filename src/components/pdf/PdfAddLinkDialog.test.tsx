@@ -58,18 +58,24 @@ describe('PdfAddLinkDialog consolidated link picker', () => {
     // Document type: searchable list of documents
     chooseLinkType('Document');
     const docSearch = screen.getByRole('textbox', { name: 'Search documents' });
-    fireEvent.change(docSearch, { target: { value: 'AR Aging' } });
-    fireEvent.click(screen.getByRole('button', { name: /AR Aging Summary 2025\.pdf/ }));
+    fireEvent.change(docSearch, { target: { value: 'Balance Sheet' } });
+    fireEvent.click(screen.getByRole('button', { name: /Balance Sheet/ }));
     expect(props.onSelectEngagementLink).toHaveBeenLastCalledWith(
-      expect.objectContaining({ name: 'AR Aging Summary 2025.pdf', kind: 'document' }),
-      'AR Aging Summary 2025.pdf',
+      expect.objectContaining({ name: 'Balance Sheet', kind: 'document' }),
+      'Balance Sheet',
     );
 
-    // Engagement type: letters & checklists, no documents or lead sheets
+    // Engagement type: full left-panel engagement tree with "Search engagement" placeholder
     chooseLinkType('Engagement');
+    expect(screen.getByPlaceholderText('Search engagement')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'CO Client Onboarding' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'DO Documents' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'TB Trial Balance & Adjusting Entries' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'PR Procedures' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'FS Financial Statements' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'SO Completion & Signoffs' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Client Onboarding/ }));
     expect(screen.getByRole('button', { name: /Engagement Letter/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Financial Statement Docs/ })).not.toBeInTheDocument();
 
     // Reopening the dialog remembers "Engagement" from sessionStorage
     rerender(<TooltipProvider><PdfAddLinkDialog {...props} open={false} /></TooltipProvider>);
@@ -77,19 +83,28 @@ describe('PdfAddLinkDialog consolidated link picker', () => {
     expect(screen.getByRole('combobox', { name: 'Link type' })).toHaveTextContent('Engagement');
   }, 15000);
 
-  it('supports Lead sheet reference-free line items, attached documents, and Trial balance targets', () => {
+  it('supports Lead sheet procedure table with PR hierarchy, attached documents, and Trial balance targets', () => {
+    localStorage.setItem('engagement-node-docs-AUD-demo', JSON.stringify({
+      'aud-wp-b': [{ id: 'doc-ar-1', name: 'B-1-AR-Support.pdf' }],
+    }));
     const { props } = renderDialog();
 
-    // Lead sheet type: reference-free line items + Documents group
+    // Lead sheet type: PR Procedures hierarchy + procedure lead sheet columns + real attached docs
     chooseLinkType('Lead sheet');
     fireEvent.change(screen.getByRole('textbox', { name: 'Search lead sheets' }), { target: { value: 'Accounts receivable' } });
-    expect(screen.getByRole('columnheader', { name: 'Account description' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Acc No.' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Description' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Adj' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Final' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Change(%)' })).toBeInTheDocument();
     expect(screen.getByText('Documents')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'B-1-AR-Support.pdf' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'B · Accounts Receivable (A/R)' }));
     expect(props.onSelectEngagementLink).toHaveBeenLastCalledWith(
       expect.objectContaining({ reference: 'B', name: 'Accounts Receivable (A/R)', lineId: '1100' }),
       'B · Accounts Receivable (A/R)',
     );
+    localStorage.removeItem('engagement-node-docs-AUD-demo');
 
     // Trial balance type: general + Original/PY1/PY2 accounts
     chooseLinkType('Trial balance');

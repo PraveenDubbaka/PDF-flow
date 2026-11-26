@@ -69,6 +69,7 @@ export function PdfAddLinkDialog({
   const [urlValue, setUrlValue] = useState('');
   const [docSearch, setDocSearch] = useState('');
   const [tbSearch, setTbSearch] = useState('');
+  const [engagementLeadSheetOpen, setEngagementLeadSheetOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -76,10 +77,12 @@ export function PdfAddLinkDialog({
     setUrlValue('');
     setDocSearch('');
     setTbSearch('');
+    setEngagementLeadSheetOpen(false);
   }, [open]);
 
   const handleTypeChange = (next: PdfLinkType) => {
     setLinkType(next);
+    setEngagementLeadSheetOpen(false);
     writeSessionLinkType(next);
   };
 
@@ -98,7 +101,7 @@ export function PdfAddLinkDialog({
     );
   }, [tbSearch, trialBalanceAccounts]);
 
-  const wide = linkType === 'lead-sheet' || linkType === 'trial-balance';
+  const wide = linkType === 'lead-sheet' || linkType === 'trial-balance' || (linkType === 'engagement' && engagementLeadSheetOpen);
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
@@ -196,6 +199,7 @@ export function PdfAddLinkDialog({
           <EngagementLinkPicker
             mode="engagement"
             engagementId={engagementId}
+            onExpandedLeadSheetChange={setEngagementLeadSheetOpen}
             onSelect={(link) => onSelectEngagementLink(link, engagementLinkLabel(link))}
           />
         )}

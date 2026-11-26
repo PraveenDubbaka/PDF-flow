@@ -7,7 +7,6 @@ import { EngagementRightPanel } from "@/components/EngagementRightPanel";
 import { Badge } from "@/components/ui/badge";
 import { ExpandableIconButton } from "@/components/ui/expandable-icon-button";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import {
  DropdownMenu,
@@ -27,16 +26,11 @@ import {
  Landmark,
  PencilLine,
  FileSpreadsheet,
- ClipboardCopy,
- FileBarChart,
- MessageSquare,
- Bookmark,
- Send,
 } from "lucide-react";
 import xeroLogo from "@/assets/xero-logo.png";
 import quickbooksLogo from "@/assets/quickbooks-intuit-logo.png";
 import { leadSheetRows } from '@/lib/pdfEngagementLinks';
-import { formatTrialBalanceAmount } from '@/lib/pdfTrialBalance';
+import { ProcedureLeadSheetTable } from "@/components/ProcedureLeadSheetTable";
 import { getAccountsForProcedure } from "@/lib/tbGroups";
 
 
@@ -57,16 +51,6 @@ const toolsMenuActions = [
  { id: "bank", label: "Connect Bank", icon: Landmark },
  { id: "docs", label: "Source Docs", icon: FileText },
 ];
-
-
-const formatNumber = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const formatChangePct = (final: number, py1: number): string => {
- if (Math.abs(py1) <= 0.01) return "0.00%";
- const pct = ((final - py1) / Math.abs(py1)) * 100;
- const abs = Math.abs(pct).toFixed(2);
- return pct < 0 ? `(${abs})%` : `${abs}%`;
-};
 
 export default function ProcedureDetail() {
  const { engagementId, procedureId } = useParams<{ engagementId: string; procedureId: string }>();
@@ -116,18 +100,6 @@ export default function ProcedureDetail() {
 
  const procedureInfo = procedureId ? getAccountsForProcedure(procedureId) : null;
  const accounts = procedureId ? leadSheetRows(procedureId) : [];
- const showPy2 = linkedColumn === 'PY2';
-
- // Compute totals
- const totals = accounts.reduce(
- (acc, row) => ({
- original: acc.original + row.original,
- adj: acc.adj + row.adj,
- final: acc.final + row.final,
- py1: acc.py1 + row.py1,
- }),
- { original: 0, adj: 0, final: 0, py1: 0 }
- );
 
  const breadcrumbParts = procedureInfo?.breadcrumb || [];
  const title = procedureInfo?.title || "Procedure";
@@ -251,89 +223,13 @@ export default function ProcedureDetail() {
  </div>
 
  {/* Accounts Table */}
- <div className="border border-border rounded-lg overflow-hidden bg-card overflow-x-auto">
- <div className="min-w-[960px]">
- {/* Table Header */}
- <div className={`grid ${showPy2 ? "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_110px_90px_60px_80px_160px]" : "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_90px_60px_80px_160px]"} bg-muted border-b border-border text-xs font-semibold text-muted-foreground`}>
- <div className="flex items-center justify-center py-2.5">
- <Checkbox className="h-4 w-4" />
- </div>
- <div className="py-2.5 px-2">Acc No.</div>
- <div className="py-2.5 px-2">Description</div>
- <div className="py-2.5 px-2 text-right">Original</div>
- <div className="py-2.5 px-2 text-right font-bold text-foreground">Adj</div>
- <div className="py-2.5 px-2 text-right font-bold text-foreground">Final</div>
- <div className="py-2.5 px-2 text-right">PY1</div>
- {showPy2 && <div className="py-2.5 px-2 text-right">PY2</div>}
- <div className="py-2.5 px-2 text-right flex items-center justify-end gap-1">
- Change(%)
- <ChevronDown className="h-3 w-3" />
- </div>
- <div className="py-2.5 px-2 text-center">Ref</div>
- <div className="py-2.5 px-2 text-center">Ticks</div>
- <div className="py-2.5 px-2 text-center">Actions</div>
- </div>
-
- {/* Table Body */}
- {accounts.map((row) => (
- <div
- key={row.id}
- data-lead-line={row.id}
- className={`grid ${showPy2 ? "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_110px_90px_60px_80px_160px]" : "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_90px_60px_80px_160px]"} border-b border-border hover:bg-muted/30 transition-colors text-sm ${highlightLink && row.id === linkedLine ? "bg-primary/10 ring-1 ring-inset ring-primary" : ""}`}
- >
- <div className="flex items-center justify-center py-2.5">
- <Checkbox className="h-4 w-4" />
- </div>
- <div className="py-2.5 px-2 text-foreground">{row.accNo}</div>
- <div className="py-2.5 px-2 text-foreground">{row.description}</div>
- <div data-lead-column="Original" className={`py-2.5 px-2 text-right text-foreground ${highlightLink && row.id === linkedLine && linkedColumn === "Original" ? "bg-primary/20 ring-2 ring-inset ring-primary" : ""}`}>{formatNumber(row.original)}</div>
- <div className="py-2.5 px-2 text-right font-bold text-foreground">{formatNumber(row.adj)}</div>
- <div className="py-2.5 px-2 text-right font-bold text-foreground">{formatNumber(row.final)}</div>
- <div data-lead-column="PY1" className={`py-2.5 px-2 text-right text-foreground ${highlightLink && row.id === linkedLine && linkedColumn === "PY1" ? "bg-primary/20 ring-2 ring-inset ring-primary" : ""}`}>{formatNumber(row.py1)}</div>
- {showPy2 && <div data-lead-column="PY2" className={`py-2.5 px-2 text-right text-foreground ${highlightLink && row.id === linkedLine ? "bg-primary/20 ring-2 ring-inset ring-primary" : ""}`}>{formatTrialBalanceAmount(row.py2)}</div>}
- <div className="py-2.5 px-2 text-right text-foreground">{formatChangePct(row.final, row.py1)}</div>
- <div className="py-2.5 px-2 text-center text-muted-foreground">{row.ref ?? "-"}</div>
- <div className="py-2.5 px-2 text-center flex items-center justify-center gap-1">
- <span className="text-muted-foreground">-</span>
- <ChevronDown className="h-3 w-3 text-muted-foreground" />
- </div>
- <div className="py-2.5 px-2 flex items-center justify-center gap-1">
- <button className="p-1 hover:bg-muted rounded text-primary" title="Add to workbook">
- <ClipboardCopy className="h-4 w-4" />
- </button>
- <button className="p-1 hover:bg-muted rounded text-primary" title="View report">
- <FileBarChart className="h-4 w-4" />
- </button>
- <button className="p-1 hover:bg-muted rounded text-primary" title="Comment">
- <MessageSquare className="h-4 w-4" />
- </button>
- <button className="p-1 hover:bg-muted rounded text-primary" title="Bookmark">
- <Bookmark className="h-4 w-4" />
- </button>
- <button className="p-1 hover:bg-muted rounded text-primary" title="Send">
- <Send className="h-4 w-4" />
- </button>
- </div>
- </div>
- ))}
-
- {/* Total Row */}
- <div className={`grid ${showPy2 ? "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_110px_90px_60px_80px_160px]" : "grid-cols-[40px_100px_minmax(120px,1fr)_110px_80px_110px_110px_90px_60px_80px_160px]"} bg-muted/50 text-sm font-bold`}>
- <div className="py-2.5" />
- <div className="py-2.5" />
- <div className="py-2.5 px-2 text-foreground">Total</div>
- <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(totals.original)}</div>
- <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(totals.adj)}</div>
- <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(totals.final)}</div>
- <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(totals.py1)}</div>
- {showPy2 && <div className="py-2.5 px-2 text-right text-foreground">{formatNumber(accounts.reduce((total, row) => total + (row.py2 ?? 0), 0))}</div>}
- <div className="py-2.5 px-2" />
- <div className="py-2.5 px-2" />
- <div className="py-2.5 px-2" />
- <div className="py-2.5 px-2" />
- </div>
- </div>
- </div>
+ <ProcedureLeadSheetTable
+ mode="page"
+ rows={accounts}
+ linkedLine={linkedLine}
+ linkedColumn={linkedColumn}
+ highlightLink={highlightLink}
+ />
 
  {/* General Notes Section */}
  <div className="mt-6 border border-border rounded-lg overflow-hidden bg-card">

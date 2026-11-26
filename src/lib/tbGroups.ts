@@ -13,6 +13,33 @@ export type Row = {
  ref?: string;
 };
 
+export const PROCEDURE_AMOUNT_COLUMNS = ["Original", "Adj", "Final", "PY1"] as const;
+export type ProcedureAmountColumn = (typeof PROCEDURE_AMOUNT_COLUMNS)[number];
+export type LeadSheetColumn = ProcedureAmountColumn | "PY2";
+
+export const formatProcedureNumber = (value: number | null | undefined): string => {
+ if (value == null || !Number.isFinite(value)) return "–";
+ return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+export const formatProcedureChangePct = (final: number, py1: number): string => {
+ if (Math.abs(py1) <= 0.01) return "0.00%";
+ const pct = ((final - py1) / Math.abs(py1)) * 100;
+ const abs = Math.abs(pct).toFixed(2);
+ return pct < 0 ? `(${abs})%` : `${abs}%`;
+};
+
+export const computeProcedureTotals = (rows: Row[]) =>
+ rows.reduce(
+  (acc, row) => ({
+   original: acc.original + row.original,
+   adj: acc.adj + row.adj,
+   final: acc.final + row.final,
+   py1: acc.py1 + row.py1,
+  }),
+  { original: 0, adj: 0, final: 0, py1: 0 }
+ );
+
 export type Group = { id: string; title: string; rows: Row[] };
 
 export const mk = (
@@ -34,8 +61,6 @@ export const mk = (
  adj,
  final: original + adj,
  py1,
- // Mock prior-prior year figures; shared by picker and lead-sheet destination.
- py2: Math.round(py1 * 0.9 * 100) / 100,
  changePct,
 });
 

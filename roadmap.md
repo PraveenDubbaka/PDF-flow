@@ -42,3 +42,4 @@
 - [x] Add the AL1.1 Engagement Letter Preview modal with generated PDF pages, collapsible thumbnails, page/zoom controls, shared-byte Download and no-blank-tab Print; leave the letter view and PDF editor unchanged.
 - [x] Add Fit to page/Fit width and view-only Rotate left/right controls, shortcuts, responsive collapse, and tests to `EngagementLetterPreview.tsx` only (never `PdfWorkspace`).
 - [x] Extend the read-only Preview modal (`DocumentPreviewModal.tsx`) with selectable-text PDF generation to every letter, custom letter section, and Financial Statement report/page in the engagement; keep PDF editor unchanged.
+- [x] Match Add link > Lead sheet to ProcedureDetail (`ProcedureLeadSheetTable`, PR hierarchy, real attached docs, no picker-only mocks) and mirror the full left-panel engagement tree in Add link > Engagement with "Search engagement".

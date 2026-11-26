@@ -1,54 +1,104 @@
-import { fireEvent, render, screen, cleanup } from '@testing-library/react';
+import { fireEvent, render, screen, cleanup, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { engagementSidebarTrees } from '@/lib/engagementLinkTree';
+import { computeProcedureTotals, formatProcedureChangePct, formatProcedureNumber, getAccountsForProcedure } from '@/lib/tbGroups';
 import { EngagementLinkPicker } from './EngagementLinkPicker';
 
-vi.mock('@/lib/pdfEngagementLinks', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@/lib/pdfEngagementLinks')>(),
-  getEngagementLinkTree: () => [{ id: 'folder', label: 'Section', icon: 'folder', route: 'checklist/not-a-target', children: [
-    { id: 'subfolder', label: 'Subfolder', icon: 'folder', children: [{ id: 'letter', label: 'Letter', icon: 'letter', route: 'checklist/letter' }] },
-    { id: 'pr-ca-b', code: 'B', label: 'Accounts receivable', icon: 'book', route: 'procedure/pr-ca-b' },
-    { id: 'checklist', label: 'Checklist', icon: 'checklist', route: 'checklist/checklist' },
-    { id: 'document', label: 'Document', icon: 'doc', route: 'pdf/document' },
-  ] }],
-}));
+afterEach(() => {
+  cleanup();
+  localStorage.removeItem('engagement-node-docs-COMP-demo');
+  localStorage.removeItem('engagement-node-docs-AUD-demo');
+});
 
-afterEach(cleanup);
-const setup = (mode: 'engagement' | 'lead-sheets' = 'engagement') => {
+const setup = (mode: 'engagement' | 'lead-sheets' = 'engagement', engagementId = 'COMP-demo') => {
   const onSelect = vi.fn();
-  render(<TooltipProvider><EngagementLinkPicker engagementId="demo" mode={mode} onSelect={onSelect} /></TooltipProvider>);
+  render(<TooltipProvider><EngagementLinkPicker engagementId={engagementId} mode={mode} onSelect={onSelect} /></TooltipProvider>);
   return onSelect;
 };
 
-describe('Engagement tree click behavior', () => {
-  it('expands and collapses folders without selecting a link, even when a folder has a route', () => {
-    const onSelect = setup('engagement');
-    fireEvent.click(screen.getByRole('button', { name: 'Section' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Subfolder' }));
-    expect(screen.getByRole('button', { name: 'Letter' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Accounts receivable/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Document' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Subfolder' }));
-    expect(screen.queryByRole('button', { name: 'Letter' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Section' }));
-    expect(screen.queryByRole('button', { name: 'Subfolder' })).not.toBeInTheDocument();
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-  it('lists lead sheets directly in lead-sheets mode, shows reference-free rows with columns and documents, and links lines, columns, and docs', () => {
-    const onSelect = setup('lead-sheets');
-    expect(screen.queryByRole('button', { name: 'Checklist' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Subfolder' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Section' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Show line items' }));
-    expect(screen.getByRole('columnheader', { name: 'Account description' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Original' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'PY1' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'PY2' })).toBeInTheDocument();
-    expect(screen.queryByText(/B\.1/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Provision for Bad Debt · Original: \(31,270\.49\)/ })).toBeInTheDocument();
-    expect(onSelect).not.toHaveBeenCalled();
+describe('Engagement and Lead sheet link pickers', () => {
+  it('shows every top-level left-panel section in order in Engagement mode with Search engagement placeholder', () => {
+    const onSelect = setup('engagement', 'COMP-demo');
+    expect(screen.getByPlaceholderText('Search engagement')).toBeInTheDocument();
+    const expectedSections = engagementSidebarTrees(false).engagementTree;
+    for (const section of expectedSections) {
+      expect(screen.getByRole('button', { name: `${section.code} ${section.label}` })).toBeInTheDocument();
+    }
 
-    // Clicking the line item row links that whole line without a column suffix
+    // Folders expand/collapse without selecting a link
+    fireEvent.click(screen.getByRole('button', { name: 'CO Client Onboarding' }));
+    expect(screen.getByRole('button', { name: 'AL1.1 Engagement Letter' })).toBeInTheDocument();
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'CO Client Onboarding' }));
+    expect(screen.queryByRole('button', { name: 'AL1.1 Engagement Letter' })).not.toBeInTheDocument();
+
+    // TB Trial Balance & Adj. Entries is linkable directly
+    fireEvent.click(screen.getByRole('button', { name: 'TB Trial Balance & Adj. Entries' }));
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ route: 'trial-balance', reference: 'TB' }));
+
+    // FS Financial Statements and SO Completion & Signoffs expand to linkable leaves
+    fireEvent.click(screen.getByRole('button', { name: 'FS Financial Statements' }));
+    fireEvent.click(screen.getByRole('button', { name: 'FS Financial Statements Docs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Balance Sheet' }));
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ route: 'checklist/fs-bs', name: 'Balance Sheet' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'SO Completion & Signoffs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'SO Signoffs' }));
+    expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ route: 'checklist/so-so', reference: 'SO' }));
+  });
+
+  it('matches the procedure lead sheet hierarchy, rows, columns, totals, and real attached docs for multiple lead sheets', () => {
+    localStorage.setItem('engagement-node-docs-COMP-demo', JSON.stringify({
+      'pr-ca-b': [{ id: 'doc-b-1', name: 'B-1-AR-Aging.pdf' }],
+    }));
+    const onSelect = setup('lead-sheets', 'COMP-demo');
+
+    // PR Procedures hierarchy is preserved (expanded to Assets / Liabilities / Equity / Revenue / Expenses)
+    expect(screen.getByRole('button', { name: 'PR Procedures' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Assets' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revenue' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CO Client Onboarding' })).not.toBeInTheDocument();
+
+    // Expand Assets -> Current assets -> A Cash and cash equivalents & B Accounts receivable
+    fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Current assets' }));
+
+    const cashRow = screen.getByRole('button', { name: 'A Cash and cash equivalents' }).parentElement!;
+    fireEvent.click(within(cashRow).getByRole('button', { name: 'Show line items' }));
+    const arRow = screen.getByRole('button', { name: 'B Accounts receivable' }).parentElement!;
+    fireEvent.click(within(arRow).getByRole('button', { name: 'Show line items' }));
+
+    const tables = screen.getAllByRole('table');
+    expect(tables).toHaveLength(2);
+
+    // Verify every column header, row, amount, Change(%), and Total matches ProcedureDetail's source for both A and B
+    for (const [index, procedureId] of (['pr-ca-a', 'pr-ca-b'] as const).entries()) {
+      const expectedRows = getAccountsForProcedure(procedureId)!.rows;
+      const table = tables[index]!;
+      const headers = within(table).getAllByRole('columnheader').map((el) => el.textContent);
+      expect(headers).toEqual(['Acc No.', 'Description', 'Original', 'Adj', 'Final', 'PY1', 'Change(%)']);
+      const bodyRows = table.querySelectorAll('tbody tr');
+      expect(bodyRows).toHaveLength(expectedRows.length);
+      expectedRows.forEach((row, rowIndex) => {
+        const tr = bodyRows[rowIndex]!;
+        expect(tr.textContent).toContain(row.accNo);
+        expect(tr.textContent).toContain(row.description);
+        expect(tr.textContent).toContain(formatProcedureNumber(row.original));
+        expect(tr.textContent).toContain(formatProcedureNumber(row.adj));
+        expect(tr.textContent).toContain(formatProcedureNumber(row.final));
+        expect(tr.textContent).toContain(formatProcedureNumber(row.py1));
+        expect(tr.textContent).toContain(formatProcedureChangePct(row.final, row.py1));
+      });
+      const totals = computeProcedureTotals(expectedRows);
+      const footText = table.querySelector('tfoot')?.textContent ?? '';
+      expect(footText).toContain('Total');
+      expect(footText).toContain(formatProcedureNumber(totals.original));
+      expect(footText).toContain(formatProcedureNumber(totals.final));
+      expect(footText).toContain(formatProcedureNumber(totals.py1));
+    }
+
+    // Clicking a line links that whole line; clicking an amount cell links that column
     fireEvent.click(screen.getByRole('button', { name: 'B · Accounts Receivable (A/R)' }));
     expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({
       targetId: 'pr-ca-b',
@@ -59,40 +109,31 @@ describe('Engagement tree click behavior', () => {
     }));
     expect(onSelect.mock.calls.at(-1)?.[0]).not.toHaveProperty('column');
 
-    // Clicking an individual amount cell links that specific column
-    fireEvent.click(screen.getByRole('button', { name: /Accounts Receivable \(A\/R\) · PY2:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Accounts Receivable (A/R) · Final: 141,312.25' }));
     expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({
       lineId: '1100',
-      column: 'PY2',
+      column: 'Final',
     }));
 
-    // Documents group under the lead sheet is linkable
-    expect(screen.getByText('Documents')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'AR Aging Summary 2025.pdf' }));
+    // Real attached document under B is linkable (and no fake mock docs appear under A)
+    expect(screen.queryByRole('button', { name: 'Bank Confirmation - RBC 2025.pdf' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'B-1-AR-Aging.pdf' }));
     expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({
-      name: 'AR Aging Summary 2025.pdf',
+      name: 'B-1-AR-Aging.pdf',
       kind: 'document',
+      route: 'pdf/doc-b-1',
     }));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Hide line items' }));
-    expect(screen.queryByRole('button', { name: /· PY2:/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'B Accounts receivable' }));
-    expect(onSelect).toHaveBeenLastCalledWith({ targetId: 'pr-ca-b', route: 'procedure/pr-ca-b', reference: 'B', name: 'Accounts receivable', kind: 'lead-sheet' });
   }, 15000);
-  it.each([['Letter', 'checklist/letter'], ['Checklist', 'checklist/checklist']])('keeps %s selectable in engagement mode', (name, route) => {
-    const onSelect = setup('engagement');
-    fireEvent.click(screen.getByRole('button', { name: 'Section' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Subfolder' }));
-    fireEvent.click(screen.getByRole('button', { name }));
-    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ route }));
-  });
-  it('allows line items to collapse and reopen while searching', () => {
-    const onSelect = setup('lead-sheets');
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Accounts receivable' } });
+
+  it('opens the exact same lead-sheet view inside PR Procedures in Engagement mode and allows collapse while searching', () => {
+    const onSelect = setup('engagement', 'AUD-demo');
+    fireEvent.change(screen.getByPlaceholderText('Search engagement'), { target: { value: 'Accounts receivable' } });
+    expect(screen.getByRole('columnheader', { name: 'Acc No.' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Change(%)' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Hide line items' }));
-    expect(screen.queryByRole('button', { name: /· PY2:/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Change(%)' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show line items' }));
-    expect(screen.getByRole('button', { name: /Accounts Receivable \(A\/R\) · PY2:/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accounts Receivable (A/R) · PY1: 100,552.11' })).toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });
 });
