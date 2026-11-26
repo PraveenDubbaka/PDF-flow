@@ -317,7 +317,7 @@ export function PdfSignatureDialog({
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="button" disabled={!canPlace} onClick={handleSubmit}>
             {isEdit ? 'Save signature' : 'Place signature'}
           </Button>
