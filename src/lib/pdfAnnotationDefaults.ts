@@ -10,8 +10,8 @@ export interface PdfAnnotationStyleDefaults {
 }
 
 export const SYSTEM_ANNOTATION_STYLE_DEFAULTS: PdfAnnotationStyleDefaults = {
-  textColor: '#111827',
-  borderColor: '#facc15',
+  textColor: '#ef4444',
+  borderColor: '#22c55e',
   fillColor: null,
 };
 

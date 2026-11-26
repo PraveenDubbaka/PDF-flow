@@ -1,4 +1,5 @@
 # PDF editor UAT feedback
+- [x] Update system annotation defaults to red text/green border, preserving saved preferences; 108 tests and build passed, real uploaded PDF verified live with screenshots.
 - [x] Reorder tools and open on Annotations.
 - [x] Auto-save with status, Done, and a password-protection demo toggle.
 - [x] Label annotation buttons and provide distinct icons, including Squiggly and Callout.

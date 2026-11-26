@@ -47,7 +47,7 @@ describe('Per-user PDF annotation style defaults', () => {
 
   it('falls back to system defaults when nothing is saved for the user', async () => {
     const loaded = await loadPdfAnnotationDefaults();
-    expect(loaded).toEqual(SYSTEM_ANNOTATION_STYLE_DEFAULTS);
+    expect(loaded).toEqual({ textColor: '#ef4444', borderColor: '#22c55e', fillColor: null });
     expect(isSystemAnnotationDefaults(loaded)).toBe(true);
   });
 
@@ -62,6 +62,11 @@ describe('Per-user PDF annotation style defaults', () => {
     // Another signed-in user sees system defaults, not user-1's row
     currentUserId = 'user-2';
     expect(await loadPdfAnnotationDefaults()).toEqual(SYSTEM_ANNOTATION_STYLE_DEFAULTS);
+  });
+
+  it('preserves previously saved colours including the old system colours', async () => {
+    mockStore.set(currentUserId, { textColor: '#111827', borderColor: '#facc15', fillColor: null });
+    expect(await loadPdfAnnotationDefaults()).toEqual({ textColor: '#111827', borderColor: '#facc15', fillColor: null });
   });
 
   it('normalizes malformed saved preferences safely', () => {

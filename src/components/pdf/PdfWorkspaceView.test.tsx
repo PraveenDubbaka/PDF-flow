@@ -66,6 +66,33 @@ async function setup(initialEditState?: Partial<PdfEditState>, documentId = 'pdf
 }
 
 describe('PDF editor workspace controls', () => {
+  it('uses red text, green borders and no fill for new annotations without saved colours', async () => {
+    vi.mocked(loadPdfAnnotationDefaults).mockResolvedValue({ ...SYSTEM_ANNOTATION_STYLE_DEFAULTS });
+    await setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const pageEl = document.querySelector('[data-pdf-page="1"]');
+    if (!(pageEl instanceof HTMLElement)) throw new Error('Page missing');
+    vi.spyOn(pageEl, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 612, height: 792, right: 612, bottom: 792, x: 0, y: 0, toJSON: () => ({}),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Text box' }));
+    fireEvent.click(pageEl, { clientX: 120, clientY: 160 });
+    const textbox = await screen.findByRole('textbox', { name: 'Text box content' });
+    expect(normalizeColorToHex(textbox.style.color)).toBe('#ef4444');
+    const wrapper = textbox.closest('[data-annotation-id]');
+    if (!(wrapper instanceof HTMLElement)) throw new Error('Text box missing');
+    expect(normalizeColorToHex(wrapper.style.borderColor)).toBe('#22c55e');
+    expect(wrapper.style.backgroundColor).toBe('transparent');
+    fireEvent.keyDown(textbox, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Rectangle' }));
+    fireEvent.click(pageEl, { clientX: 240, clientY: 320 });
+    const rectangle = document.querySelector('[data-annotation-id]:not([data-annotation-id="' + wrapper.dataset.annotationId + '"])');
+    if (!(rectangle instanceof HTMLElement)) throw new Error('Rectangle missing');
+    expect(normalizeColorToHex(rectangle.style.borderColor)).toBe('#22c55e');
+    expect(rectangle.style.backgroundColor).toBe('transparent');
+    expect(savePdfAnnotationDefaults).not.toHaveBeenCalled();
+  });
+
   it('keeps selected annotation border and fill overrides independent of defaults', async () => {
     await setup({ annotations: [{ id: 'shape', kind: 'rectangle', page: 1, x: 10, y: 10, width: 24, height: 8, color: '#ef4444', label: 'Shape' }] });
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
