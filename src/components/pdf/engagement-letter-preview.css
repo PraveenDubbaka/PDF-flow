@@ -1,0 +1,40 @@
+.engagement-letter-pdf-source {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 816px;
+  pointer-events: none;
+}
+.engagement-letter-pdf-source > div,
+.engagement-letter-pdf-source > div > div {
+  height: auto;
+  overflow: visible;
+  padding: 0;
+}
+.engagement-letter-pdf-source .max-w-3xl {
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.engagement-letter-pdf-source button { display: none; }
+@media (max-width: 640px) {
+  /* Only letter visits need these panels out of the page's viewing space. */
+  .content-wrapper:has([data-engagement-letter-preview]) > #sidebar-secondary-portal,
+  .content-wrapper:has([data-engagement-letter-preview]) > #right-panel-portal { display: none; }
+}
+.pdf-page-bar-letter .pdf-letter-view-controls {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+@container (max-width: 720px) {
+  .pdf-page-bar.pdf-page-bar-letter { height: 88px; align-items: flex-start; padding-top: 8px; }
+  .pdf-page-bar-letter .pdf-letter-view-controls { top: 64px; }
+}
+@container (max-width: 340px) {
+  .pdf-letter-fit-label { display: none; }
+  .pdf-page-bar.pdf-page-bar-letter { padding-left: 4px; padding-right: 4px; }
+  .pdf-page-bar-letter > div:first-child { gap: 0; }
+}

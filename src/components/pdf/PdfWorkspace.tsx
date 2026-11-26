@@ -52,6 +52,8 @@ import { toast } from 'sonner';
 import { PdfAutoSave, PdfSaveStatus, requiresManualPdfSave } from '@/lib/pdfAutoSave';
 import { EngagementLinkPicker } from '@/components/pdf/EngagementLinkPicker';
 import { PdfEditSplitButton } from '@/components/pdf/PdfEditSplitButton';
+import { PdfPreviewControls } from '@/components/pdf/PdfPreviewControls';
+import { fitPreviewZoom, originalLetterBytes, rotatePreview, type PdfFitMode } from '@/lib/pdfPreviewView';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { engagementLinkLabel, engagementLinkTooltip, engagementTargetPath, type PdfEngagementLink } from '@/lib/pdfEngagementLinks';
 import { useTrialBalanceAccounts } from '@/lib/trialBalanceSource';
@@ -837,7 +839,10 @@ function multiply(a: number[], b: number[]) {
   ];
 }
 
-export function PdfWorkspace({ documentId, popout = false }: { documentId: string; popout?: boolean }) {
+export function PdfWorkspace({ documentId, popout = false, letterSource }: { documentId: string; popout?: boolean; letterSource?: { bytes: Uint8Array; name: string } }) {
+  const letterPreview = !!letterSource;
+  const letterBytes = letterSource?.bytes;
+  const letterName = letterSource?.name;
   const navigate = useNavigate();
   const location = useLocation();
   const { engagementId } = useParams<{ engagementId: string }>();
@@ -850,7 +855,11 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const [error, setError] = useState('');
   const [page, setPage] = useState(() => Math.max(1, Number(new URLSearchParams(window.location.search).get('page')) || 1));
   const [zoom, setZoom] = useState(1);
-  const [editing, setEditing] = useState(popout);
+  const [editing, setEditing] = useState(popout && !letterPreview);
+  const [viewRotation, setViewRotation] = useState(0);
+  const [fitMode, setFitMode] = useState<PdfFitMode>(null);
+  const [viewerHeight, setViewerHeight] = useState(0);
+  const [nativePageHeight, setNativePageHeight] = useState(990);
   const [activePanel, setActivePanel] = useState<ToolId>('annotations');
   const [toolsCollapsed, setToolsCollapsed] = useState(false);
   const [simulateProtected, setSimulateProtected] = useState(() => new URLSearchParams(window.location.search).get('protected') === '1');
@@ -961,12 +970,17 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   useEffect(() => {
     let currentUrl: string | null = null;
     let cancelled = false;
+    if (letterPreview) { setViewRotation(0); setFitMode(null); setZoom(1); setPage(1); setEditing(false); }
     const load = async (attempt: number): Promise<void> => {
       setLoading(true);
       setError('');
       try {
-        const record = await getPdfDocument(documentId);
-        const url = await getPdfBlobUrl(record.storage_path);
+        const record: PdfDocumentRecord = letterBytes ? {
+          id: documentId, owner_id: '', engagement_id: engagementId ?? '', node_id: documentId,
+          name: letterName ?? 'Engagement Letter', mime_type: 'application/pdf', size_bytes: letterBytes.length,
+          storage_path: '', current_version: 1, edit_state: emptyPdfEditState(), created_at: '', updated_at: '',
+        } : await getPdfDocument(documentId);
+        const url = letterBytes ? URL.createObjectURL(new Blob([letterBytes.slice().buffer], { type: 'application/pdf' })) : await getPdfBlobUrl(record.storage_path);
         currentUrl = url;
         const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
         const loadedPdf = await pdfjs.getDocument({ data: bytes.slice() }).promise;
@@ -1003,7 +1017,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     };
     void load(0);
     return () => { cancelled = true; if (currentUrl) URL.revokeObjectURL(currentUrl); };
-  }, [documentId]);
+  }, [documentId, letterBytes, letterName]);
 
   const visiblePages = editState.pageOrder.length ? editState.pageOrder : pdf ? Array.from({ length: pdf.numPages }, (_, index) => index + 1) : [];
   const currentSourcePage = visiblePages[Math.max(0, page - 1)] ?? 1;
@@ -1040,6 +1054,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   ), [documentId]);
 
   useEffect(() => {
+    if (letterPreview) return;
     const channel = new BroadcastChannel(`pdf-editor-${documentId}`);
     syncChannel.current = channel;
     channel.onmessage = (event: MessageEvent<PdfEditState>) => {
@@ -1053,12 +1068,12 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       setProperties(event.data.properties ?? emptyPdfEditState().properties ?? properties);
     };
     return () => { channel.close(); syncChannel.current = null; };
-  }, [documentId]);
+  }, [documentId, letterPreview]);
 
   useEffect(() => {
-    if (!document || manualSave || JSON.stringify(editState) === lastPersisted.current) return;
+    if (letterPreview || !document || manualSave || JSON.stringify(editState) === lastPersisted.current) return;
     void saveQueue.enqueue(structuredClone(editState));
-  }, [document, editState, manualSave, saveQueue]);
+  }, [document, editState, manualSave, saveQueue, letterPreview]);
 
   useEffect(() => {
     if (saveStatus !== 'saved') return;
@@ -1068,7 +1083,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
 
   useEffect(() => {
     if (loading || !viewerRef.current) return;
-    const observer = new ResizeObserver(([entry]) => setViewerWidth(entry.contentRect.width));
+    const observer = new ResizeObserver(([entry]) => { setViewerWidth(entry.contentRect.width); setViewerHeight(entry.contentRect.height); });
     observer.observe(viewerRef.current);
     return () => observer.disconnect();
   }, [loading]);
@@ -1077,11 +1092,33 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     if (!pdf) return;
     let cancelled = false;
     void pdf.getPage(currentSourcePage).then((target) => {
-      if (!cancelled) setNativePageWidth(target.getViewport({ scale: 1.25, rotation: (target.rotate + (editState.rotations[String(currentSourcePage)] ?? 0)) % 360 }).width);
+      if (!cancelled) {
+        const viewport = target.getViewport({ scale: 1.25, rotation: (target.rotate + (editState.rotations[String(currentSourcePage)] ?? 0)) % 360 });
+        setNativePageWidth(viewport.width);
+        setNativePageHeight(viewport.height);
+      }
     });
     return () => { cancelled = true; };
   }, [pdf, currentSourcePage, editState.rotations]);
-  const effectiveZoom = toolsCollapsed && viewerWidth ? Math.min(zoom, Math.max(0.1, (viewerWidth - 48) / nativePageWidth)) : zoom;
+  const effectiveZoom = !letterPreview && toolsCollapsed && viewerWidth ? Math.min(zoom, Math.max(0.1, (viewerWidth - 48) / nativePageWidth)) : zoom;
+
+  useEffect(() => {
+    if (letterPreview && fitMode) setZoom(fitPreviewZoom({ width: nativePageWidth, height: nativePageHeight }, { width: viewerWidth, height: viewerHeight }, viewRotation, fitMode));
+  }, [letterPreview, fitMode, nativePageWidth, nativePageHeight, viewerWidth, viewerHeight, viewRotation]);
+
+  useEffect(() => {
+    if (!letterPreview) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if ((event.ctrlKey || event.metaKey) && event.key === '0') { event.preventDefault(); setFitMode('page'); }
+      else if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'r') {
+        event.preventDefault(); setViewRotation((value) => rotatePreview(value, event.shiftKey ? -1 : 1));
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [letterPreview]);
 
   const finishEditing = async () => {
     if (!manualSave && JSON.stringify(editState) !== lastPersisted.current) {
@@ -1689,6 +1726,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
 
   const createSavedBytes = async () => {
     if (!sourceBytes) throw new Error('The source PDF is unavailable.');
+    if (letterPreview) return originalLetterBytes(sourceBytes);
     const scriptFontCache = new Map<string, Awaited<ReturnType<typeof PDFDocument.prototype.embedFont>>>();
     const exportWatermarks = getEditStateWatermarks(editState);
     return exportPdfBytes({
@@ -2511,7 +2549,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     <div className="flex h-full min-h-0 flex-col bg-background">
       <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void handleImageFile(file); }} />
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
-        <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+        {letterPreview ? <span className="min-w-0 truncate text-sm font-medium text-foreground">{document.name}</span> : <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm" className="-ml-2 gap-1.5 text-xs font-medium">
               <History />
@@ -2557,9 +2595,12 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
               </div>
             </ScrollArea>
           </PopoverContent>
-        </Popover>
+        </Popover>}
         <div className="flex items-center gap-2">
-          {editing ? <>
+          {letterPreview ? <>
+            <Button variant="secondary" size="sm" disabled={printing} onClick={() => void printPdf()}>{printing ? <Loader2 className="animate-spin" /> : <Printer />}Print</Button>
+            <Button variant="secondary" size="sm" onClick={() => void downloadPdf()}><Download />Download</Button>
+          </> : editing ? <>
             {manualSave ? <Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button> : saveStatus !== 'idle' && <span role="status" data-status={saveStatus} className="pdf-save-status flex items-center gap-1.5">{saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saveStatus === 'saved' ? <Check className="h-3.5 w-3.5" /> : null}{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'All changes saved' : 'Changes not saved'}</span>}
             <Button variant="secondary" size="sm" disabled={printing} onClick={() => void printPdf()}>{printing ? <Loader2 className="animate-spin" /> : <Printer />}Print</Button>
             {!popout && <Button variant="secondary" size="sm" onClick={() => void finishEditing()}>Done</Button>}
@@ -2573,10 +2614,10 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-36 shrink-0 border-r border-border bg-muted/30 lg:block"><ScrollArea className="h-full p-2">{visiblePages.map((sourcePage, index) => <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} label={index + 1} rotation={editState.rotations[String(sourcePage)] ?? 0} active={page === index + 1} onClick={() => setPage(index + 1)} />)}</ScrollArea></aside>
+        <aside className="hidden w-36 shrink-0 border-r border-border bg-muted/30 lg:block"><ScrollArea className="h-full p-2">{visiblePages.map((sourcePage, index) => <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} label={index + 1} rotation={letterPreview ? viewRotation : editState.rotations[String(sourcePage)] ?? 0} active={page === index + 1} onClick={() => setPage(index + 1)} />)}</ScrollArea></aside>
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="pdf-page-bar-container shrink-0">
-          <div className={cn('pdf-page-bar flex items-center justify-between border-b border-border px-4', editing && 'pdf-page-bar-editing')}>
+          <div className={cn('pdf-page-bar flex items-center justify-between border-b border-border px-4', editing && 'pdf-page-bar-editing', letterPreview && 'pdf-page-bar-letter')}>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button>
             </div>
@@ -2584,11 +2625,12 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
               <Tooltip><TooltipTrigger asChild><Button variant="secondary" size="sm" disabled={!undoStack.past.length} onClick={handleUndo} aria-label="Undo"><Undo2 /><span className="pdf-history-label">Undo</span></Button></TooltipTrigger><TooltipContent>Undo ({isMacPlatform() ? '⌘Z' : 'Ctrl+Z'})</TooltipContent></Tooltip>
               <Tooltip><TooltipTrigger asChild><Button variant="secondary" size="sm" disabled={!undoStack.future.length} onClick={handleRedo} aria-label="Redo"><Redo2 /><span className="pdf-history-label">Redo</span></Button></TooltipTrigger><TooltipContent>Redo ({isMacPlatform() ? '⌘⇧Z' : 'Ctrl+Shift+Z'})</TooltipContent></Tooltip>
             </div>}
-            <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(effectiveZoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
+            {letterPreview && <PdfPreviewControls fit={fitMode} onFit={setFitMode} onRotate={(direction) => setViewRotation((value) => rotatePreview(value, direction))} />}
+            <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label="Zoom out" onClick={() => { setFitMode(null); setZoom((value) => Math.max(letterPreview ? 0.1 : 0.5, value - 0.1)); }}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(effectiveZoom * 100)}%</span><Button variant="ghost" size="icon-sm" aria-label="Zoom in" onClick={() => { setFitMode(null); setZoom((value) => letterPreview ? value + 0.1 : Math.min(2, value + 0.1)); }}><ZoomIn /></Button></div>
           </div>
           </div>
           {editing && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
-          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} fillColor={activeFillColor} editing={editing} watermarks={activeWatermarks} editingTextId={editing ? editingTextId : null} onEditText={setEditingTextId} onEditSignature={(sig) => setSignatureDialog({ annotation: sig, isEdit: true })} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
+          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={letterPreview ? viewRotation : editState.rotations[String(currentSourcePage)] ?? 0} annotations={letterPreview ? [] : pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} fillColor={activeFillColor} editing={editing} watermarks={activeWatermarks} editingTextId={editing ? editingTextId : null} onEditText={setEditingTextId} onEditSignature={(sig) => setSignatureDialog({ annotation: sig, isEdit: true })} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={letterPreview ? undefined : updateAnnotation} onDelete={letterPreview ? undefined : deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
         </section>
         {editing && <aside style={{ width: toolsCollapsed ? 48 : editPanelWidth }} className={cn("relative flex min-h-0 shrink-0 border-l border-border bg-card", !toolsCollapsed && "pdf-edit-panel min-w-[360px] max-w-[calc(100vw-64px)]")}>
           {toolsCollapsed ? <div className="flex w-12 justify-center pt-2"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="Expand Tools Panel" onClick={() => setToolsCollapsed(false)}><ToolsPanelIcon /></Button></TooltipTrigger><TooltipContent side="left">Expand Tools Panel</TooltipContent></Tooltip></div> : <>
