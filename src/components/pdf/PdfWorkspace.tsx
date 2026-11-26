@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import { PDFDocument, degrees, rgb, StandardFonts, pushGraphicsState, popGraphicsState, rectangle, clip, endPath } from 'pdf-lib';
-import fontkit from '@pdf-lib/fontkit';
+import { exportPdfBytes } from '@/lib/pdfExport';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -1689,32 +1689,18 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
 
   const createSavedBytes = async () => {
     if (!sourceBytes) throw new Error('The source PDF is unavailable.');
-    const source = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
-    const output = await PDFDocument.create();
-    const metadata = editState.properties ?? properties;
-    if (metadata.title) output.setTitle(metadata.title);
-    if (metadata.author) output.setAuthor(metadata.author);
-    if (metadata.subject) output.setSubject(metadata.subject);
-    if (metadata.keywords) output.setKeywords(metadata.keywords.split(',').map((item) => item.trim()).filter(Boolean));
-    if (metadata.creator) output.setCreator(metadata.creator);
-    const sourceIndices = visiblePages.map((sourcePage) => sourcePage - 1);
-    const copied = await output.copyPages(source, sourceIndices);
-    output.registerFontkit(fontkit);
-    const font = await output.embedFont(StandardFonts.HelveticaBold);
-    const fontRegular = await output.embedFont(StandardFonts.Helvetica);
-    const fontItalic = await output.embedFont(StandardFonts.HelveticaOblique);
-    const fontBoldItalic = await output.embedFont(StandardFonts.HelveticaBoldOblique);
-    const fontTimesItalic = await output.embedFont(StandardFonts.TimesRomanItalic);
-    const scriptFontCache = new Map<string, Awaited<ReturnType<typeof output.embedFont>>>();
+    const scriptFontCache = new Map<string, Awaited<ReturnType<typeof PDFDocument.prototype.embedFont>>>();
     const exportWatermarks = getEditStateWatermarks(editState);
-    for (let index = 0; index < copied.length; index += 1) {
-      const copiedPage = copied[index];
-      const sourcePage = visiblePages[index];
-      const rotation = editState.rotations[String(sourcePage)] ?? 0;
-      copiedPage.setRotation(degrees(rotation));
+    return exportPdfBytes({
+      sourceBytes,
+      editState: { ...editState, properties: editState.properties ?? properties },
+      pageBounds: async (sourcePage) => {
+        if (!pdf) throw new Error('The PDF is not ready for export.');
+        return (await pdf.getPage(sourcePage)).view;
+      },
+      renderPage: async ({ output, copiedPage, sourcePage, fonts }) => {
+      const { font, fontRegular, fontItalic, fontBoldItalic, fontTimesItalic } = fonts;
       const { width, height } = copiedPage.getSize();
-      output.addPage(copiedPage);
-
       for (const wm of exportWatermarks) {
         if (!wm.text.trim()) continue;
         const wmSize = Math.max(8, Math.min(200, wm.fontSize || 48));
@@ -1777,6 +1763,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             fontMedium: font,
             fontItalicFallback: fontTimesItalic,
             scriptFontCache,
+            onWarning: (message) => toast.warning(message),
           });
         } else if (item.kind === 'strikeout') {
           const regions = item.regions ?? [{ x: item.x, y: item.y, width: item.width, height: item.height }];
@@ -1847,13 +1834,17 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         } else if ((item.kind === 'comment' || item.kind === 'link' || item.kind === 'trial-balance') && (item.label || item.value)) {
           copiedPage.drawText(String(item.label ?? item.value), { x, y: y + boxHeight / 2, size: 10, font, color });
         } else if (item.kind === 'image' && item.value) {
-          const bytes = Uint8Array.from(atob(item.value.split(',')[1] ?? ''), (character) => character.charCodeAt(0));
-          const embedded = item.value.includes('image/png') ? await output.embedPng(bytes) : await output.embedJpg(bytes);
-          copiedPage.drawImage(embedded, { x, y, width: boxWidth, height: boxHeight });
+          try {
+            const bytes = Uint8Array.from(atob(item.value.split(',')[1] ?? ''), (character) => character.charCodeAt(0));
+            const embedded = item.value.includes('image/png') ? await output.embedPng(bytes) : await output.embedJpg(bytes);
+            copiedPage.drawImage(embedded, { x, y, width: boxWidth, height: boxHeight });
+          } catch {
+            toast.warning(`Skipped a broken image on page ${sourcePage}.`);
+          }
         }
       }
-    }
-    return output.save({ useObjectStreams: editState.optimize !== false });
+      },
+    });
   };
 
   const handleSave = async () => {
@@ -1893,6 +1884,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   };
 
   const downloadPdf = async () => {
+    try {
     const bytes = await createSavedBytes();
     if (!bytes || !document) return;
     const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'application/pdf' }));
@@ -1900,7 +1892,10 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     anchor.href = url;
     anchor.download = document.name;
     anchor.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Unable to download this PDF.');
+    }
   };
 
   const printPdf = async () => {

@@ -47,6 +47,9 @@ export async function embedSignatureFont(
       ? Uint8Array.from(bytes)
       : new Uint8Array(bytes);
     const embedded = await output.embedFont(normalized, { subset: true });
+    // Validate now, inside the fallback guard, rather than first discovering a
+    // font serialization failure during the final whole-document save.
+    await embedded.embed();
     cache.set(option.name, embedded);
     return embedded;
   } catch {
@@ -77,6 +80,7 @@ export async function drawSignatureStampToPdf({
   fontItalicFallback,
   scriptFontCache,
   loadFontBytes,
+  onWarning,
 }: {
   output: PDFDocument;
   page: PDFPage;
@@ -90,6 +94,7 @@ export async function drawSignatureStampToPdf({
   fontItalicFallback: PDFFont;
   scriptFontCache: Map<string, PDFFont>;
   loadFontBytes?: FontBytesLoader;
+  onWarning?: (message: string) => void;
 }) {
   const sig = resolveSignatureData(item);
   const ink = hexToRgb(sig.inkColor);
@@ -142,6 +147,7 @@ export async function drawSignatureStampToPdf({
         height: drawH,
       });
     } catch {
+      onWarning?.(`Skipped a broken signature image on page ${item.page}; used an italic name instead.`);
       // If PNG decoding fails, draw signer name as italic fallback.
       const fallbackText = safeWinAnsi(sig.signerName || 'Signed');
       if (fallbackText) {

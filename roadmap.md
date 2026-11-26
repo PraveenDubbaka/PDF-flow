@@ -31,3 +31,5 @@
 - [x] Repair edited-PDF printing, add fallback/loading/error handling and tests, and verify live preview (headless Chromium; native OS dialogs and other browsers remain unverified).
 - [x] Remove redaction confirmation; verify immediate placement, editing, and undo/redo.
 - [x] Absolutely centre bordered Undo/Redo with narrow-width handling; verify bar screenshots and tests.
+- [x] Fix undefined page-bounds export assertion in shared Save/Download/Print; cover missing edit state and all signature/rich-text exports.
+- [x] Verify main-screen view/edit Download and Print, plus pop-out Print; run tests and commit (headless Chromium print invocation; native OS dialog and user's original PDF remain unverified).
