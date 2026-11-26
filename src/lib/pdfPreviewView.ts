@@ -14,7 +14,9 @@ export function fitPreviewZoom(page: { width: number; height: number }, viewport
   return mode === 'width' ? widthZoom : Math.min(widthZoom, (viewport.height - 48) / height);
 }
 
-// Viewing transforms never enter export or persisted edit state.
-export function originalLetterBytes(bytes: Uint8Array) {
-  return bytes.slice();
+export function pdfViewShortcut(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>, inText: boolean): 'fit' | 'left' | 'right' | null {
+  if (inText) return null;
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key === '0') return 'fit';
+  if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'r') return event.shiftKey ? 'left' : 'right';
+  return null;
 }

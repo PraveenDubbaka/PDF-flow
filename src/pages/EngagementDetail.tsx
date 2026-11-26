@@ -89,7 +89,6 @@ import { ShareWithClientDialog } from "@/components/ShareWithClientDialog";
 import { LetterSectionPage, type LetterSectionPageHandle } from "@/components/LetterSectionPage";
 import { CustomSection } from "@/components/Sidebar";
 import { PdfWorkspace } from "@/components/pdf/PdfWorkspace";
-import { EngagementLetterPreview } from "@/components/pdf/EngagementLetterPreview";
 import { NotesWorksheet } from "@/components/NotesWorksheet";
 import { NotesSlidePanel } from "@/components/NotesSlidePanel";
 import { ClientResponseDialog } from "@/components/ClientResponseDialog";
@@ -2678,7 +2677,7 @@ export default function EngagementDetail() {
  );
  })()
  )}
- {checklist && !pdfDocumentId && !['co-el', 'aud-el', 'aud-us-el', 'default-compilation-el', 'default-audit-el', 'default-us-audit-el'].includes(checklistKey ?? '') && <>
+ {checklist && !pdfDocumentId && <>
  {(() => {
  const isLetter = checklist?.sections?.length > 0 && checklist.sections[0]?.questions?.length > 0 && checklist.sections[0].questions[0]?.answerType === 'none' && !checklist.objective;
  if (isLetter) {
@@ -2927,8 +2926,6 @@ export default function EngagementDetail() {
  {/* ── Financial Statement pages ── */}
  {pdfDocumentId ? (
  <PdfWorkspace documentId={pdfDocumentId} />
- ) : checklist && ['co-el', 'aud-el', 'aud-us-el', 'default-compilation-el', 'default-audit-el', 'default-us-audit-el'].includes(checklistKey ?? '') ? (
- <EngagementLetterPreview key={`${engagementId}-${checklistKey}`} checklist={checklist} clientName={clientName !== "Unknown Client" ? clientName : undefined} />
  ) : checklistKey && FS_PAGE_KEYS.has(checklistKey) && engagementId ? (
  <LayoutSettingsProvider>
  <CommentProvider>

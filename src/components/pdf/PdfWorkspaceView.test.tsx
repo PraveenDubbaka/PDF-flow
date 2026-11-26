@@ -4,12 +4,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { PDFDocument } from 'pdf-lib';
 import { PdfWorkspace } from './PdfWorkspace';
-import { persistPdfEditState } from '@/lib/pdfDocuments';
+import { persistPdfEditState, getPdfDocument, getPdfBlobUrl, emptyPdfEditState } from '@/lib/pdfDocuments';
 import { printGeneratedPdf } from '@/lib/pdfPrint';
 
 vi.mock('@/lib/pdfDocuments', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/lib/pdfDocuments')>(),
-  persistPdfEditState: vi.fn(), getPdfDocument: vi.fn(),
+  persistPdfEditState: vi.fn(), getPdfDocument: vi.fn(), getPdfBlobUrl: vi.fn(),
 }));
 vi.mock('@/lib/pdfPrint', () => ({
   isMacPlatform: () => false, createPdfPrinter: vi.fn(),
@@ -38,6 +38,7 @@ beforeEach(() => {
     static revokeObjectURL = vi.fn();
   });
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  vi.stubGlobal('BroadcastChannel', class { close() {} postMessage() {} });
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as CanvasRenderingContext2D);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
@@ -45,38 +46,55 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.cle
 async function setup() {
   const doc = await PDFDocument.create();
   doc.addPage([612, 792]);
+  doc.addPage([612, 792]);
   const bytes = await doc.save();
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ arrayBuffer: async () => bytes.slice().buffer }));
-  const view = render(<MemoryRouter><TooltipProvider><PdfWorkspace documentId="letter-test" letterSource={{ bytes, name: 'AL1.1 Engagement Letter' }} /></TooltipProvider></MemoryRouter>);
-  await screen.findByRole('button', { name: 'Rotate right' });
+  vi.mocked(getPdfDocument).mockResolvedValue({ id: 'pdf-test', name: 'test.pdf', current_version: 1, edit_state: emptyPdfEditState() } as Awaited<ReturnType<typeof getPdfDocument>>);
+  vi.mocked(getPdfBlobUrl).mockResolvedValue('blob:test');
+  const view = render(<MemoryRouter><TooltipProvider><PdfWorkspace documentId="pdf-test" /></TooltipProvider></MemoryRouter>);
+  await screen.findByRole('button', { name: 'Rotate view right (not saved)' });
   return { ...view, bytes };
 }
 
-describe('read-only engagement letter PDF workspace', () => {
+describe('PDF editor view-only controls', () => {
   it('rotates all pages locally and resets when reopened without persisting anything', async () => {
     const view = await setup();
-    fireEvent.click(screen.getByRole('button', { name: 'Rotate right' }));
-    await waitFor(() => expect(document.querySelector('[data-pdf-page] canvas')?.getAttribute('width')).toBe('990'));
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate view right (not saved)' }));
+    await waitFor(() => expect(document.querySelector('[data-view-rotation]')?.getAttribute('data-view-rotation')).toBe('90'));
     fireEvent.keyDown(window, { key: 'R', shiftKey: true });
-    await waitFor(() => expect(document.querySelector('[data-pdf-page] canvas')?.getAttribute('width')).toBe('765'));
-    fireEvent.click(screen.getByRole('button', { name: 'Rotate right' }));
+    await waitFor(() => expect(document.querySelector('[data-view-rotation]')?.getAttribute('data-view-rotation')).toBe('0'));
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate view right (not saved)' }));
     view.unmount();
     await setup();
-    await waitFor(() => expect(document.querySelector('[data-pdf-page] canvas')?.getAttribute('width')).toBe('765'));
+    await waitFor(() => expect(document.querySelector('[data-view-rotation]')?.getAttribute('data-view-rotation')).toBe('0'));
     expect(persistPdfEditState).not.toHaveBeenCalled();
   });
 
-  it('Print and Download consume the original bytes even after rotation', async () => {
-    const { bytes } = await setup();
+  it('Ctrl+0 activates fit and rotated editing is disabled until reset', async () => {
+    await setup();
+    fireEvent.keyDown(window, { key: '0', ctrlKey: true });
+    expect(screen.getByRole('button', { name: 'Fit to page' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.keyDown(window, { key: 'r' });
+    await screen.findByText('Reset view rotation to edit');
+    expect(document.querySelector('.pdf-edit-panel [inert]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset rotation' }));
+    await waitFor(() => expect(document.querySelector('[data-view-rotation]')).toHaveAttribute('data-view-rotation', '0'));
+    expect(persistPdfEditState).not.toHaveBeenCalled();
+  });
+
+  it('Print and Download export without view rotation', async () => {
+    await setup();
     const downloaded: Blob[] = [];
     vi.mocked(URL.createObjectURL).mockImplementation((blob) => { if (blob instanceof Blob) downloaded.push(blob); return 'blob:download'; });
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    fireEvent.click(screen.getByRole('button', { name: 'Rotate right' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate view right (not saved)' }));
     fireEvent.click(screen.getByRole('button', { name: 'Print' }));
     await waitFor(() => expect(printGeneratedPdf).toHaveBeenCalledOnce());
     const generate = vi.mocked(printGeneratedPdf).mock.calls[0]?.[0];
-    if (!generate) throw new Error('Print did not receive letter source');
-    expect(await generate()).toEqual(bytes);
+    if (!generate) throw new Error('Print did not receive PDF source');
+    expect((await PDFDocument.load(await generate())).getPages()[0].getRotation().angle).toBe(0);
     fireEvent.click(screen.getByRole('button', { name: 'Download' }));
     await waitFor(() => expect(downloaded).toHaveLength(1));
     const data = await new Promise<ArrayBuffer>((resolve, reject) => {
@@ -84,7 +102,7 @@ describe('read-only engagement letter PDF workspace', () => {
       reader.onload = () => reader.result instanceof ArrayBuffer ? resolve(reader.result) : reject(new Error('Invalid PDF'));
       reader.readAsArrayBuffer(downloaded[0]);
     });
-    expect(new Uint8Array(data)).toEqual(bytes);
+    
     expect((await PDFDocument.load(data)).getPages()[0].getRotation().angle).toBe(0);
     expect(persistPdfEditState).not.toHaveBeenCalled();
   });

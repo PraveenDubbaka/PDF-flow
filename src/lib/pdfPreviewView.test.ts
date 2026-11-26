@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { fitPreviewZoom, originalLetterBytes, rotatePreview } from './pdfPreviewView';
+import { fitPreviewZoom, pdfViewShortcut, rotatePreview } from './pdfPreviewView';
 
-describe('letter preview viewing transforms', () => {
+describe('PDF viewing transforms', () => {
   it('rotates in 90 degree steps with wraparound', () => {
     expect(rotatePreview(0, 1)).toBe(90);
     expect(rotatePreview(0, -1)).toBe(270);
@@ -17,11 +17,14 @@ describe('letter preview viewing transforms', () => {
     expect(fitPreviewZoom({ width: 600, height: 800 }, { width: 448, height: 648 }, 90, 'page')).toBe(0.5);
     expect(fitPreviewZoom({ width: 600, height: 800 }, { width: 448, height: 648 }, 270, 'width')).toBe(0.5);
   });
-  it('keeps original print/download bytes independent of view rotation', () => {
-    const bytes = new Uint8Array([37, 80, 68, 70]);
-    const before = originalLetterBytes(bytes);
-    rotatePreview(0, 1);
-    expect(originalLetterBytes(bytes)).toEqual(before);
-    expect(originalLetterBytes(bytes)).not.toBe(bytes);
+  it('supports Ctrl and Cmd fit plus both rotation shortcuts', () => {
+    const base = { key: '0', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false };
+    expect(pdfViewShortcut(base, false)).toBe('fit');
+    expect(pdfViewShortcut({ ...base, ctrlKey: false, metaKey: true }, false)).toBe('fit');
+    expect(pdfViewShortcut({ ...base, ctrlKey: false, key: 'r' }, false)).toBe('right');
+    expect(pdfViewShortcut({ ...base, ctrlKey: false, key: 'R', shiftKey: true }, false)).toBe('left');
+    expect(pdfViewShortcut(base, true)).toBeNull();
+    expect(pdfViewShortcut({ ...base, ctrlKey: false, key: 'r' }, true)).toBeNull();
+    expect(pdfViewShortcut({ ...base, key: 'r' }, false)).toBeNull();
   });
 });
