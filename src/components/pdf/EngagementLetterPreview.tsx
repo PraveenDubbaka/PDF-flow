@@ -5,7 +5,10 @@ import { ChevronLeft, ChevronRight, Download, Loader2, PanelLeft, Printer, Refre
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { PdfPreviewControls } from '@/components/pdf/PdfPreviewControls';
 import { generateEngagementLetterPdf } from '@/lib/engagementLetterPdf';
+import { fitPreviewZoom, pdfViewShortcut, rotatePreview, type PdfFitMode } from '@/lib/pdfPreviewView';
 import { createPdfPrinter, printGeneratedPdf } from '@/lib/pdfPrint';
 import { cn } from '@/lib/utils';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -23,10 +26,11 @@ interface EngagementLetterPreviewProps {
   clientName?: string;
 }
 
-function LetterPageCanvas({ pdf, pageNumber, zoom = 1, thumbnail = false }: {
+function LetterPageCanvas({ pdf, pageNumber, zoom = 1, rotation = 0, thumbnail = false }: {
   pdf: PDFDocumentProxy;
   pageNumber: number;
   zoom?: number;
+  rotation?: number;
   thumbnail?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -41,11 +45,12 @@ function LetterPageCanvas({ pdf, pageNumber, zoom = 1, thumbnail = false }: {
       if (!canvas) return;
       try {
         const page = await pdf.getPage(pageNumber);
-        const base = page.getViewport({ scale: 1 });
-        const scale = thumbnail ? 112 / base.width : zoom;
-        const viewport = page.getViewport({ scale });
+        const pageRotation = ((page.rotate ?? 0) + rotation) % 360;
+        const base = page.getViewport({ scale: 1, rotation: pageRotation });
+        const scale = thumbnail ? Math.min(112 / base.width, 148 / base.height) : zoom;
+        const viewport = page.getViewport({ scale, rotation: pageRotation });
         const ratio = thumbnail ? 1 : Math.min(window.devicePixelRatio || 1, 2);
-        const renderViewport = page.getViewport({ scale: scale * ratio });
+        const renderViewport = page.getViewport({ scale: scale * ratio, rotation: pageRotation });
         canvas.width = Math.ceil(renderViewport.width);
         canvas.height = Math.ceil(renderViewport.height);
         canvas.style.width = `${Math.ceil(viewport.width)}px`;
@@ -62,7 +67,7 @@ function LetterPageCanvas({ pdf, pageNumber, zoom = 1, thumbnail = false }: {
     };
     void render();
     return () => { cancelled = true; renderTask?.cancel(); };
-  }, [pdf, pageNumber, thumbnail, zoom]);
+  }, [pdf, pageNumber, rotation, thumbnail, zoom]);
 
   if (failed) return <div className="flex min-h-20 items-center justify-center p-4 text-xs text-foreground">Page unavailable</div>;
   return <canvas ref={canvasRef} className="block bg-card" role={thumbnail ? undefined : 'img'} aria-hidden={thumbnail || undefined} aria-label={thumbnail ? undefined : `Engagement letter page ${pageNumber}`} />;
@@ -77,8 +82,13 @@ export function EngagementLetterPreview({ open, onOpenChange, engagementCode, le
   const [retryToken, setRetryToken] = useState(0);
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(1);
+  const [fitMode, setFitMode] = useState<PdfFitMode>(null);
+  const [viewRotation, setViewRotation] = useState(0);
+  const [viewerSize, setViewerSize] = useState({ width: 0, height: 0 });
+  const [pageSize, setPageSize] = useState({ width: 612, height: 792 });
   const [showPages, setShowPages] = useState(true);
   const [printing, setPrinting] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const pageElements = useRef(new Map<number, HTMLElement>());
   const scrollFrame = useRef<number | undefined>(undefined);
@@ -93,6 +103,8 @@ export function EngagementLetterPreview({ open, onOpenChange, engagementCode, le
       setError('');
       setPage(1);
       setZoom(1);
+      setFitMode(null);
+      setViewRotation(0);
       setShowPages(true);
       return;
     }
@@ -104,6 +116,9 @@ export function EngagementLetterPreview({ open, onOpenChange, engagementCode, le
     setPdf(null);
     setPdfBytes(null);
     setPage(1);
+    setZoom(1);
+    setFitMode(null);
+    setViewRotation(0);
     const destroyTask = async () => {
       if (!task) return;
       try { await task.destroy(); } catch { /* The task may already be destroyed. */ }
@@ -147,11 +162,67 @@ export function EngagementLetterPreview({ open, onOpenChange, engagementCode, le
 
   useEffect(() => () => window.cancelAnimationFrame(scrollFrame.current ?? 0), []);
 
+  useEffect(() => {
+    if (!open) return;
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    const measure = () => {
+      const width = viewer.clientWidth;
+      const height = viewer.clientHeight;
+      setViewerSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewer);
+    return () => observer.disconnect();
+  }, [open, showPages, pdf]);
+
+  useEffect(() => {
+    if (!pdf) return;
+    let cancelled = false;
+    void pdf.getPage(page).then((loadedPage) => {
+      if (cancelled) return;
+      const base = loadedPage.getViewport({ scale: 1 });
+      setPageSize((prev) => (prev.width === base.width && prev.height === base.height ? prev : { width: base.width, height: base.height }));
+    }).catch(() => { /* Page measurement errors are handled by page rendering. */ });
+    return () => { cancelled = true; };
+  }, [pdf, page]);
+
+  useEffect(() => {
+    if (!fitMode) return;
+    const viewer = viewerRef.current;
+    const activeViewport = viewer && (viewer.clientWidth > 0 || viewer.clientHeight > 0)
+      ? { width: viewer.clientWidth, height: viewer.clientHeight }
+      : viewerSize;
+    setZoom(fitPreviewZoom(pageSize, activeViewport, viewRotation, fitMode));
+  }, [fitMode, pageSize, viewerSize, viewRotation]);
+
+  useEffect(() => {
+    if (!open || !pdf) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const dialog = dialogRef.current;
+      const active = document.activeElement;
+      if (dialog && active instanceof Node && active !== document.body && !dialog.contains(active) && !(active instanceof HTMLElement && active.closest('[data-radix-popper-content-wrapper]'))) {
+        return;
+      }
+      const target = event.target;
+      const inText = target instanceof HTMLElement && !!target.closest('input, textarea, select, [contenteditable], [role="textbox"]');
+      const action = pdfViewShortcut(event, inText);
+      if (!action) return;
+      event.preventDefault();
+      if (action === 'fit') setFitMode('page');
+      else setViewRotation((value) => rotatePreview(value, action === 'right' ? 1 : -1));
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, pdf]);
+
   const goToPage = (target: number) => {
     if (!pdf) return;
     const next = Math.max(1, Math.min(pdf.numPages, target));
     setPage(next);
-    window.requestAnimationFrame(() => pageElements.current.get(next)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    window.requestAnimationFrame(() => pageElements.current.get(next)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
   };
 
   const updateCurrentPage = () => {
@@ -203,7 +274,8 @@ export function EngagementLetterPreview({ open, onOpenChange, engagementCode, le
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[1600px] flex-col gap-0 rounded-xl border-border bg-card p-0 [&>button.absolute]:hidden" data-testid="engagement-letter-preview">
+      <DialogContent ref={dialogRef} className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[1600px] flex-col gap-0 rounded-xl border-border bg-card p-0 [&>button.absolute]:hidden" data-testid="engagement-letter-preview">
+        <TooltipProvider>
         <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
           <DialogTitle className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{fileName}</DialogTitle>
           <DialogDescription className="sr-only">Read-only engagement letter PDF preview</DialogDescription>
@@ -229,7 +301,7 @@ export function EngagementLetterPreview({ open, onOpenChange, engagementCode, le
                     onClick={() => goToPage(number)}
                     className={cn('block w-full rounded-lg border bg-card p-1.5 text-left transition-colors', page === number ? 'border-primary ring-2 ring-primary/20' : 'border-border hover:border-primary/50')}
                   >
-                    <div className="overflow-hidden rounded border border-border/60"><LetterPageCanvas pdf={pdf} pageNumber={number} thumbnail /></div>
+                      <div data-thumbnail-rotation={viewRotation} className="flex justify-center overflow-hidden rounded border border-border/60"><LetterPageCanvas pdf={pdf} pageNumber={number} rotation={viewRotation} thumbnail /></div>
                     <span className="mt-1 block text-center text-[11px] text-foreground">Page {number}</span>
                   </button>
                 ))}
@@ -239,18 +311,26 @@ export function EngagementLetterPreview({ open, onOpenChange, engagementCode, le
 
           <section className="flex min-w-0 flex-1 flex-col">
             <div className="pdf-page-bar-container shrink-0">
-              <div className="pdf-page-bar flex items-center justify-between border-b border-border px-4">
-                <div className="flex items-center gap-2">
+                <div className="pdf-page-bar pdf-letter-page-bar flex items-center justify-between gap-2 border-b border-border px-4">
+                  <div className="flex shrink-0 items-center gap-2">
                   <Button variant="ghost" size="icon-sm" aria-label={showPages ? 'Hide page thumbnails' : 'Show page thumbnails'} aria-pressed={showPages} onClick={() => setShowPages((value) => !value)} disabled={!pdf}><PanelLeft /></Button>
                   <div className="w-px self-stretch bg-border" />
                   <Button variant="ghost" size="icon-sm" aria-label="Previous page" disabled={!pdf || page <= 1} onClick={() => goToPage(page - 1)}><ChevronLeft /></Button>
                   <span className="whitespace-nowrap text-xs text-foreground">Page {pdf ? page : 0} of {pdf?.numPages ?? 0}</span>
                   <Button variant="ghost" size="icon-sm" aria-label="Next page" disabled={!pdf || page >= pdf.numPages} onClick={() => goToPage(page + 1)}><ChevronRight /></Button>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon-sm" aria-label="Zoom out" disabled={!pdf || zoom <= 0.5} onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button>
-                  <span className="w-12 text-center text-xs text-foreground">{Math.round(zoom * 100)}%</span>
-                  <Button variant="ghost" size="icon-sm" aria-label="Zoom in" disabled={!pdf || zoom >= 2} onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button>
+                  <div className="pdf-page-bar-right flex shrink-0 items-center gap-2">
+                    <PdfPreviewControls
+                      fit={fitMode}
+                      disabled={!pdf}
+                      onFit={setFitMode}
+                      onRotate={(direction) => setViewRotation((value) => rotatePreview(value, direction))}
+                    />
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon-sm" aria-label="Zoom out" disabled={!pdf || zoom <= 0.25} onClick={() => { setFitMode(null); setZoom((value) => Math.max(0.25, Math.round((value - 0.1) * 100) / 100)); }}><ZoomOut /></Button>
+                      <span className="w-12 text-center text-xs text-foreground">{Math.round(zoom * 100)}%</span>
+                      <Button variant="ghost" size="icon-sm" aria-label="Zoom in" disabled={!pdf || zoom >= 3} onClick={() => { setFitMode(null); setZoom((value) => Math.min(3, Math.round((value + 0.1) * 100) / 100)); }}><ZoomIn /></Button>
+                    </div>
                 </div>
               </div>
             </div>
@@ -261,8 +341,8 @@ export function EngagementLetterPreview({ open, onOpenChange, engagementCode, le
               {!loading && !error && pdf && (
                 <div className="mx-auto flex w-max min-w-full flex-col items-center gap-6 p-6">
                   {Array.from({ length: pdf.numPages }, (_, index) => index + 1).map((number) => (
-                    <div key={number} ref={(element) => { if (element) pageElements.current.set(number, element); else pageElements.current.delete(number); }} data-letter-page={number} className="shrink-0 border border-border bg-card shadow-sm">
-                      <LetterPageCanvas pdf={pdf} pageNumber={number} zoom={zoom} />
+                      <div key={number} ref={(element) => { if (element) pageElements.current.set(number, element); else pageElements.current.delete(number); }} data-letter-page={number} data-view-rotation={viewRotation} className="shrink-0 border border-border bg-card shadow-sm">
+                        <LetterPageCanvas pdf={pdf} pageNumber={number} zoom={zoom} rotation={viewRotation} />
                     </div>
                   ))}
                 </div>
@@ -270,6 +350,7 @@ export function EngagementLetterPreview({ open, onOpenChange, engagementCode, le
             </div>
           </section>
         </div>
+        </TooltipProvider>
       </DialogContent>
     </Dialog>
   );

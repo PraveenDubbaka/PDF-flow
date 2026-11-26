@@ -72,7 +72,7 @@ describe('PDF editor workspace controls', () => {
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Print' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Fit/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Rotate view/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Rotate (view|left|right)/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Undo and redo' })).not.toBeInTheDocument();
 
     // Zoom stays clamped between 50% and 200%, and Ctrl+0 / R do nothing
@@ -90,7 +90,7 @@ describe('PDF editor workspace controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.queryByRole('button', { name: 'Print' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Fit/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Rotate view/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Rotate (view|left|right)/i })).not.toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Undo and redo' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled();

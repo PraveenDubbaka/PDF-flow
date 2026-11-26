@@ -28,3 +28,32 @@
   .pdf-page-bar-editing > div:last-child { position: absolute; right: 16px; top: 40px; }
   .pdf-page-bar-editing .pdf-page-bar-history { top: 100px; }
 }
+
+/* Engagement letter preview modal page bar: collapse Fit label before wrap so
+   controls never collide, even on phone screens. */
+@container (max-width: 680px) {
+  .pdf-letter-page-bar .pdf-fit-label { display: none; }
+  .pdf-letter-page-bar .pdf-fit-main { width: 32px; padding: 0; }
+  .pdf-letter-page-bar .pdf-view-controls { gap: 4px; }
+}
+@container (max-width: 500px) {
+  .pdf-letter-page-bar {
+    height: auto;
+    min-height: 48px;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    padding: 8px 12px;
+  }
+  .pdf-letter-page-bar .pdf-page-bar-right {
+    margin-left: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 100%;
+    gap: 4px;
+  }
+}
+@container (max-width: 300px) {
+  .pdf-letter-page-bar {
+    padding: 6px 8px;
+  }
+}
