@@ -33,3 +33,5 @@
 - Share `exportPdfBytes` across Save/Download, recovering missing source MediaBox from PDF.js bounds before copying pages and registering fontkit before embeddings; this keeps view/edit exports consistent without changing stored source documents.
 - Persist per-user PDF annotation style defaults (`textColor`, `borderColor`, `fillColor`) in `public.user_preferences` with owner-only RLS (`src/lib/pdfAnnotationDefaults.ts`), applying defaults only to newly created annotations and syncing across windows while leaving existing annotations unchanged.
 - Share the standalone read-only `DocumentPreviewModal.tsx` (with `documentPreviewPdf.ts`, `engagementDocumentPreview.ts`, `pdfPrint.ts`, `PdfPreviewControls.tsx`, and `pdfPreviewView.ts`) across all engagement letter views, custom letter sections, and Financial Statement reports/pages—generating selectable-text PDFs from each document's own content while keeping `PdfWorkspace` free of Fit, Rotate, and Print.
+
+- Use persisted defaults as the only new-annotation colour source; show compact override swatches only for selected annotations so shape fills remain editable without changing defaults.

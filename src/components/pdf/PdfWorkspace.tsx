@@ -2154,30 +2154,29 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       const selectedStyleAnnotation = editState.annotations.find(
         (item) => item.id === selectedAnnotationId && !['comment', 'link', 'trial-balance', 'image', 'calculation', 'redaction'].includes(item.kind),
       );
-      const shownBorderColor = selectedStyleAnnotation ? selectedStyleAnnotation.color : activeColor;
-      const shownFillColor = selectedStyleAnnotation ? selectedStyleAnnotation.fillColor : activeFillColor;
+      const shownBorderColor = selectedStyleAnnotation?.color;
+      const shownFillColor = selectedStyleAnnotation?.fillColor;
       return (
       <div className="space-y-3">
         <div className="pdf-annotation-grid grid grid-cols-4 gap-2">{ANNOTATION_TOOLS.map(({ kind, label, icon: Icon }) => <Tooltip key={kind}><TooltipTrigger asChild><Button variant={(kind === 'select' ? activeKind === null : activeKind === kind) ? 'default' : 'secondary'} aria-pressed={kind === 'select' ? activeKind === null : activeKind === kind} onClick={() => setActiveKind(kind === 'select' ? null : kind as PdfAnnotationKind)} aria-label={label}><Icon /><span className="pdf-annotation-label">{label}</span></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>)}</div>
-        <div className="space-y-2">
+        {selectedStyleAnnotation && <div role="group" aria-label="Selected annotation colours" className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="w-10 shrink-0 text-xs text-foreground">Border</span>
-            <div className="flex gap-2">{COLORS.map((color) => <button key={color} type="button" aria-label={`Colour ${color}`} onClick={() => { if (selectedStyleAnnotation) { updateAnnotation(selectedStyleAnnotation.id, { color }); } else { setActiveColor(color); } }} className={cn('h-6 w-6 rounded-[6px] border', shownBorderColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}</div>
+            <div className="flex flex-wrap gap-1.5">{COLORS.map((color) => <button key={color} type="button" aria-label={`Colour ${color}`} onClick={() => { if (selectedStyleAnnotation) { updateAnnotation(selectedStyleAnnotation.id, { color }); } }} className={cn('h-5 w-5 rounded-[6px] border', shownBorderColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}</div>
           </div>
-          <div className="flex items-center gap-2">
+          {['text', 'callout', 'rectangle', 'circle'].includes(selectedStyleAnnotation.kind) && <div className="flex items-center gap-2">
             <span className="w-10 shrink-0 text-xs text-foreground">Fill</span>
-            <div className="flex gap-2">
-              <button type="button" aria-label="No fill" title="No fill" onClick={() => { if (selectedStyleAnnotation && (selectedStyleAnnotation.kind === 'text' || selectedStyleAnnotation.kind === 'callout' || selectedStyleAnnotation.kind === 'rectangle' || selectedStyleAnnotation.kind === 'circle')) { updateAnnotation(selectedStyleAnnotation.id, { fillColor: undefined }); } else { setActiveFillColor(undefined); } }} className={cn('flex h-6 w-6 items-center justify-center rounded-[6px] border bg-background text-foreground', !shownFillColor ? 'border-primary ring-2 ring-primary/40' : 'border-border')}><Ban className="h-3.5 w-3.5" /></button>
-              {['#ffffff', ...COLORS].map((color) => <button key={color} type="button" aria-label={`Fill colour ${color}`} onClick={() => { if (selectedStyleAnnotation && (selectedStyleAnnotation.kind === 'text' || selectedStyleAnnotation.kind === 'callout' || selectedStyleAnnotation.kind === 'rectangle' || selectedStyleAnnotation.kind === 'circle')) { updateAnnotation(selectedStyleAnnotation.id, { fillColor: color }); } else { setActiveFillColor(color); } }} className={cn('h-6 w-6 rounded-[6px] border', shownFillColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" aria-label="No fill" title="No fill" onClick={() => { if (selectedStyleAnnotation && (selectedStyleAnnotation.kind === 'text' || selectedStyleAnnotation.kind === 'callout' || selectedStyleAnnotation.kind === 'rectangle' || selectedStyleAnnotation.kind === 'circle')) { updateAnnotation(selectedStyleAnnotation.id, { fillColor: undefined }); } }} className={cn('flex h-5 w-5 items-center justify-center rounded-[6px] border bg-background text-foreground', !shownFillColor ? 'border-primary ring-2 ring-primary/40' : 'border-border')}><Ban className="h-3.5 w-3.5" /></button>
+              {['#ffffff', ...COLORS].map((color) => <button key={color} type="button" aria-label={`Fill colour ${color}`} onClick={() => { if (selectedStyleAnnotation && (selectedStyleAnnotation.kind === 'text' || selectedStyleAnnotation.kind === 'callout' || selectedStyleAnnotation.kind === 'rectangle' || selectedStyleAnnotation.kind === 'circle')) { updateAnnotation(selectedStyleAnnotation.id, { fillColor: color }); } }} className={cn('h-5 w-5 rounded-[6px] border', shownFillColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}
             </div>
-          </div>
-        </div>
+          </div>}
+        </div>}
         <PdfDefaultStyleSection
           colors={COLORS}
           defaults={defaultStyle}
           canSetFromSelected={!!selectedStyleAnnotation}
           onChange={applyDefaultStyle}
-          onReset={() => applyDefaultStyle({ ...SYSTEM_ANNOTATION_STYLE_DEFAULTS })}
           onSetFromSelected={() => {
             if (!selectedStyleAnnotation) return;
             applyDefaultStyle(extractAnnotationStyle(selectedStyleAnnotation, defaultStyle));

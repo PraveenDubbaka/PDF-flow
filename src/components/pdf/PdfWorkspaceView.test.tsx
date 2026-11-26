@@ -66,6 +66,21 @@ async function setup(initialEditState?: Partial<PdfEditState>, documentId = 'pdf
 }
 
 describe('PDF editor workspace controls', () => {
+  it('keeps selected annotation border and fill overrides independent of defaults', async () => {
+    await setup({ annotations: [{ id: 'shape', kind: 'rectangle', page: 1, x: 10, y: 10, width: 24, height: 8, color: '#ef4444', label: 'Shape' }] });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const shape = document.querySelector('[data-annotation-id="shape"]');
+    if (!(shape instanceof HTMLElement)) throw new Error('Shape missing');
+    fireEvent.click(shape);
+    fireEvent.click(screen.getByRole('button', { name: 'Colour #22c55e' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fill colour #ffffff' }));
+    expect(normalizeColorToHex(shape.style.borderColor)).toBe('#22c55e');
+    expect(normalizeColorToHex(shape.style.backgroundColor)).toBe('#ffffff');
+    expect(savePdfAnnotationDefaults).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /^No fill$/ }));
+    expect(shape.style.backgroundColor).toBe('transparent');
+  });
+
   it('omits Fit, Rotate view, and Print while keeping Download, Zoom, and centred edit-mode Undo/Redo', async () => {
     await setup();
     // View mode: Download present, Print / Fit / Rotate view absent
@@ -156,7 +171,7 @@ describe('PDF editor workspace controls', () => {
     const firstDoc = await setup({ annotations: [existingBox] }, 'pdf-doc-1');
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    // Update "My default style" to green text, green border, white background
+    // Update default colours to green text, green border, white background
     fireEvent.click(screen.getByRole('button', { name: 'Default text colour #22c55e' }));
     fireEvent.click(screen.getByRole('button', { name: 'Default border colour #22c55e' }));
     fireEvent.click(screen.getByRole('button', { name: 'Default background #ffffff' }));
@@ -189,12 +204,6 @@ describe('PDF editor workspace controls', () => {
     const newBoxWrapper = textbox.closest('[data-annotation-id]') as HTMLElement;
     expect(normalizeColorToHex(newBoxWrapper.style.borderColor)).toBe('#22c55e');
     expect(normalizeColorToHex(newBoxWrapper.style.backgroundColor)).toBe('#ffffff');
-
-    // Reset to system default
-    fireEvent.click(screen.getByRole('button', { name: 'Reset to system default' }));
-    expect(savedDefaults).toEqual(SYSTEM_ANNOTATION_STYLE_DEFAULTS);
-    // Previously created box still keeps its green/white style
-    expect(normalizeColorToHex(newBoxWrapper.style.borderColor)).toBe('#22c55e');
 
     // Select the green/white box and click "Set as my default"
     fireEvent.keyDown(textbox, { key: 'Escape' });

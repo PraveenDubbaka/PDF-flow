@@ -1,7 +1,6 @@
-import { Ban, RotateCcw } from 'lucide-react';
+import { Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  isSystemAnnotationDefaults,
   SYSTEM_ANNOTATION_STYLE_DEFAULTS,
   type PdfAnnotationStyleDefaults,
 } from '@/lib/pdfAnnotationDefaults';
@@ -12,34 +11,21 @@ export function PdfDefaultStyleSection({
   defaults,
   canSetFromSelected,
   onChange,
-  onReset,
   onSetFromSelected,
 }: {
   colors: string[];
   defaults: PdfAnnotationStyleDefaults;
   canSetFromSelected: boolean;
   onChange: (patch: Partial<PdfAnnotationStyleDefaults>) => void;
-  onReset: () => void;
   onSetFromSelected: () => void;
 }) {
-  const atSystemDefault = isSystemAnnotationDefaults(defaults);
   const fillSwatches = ['#ffffff', ...colors];
 
   return (
-    <section aria-label="My default style" className="space-y-2 rounded-[8px] border border-border bg-muted/20 p-2.5">
+    <section aria-label="Default colours" className="space-y-2 rounded-[8px] border border-border bg-muted/20 p-2.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[13px] font-semibold text-foreground">My default style</p>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          disabled={atSystemDefault}
-          onClick={onReset}
-        >
-          <RotateCcw className="h-3 w-3" />
-          Reset to system default
-        </Button>
+        <p className="text-[13px] font-semibold text-foreground">Default colours</p>
+
       </div>
 
       <div className="space-y-1.5">
