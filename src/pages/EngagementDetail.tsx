@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronRight, ChevronDown, Landmark, FileText, Triangle, FileSpreadsheet, PencilLine, Pencil, Settings2, Download, FileType, Share2, Save, RefreshCw, Trash2, Building2, Calendar, Check, AlertTriangle, Loader2, History, Upload, FileUp, Bell, Plus, X, LayoutGrid, CheckCircle2, PlugZap, Zap, ClipboardList, UserPlus, UploadCloud, FileCheck2, ExternalLink, Maximize2, Minimize2, Minus, SendHorizontal, MessageSquare, Pause, Play } from "lucide-react";
+import { ChevronRight, ChevronDown, Landmark, FileText, Triangle, FileSpreadsheet, PencilLine, Pencil, Settings2, Download, FileType, Share2, Save, RefreshCw, Trash2, Building2, Calendar, Check, AlertTriangle, Loader2, History, Upload, FileUp, Bell, Plus, X, LayoutGrid, CheckCircle2, PlugZap, Zap, ClipboardList, UserPlus, UploadCloud, FileCheck2, ExternalLink, Maximize2, Minimize2, Minus, SendHorizontal, MessageSquare, Pause, Play, Eye } from "lucide-react";
 import { getEnabled, subscribeEnabled, registerEngagement, unregisterEngagement, updateEngagementTime } from "@/lib/timeTrackerStore";
 import { ExpandableIconButton } from "@/components/ui/expandable-icon-button";
 import { ChecklistIcon } from "@/components/icons/ChecklistIcon";
@@ -89,6 +89,7 @@ import { ShareWithClientDialog } from "@/components/ShareWithClientDialog";
 import { LetterSectionPage, type LetterSectionPageHandle } from "@/components/LetterSectionPage";
 import { CustomSection } from "@/components/Sidebar";
 import { PdfWorkspace } from "@/components/pdf/PdfWorkspace";
+import { EngagementLetterPreview } from "@/components/pdf/EngagementLetterPreview";
 import { NotesWorksheet } from "@/components/NotesWorksheet";
 import { NotesSlidePanel } from "@/components/NotesSlidePanel";
 import { ClientResponseDialog } from "@/components/ClientResponseDialog";
@@ -1009,6 +1010,7 @@ export default function EngagementDetail() {
  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
  const [objectiveExpanded, setObjectiveExpanded] = useState(false);
  const [isLetterEditing, setIsLetterEditing] = useState(false);
+ const [showLetterPreview, setShowLetterPreview] = useState(false);
   const letterSaveRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -2694,6 +2696,9 @@ export default function EngagementDetail() {
  <ExpandableIconButton variant="default" icon={<Save className="h-4 w-4" />} label="Save" size="sm" onClick={handleSave} />
  );
  })()}
+ {['aud-el', 'aud-us-el', 'co-el'].includes(checklistKey ?? '') && (
+ <ExpandableIconButton variant="secondary" icon={<Eye className="h-4 w-4" />} label="Preview" size="sm" onClick={() => setShowLetterPreview(true)} />
+ )}
  <DropdownMenu>
  <DropdownMenuTrigger asChild>
  <ExpandableIconButton
@@ -3277,6 +3282,16 @@ export default function EngagementDetail() {
  onConfirm={handleShareConfirm}
  isLetter={checklistKey?.startsWith('custom-') ? customLetterExists : !!(checklist?.sections?.length && checklist.sections[0]?.questions?.length && checklist.sections[0].questions[0]?.answerType === 'none' && !checklist.objective)}
  />
+
+ {checklist && ['aud-el', 'aud-us-el', 'co-el'].includes(checklistKey ?? '') && (
+ <EngagementLetterPreview
+ open={showLetterPreview}
+ onOpenChange={setShowLetterPreview}
+ engagementCode={displayId}
+ letterHtml={checklist.sections?.[0]?.questions?.[0]?.text ?? ''}
+ clientName={clientName !== 'Unknown Client' ? clientName : undefined}
+ />
+ )}
 
  <ConnectorsModal
  open={connectorsOpen}

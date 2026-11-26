@@ -39,3 +39,4 @@
 - [x] Build Lead sheet link view with reference-free line rows (Account description | Original | PY1 | PY2), clickable rows/amount cells, bracketed negatives, attached Documents group, and mock data.
 - [x] Add per-user default annotation style (text, border, background + No fill, Reset, Set as my default) persisted in user_preferences with RLS and applied to new annotations only; keep Signature tool unchanged.
 - [x] Remove Fit, view-only Rotate, and Print from the PDF editor while keeping centred Undo/Redo, zoom, Download, saved page rotation, and all other tools.
+- [x] Add the AL1.1 Engagement Letter Preview modal with generated PDF pages, collapsible thumbnails, page/zoom controls, shared-byte Download and no-blank-tab Print; leave the letter view and PDF editor unchanged.
