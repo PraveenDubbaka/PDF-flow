@@ -19,6 +19,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -61,6 +62,17 @@ import {
 } from '@/lib/pdfAnnotationDefaults';
 import { PdfEditSplitButton } from '@/components/pdf/PdfEditSplitButton';
 import { engagementLinkTooltip, engagementTargetPath, inferPdfLinkType, type PdfEngagementLink, type PdfLinkType } from '@/lib/pdfEngagementLinks';
+import {
+  applyWatermarkToPages,
+  drawPageWatermarkToPdf,
+  formatWatermarkRangeInput,
+  formatWatermarkScopeLabel,
+  getWatermarkForPage,
+  parseWatermarkPageRange,
+  removeWatermarkById,
+  updateWatermarkOnPages,
+  type WatermarkScopeMode,
+} from '@/lib/pdfWatermarks';
 import { useTrialBalanceAccounts } from '@/lib/trialBalanceSource';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -290,7 +302,7 @@ function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, o
 
 const PLACE_NOUN: Partial<Record<PdfAnnotationKind, string>> = { link: 'link', comment: 'comment', callout: 'callout', signature: 'signature' };
 
-function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, fillColor, textColor, editing, watermarks, editingTextId, onEditText, onEditSignature, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations, hoveredCalcId, onHoverCalc, pulseCalc, placeNoun, onTrialBalanceLink, trialBalanceAccounts }: {
+function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, fillColor, textColor, editing, watermark, editingTextId, onEditText, onEditSignature, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations, hoveredCalcId, onHoverCalc, pulseCalc, placeNoun, onTrialBalanceLink, trialBalanceAccounts }: {
   placeNoun?: string | null;
   onTrialBalanceLink: (annotation: PdfAnnotation) => void;
   trialBalanceAccounts: TrialBalanceAccount[];
@@ -304,7 +316,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   fillColor?: string;
   textColor?: string;
   editing?: boolean;
-  watermarks?: PdfWatermark[];
+  watermark?: PdfWatermark | null;
   editingTextId?: string | null;
   onEditText?: (id: string | null) => void;
   onEditSignature?: (annotation: PdfAnnotation) => void;
@@ -548,23 +560,21 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
     >
       {placeNoun && hintPos && <div className="pointer-events-none absolute z-40 whitespace-nowrap rounded-[6px] bg-foreground px-2 py-1 text-[11px] font-medium text-background" style={{ left: hintPos.x + 14, top: hintPos.y + 14 }}>Click to place {placeNoun}</div>}
       <canvas ref={canvasRef} className="block" />
-      {!!watermarks?.length && (
+      {watermark && (
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          {watermarks.map((wm) => (
-            <div
-              key={wm.id}
-              data-pdf-watermark={wm.id}
-              className="absolute inset-0 flex select-none items-center justify-center whitespace-nowrap font-bold"
-              style={{
-                color: wm.color || '#595959',
-                opacity: wm.opacity,
-                fontSize: `${wm.fontSize * zoom}px`,
-                transform: `rotate(${-wm.rotation}deg)`,
-              }}
-            >
-              {wm.text}
-            </div>
-          ))}
+          <div
+            key={watermark.id}
+            data-pdf-watermark={watermark.id}
+            className="absolute inset-0 flex select-none items-center justify-center whitespace-nowrap font-bold"
+            style={{
+              color: watermark.color || '#595959',
+              opacity: watermark.opacity,
+              fontSize: `${watermark.fontSize * zoom}px`,
+              transform: `rotate(${-watermark.rotation}deg)`,
+            }}
+          >
+            {watermark.text}
+          </div>
         </div>
       )}
       {activeKind === 'strikeout' && <div className="pdf-strike-text-layer absolute inset-0 z-20 cursor-text">{textItems.map((item, index) => <span key={index} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.width}%`, height: `${item.height}%`, fontSize: size.height * item.height / 100 }} className="absolute whitespace-pre leading-none">{item.text}</span>)}</div>}
@@ -935,6 +945,9 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const [watermarkRotation, setWatermarkRotation] = useState(45);
   const [watermarkFontSize, setWatermarkFontSize] = useState(48);
   const [watermarkColor, setWatermarkColor] = useState('#595959');
+  const [watermarkScope, setWatermarkScope] = useState<WatermarkScopeMode>('all');
+  const [watermarkRange, setWatermarkRange] = useState('');
+  const [watermarkRangeError, setWatermarkRangeError] = useState<string | null>(null);
   const [editingWatermarkId, setEditingWatermarkId] = useState<string | null>(null);
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
   const [docImages, setDocImages] = useState<DocImage[]>([]);
@@ -1051,7 +1064,14 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const visiblePages = editState.pageOrder.length ? editState.pageOrder : pdf ? Array.from({ length: pdf.numPages }, (_, index) => index + 1) : [];
   const currentSourcePage = visiblePages[Math.max(0, page - 1)] ?? 1;
   const pageAnnotations = editState.annotations.filter((annotation) => annotation.page === currentSourcePage);
-  const activeWatermarks = useMemo(() => getEditStateWatermarks(editState), [editState]);
+  const activeWatermarks = useMemo(
+    () => getEditStateWatermarks(editState, visiblePages.length ? visiblePages : undefined),
+    [editState, visiblePages],
+  );
+  const currentPageWatermark = useMemo(
+    () => getWatermarkForPage(activeWatermarks, currentSourcePage),
+    [activeWatermarks, currentSourcePage],
+  );
 
   // document-wide image scan replaces the old per-page detection
 
@@ -1741,7 +1761,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const createSavedBytes = async () => {
     if (!sourceBytes) throw new Error('The source PDF is unavailable.');
     const scriptFontCache = new Map<string, Awaited<ReturnType<typeof PDFDocument.prototype.embedFont>>>();
-    const exportWatermarks = getEditStateWatermarks(editState);
+    const exportWatermarks = getEditStateWatermarks(editState, visiblePages.length ? visiblePages : undefined);
     return exportPdfBytes({
       sourceBytes,
       editState: { ...editState, properties: editState.properties ?? properties },
@@ -1752,22 +1772,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       renderPage: async ({ output, copiedPage, sourcePage, fonts }) => {
       const { font, fontRegular, fontItalic, fontBoldItalic, fontTimesItalic } = fonts;
       const { width, height } = copiedPage.getSize();
-      for (const wm of exportWatermarks) {
-        if (!wm.text.trim()) continue;
-        const wmSize = Math.max(8, Math.min(200, wm.fontSize || 48));
-        const textWidth = font.widthOfTextAtSize(wm.text, wmSize);
-        const rad = (wm.rotation * Math.PI) / 180;
-        copiedPage.pushOperators(pushGraphicsState(), rectangle(0, 0, width, height), clip(), endPath());
-        copiedPage.drawText(wm.text, {
-          x: width / 2 - (textWidth / 2) * Math.cos(rad) + (wmSize / 3) * Math.sin(rad),
-          y: height / 2 - (textWidth / 2) * Math.sin(rad) - (wmSize / 3) * Math.cos(rad),
-          size: wmSize, font,
-          color: hexToRgb(wm.color || '#595959'),
-          opacity: Math.max(0.05, Math.min(1, wm.opacity)),
-          rotate: degrees(wm.rotation),
-        });
-        copiedPage.pushOperators(popGraphicsState());
-      }
+      drawPageWatermarkToPdf({ copiedPage, sourcePage, watermarks: exportWatermarks, font });
 
       const items = editState.annotations.filter((item) => item.page === sourcePage);
       for (const item of items) {
@@ -2265,27 +2270,47 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       const saveWatermark = () => {
         const text = watermarkText.trim();
         if (!text) return;
+        const allPages = visiblePages.length ? visiblePages : [currentSourcePage];
+        let targetPages: number[] | undefined;
+        if (watermarkScope === 'current') {
+          targetPages = [currentSourcePage];
+        } else if (watermarkScope === 'range') {
+          const parsed = parseWatermarkPageRange(watermarkRange, allPages.length);
+          if (parsed.error) {
+            setWatermarkRangeError(parsed.error);
+            return;
+          }
+          targetPages = parsed.pages.map((displayPage) => allPages[displayPage - 1]).filter((value): value is number => value !== undefined);
+        }
+        setWatermarkRangeError(null);
         const opacity = Math.max(0.05, Math.min(1, Number.isFinite(watermarkOpacity) ? watermarkOpacity : 0.3));
         const rotation = Number.isFinite(watermarkRotation) ? watermarkRotation : 45;
         const fontSize = Math.max(8, Math.min(200, Number.isFinite(watermarkFontSize) ? watermarkFontSize : 48));
         const color = watermarkColor || '#595959';
+        const scopePreview: PdfWatermark = { id: editingWatermarkId ?? 'preview', text, opacity, rotation, fontSize, color, ...(targetPages ? { pages: targetPages } : {}) };
+        const scopeLabel = formatWatermarkScopeLabel(scopePreview, allPages);
         commitUndoable((current) => {
-          const existing = getEditStateWatermarks(current);
+          const existing = getEditStateWatermarks(current, allPages);
           const nextList = editingWatermarkId
-            ? existing.map((wm) => wm.id === editingWatermarkId ? { ...wm, text, opacity, rotation, fontSize, color } : wm)
-            : [...existing, { id: crypto.randomUUID(), text, opacity, rotation, fontSize, color }];
+            ? updateWatermarkOnPages(existing, editingWatermarkId, { text, opacity, rotation, fontSize, color, ...(targetPages ? { pages: targetPages } : {}) }, allPages)
+            : applyWatermarkToPages(existing, { text, opacity, rotation, fontSize, color, ...(targetPages ? { pages: targetPages } : {}) }, allPages);
           return withHistory(
             { ...current, watermarks: nextList, watermark: undefined },
-            { kind: 'document', title: editingWatermarkId ? `Watermark "${text}" updated` : `Watermark "${text}" added` },
+            { kind: 'document', title: editingWatermarkId ? `Watermark "${text}" updated (${scopeLabel})` : `Watermark "${text}" applied (${scopeLabel})` },
           );
         });
         setEditingWatermarkId(null);
       };
       const removeWatermark = (wm: PdfWatermark) => {
-        if (editingWatermarkId === wm.id) setEditingWatermarkId(null);
+        if (editingWatermarkId === wm.id) {
+          setEditingWatermarkId(null);
+          setWatermarkRangeError(null);
+        }
+        const allPages = visiblePages.length ? visiblePages : [currentSourcePage];
+        const scopeLabel = formatWatermarkScopeLabel(wm, allPages);
         commitUndoable((current) => {
-          const nextList = getEditStateWatermarks(current).filter((item) => item.id !== wm.id);
-          return withHistory({ ...current, watermarks: nextList, watermark: undefined }, { kind: 'document', title: `Watermark "${wm.text}" removed` });
+          const nextList = removeWatermarkById(getEditStateWatermarks(current, allPages), wm.id);
+          return withHistory({ ...current, watermarks: nextList, watermark: undefined }, { kind: 'document', title: `Watermark "${wm.text}" removed (${scopeLabel})` });
         });
       };
       return (
@@ -2318,6 +2343,31 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
           <div className="space-y-2 border-t border-border pt-4">
             <p className="text-xs font-semibold text-foreground">WATERMARK</p>
             <div className="space-y-1.5"><Label htmlFor="watermark-text">Text</Label><Input id="watermark-text" value={watermarkText} onChange={(event) => setWatermarkText(event.target.value)} /></div>
+            <div className="space-y-1.5">
+              <Label htmlFor="watermark-scope">Pages</Label>
+              <Select value={watermarkScope} onValueChange={(value) => { setWatermarkScope(value as WatermarkScopeMode); setWatermarkRangeError(null); }}>
+                <SelectTrigger id="watermark-scope" aria-label="Watermark pages" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All pages</SelectItem>
+                  <SelectItem value="current">Current page (page {page})</SelectItem>
+                  <SelectItem value="range">Page range</SelectItem>
+                </SelectContent>
+              </Select>
+              {watermarkScope === 'range' && (
+                <div className="space-y-1">
+                  <Input
+                    id="watermark-pages"
+                    aria-label="Watermark page range"
+                    placeholder={visiblePages.length > 1 ? `e.g. 1-${Math.min(3, visiblePages.length)}` : '1'}
+                    value={watermarkRange}
+                    onChange={(event) => { setWatermarkRange(event.target.value); setWatermarkRangeError(null); }}
+                  />
+                  {watermarkRangeError && <p role="alert" className="text-xs text-destructive">{watermarkRangeError}</p>}
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5"><Label htmlFor="watermark-opacity">Opacity</Label><Input id="watermark-opacity" type="number" min="0.05" max="1" step="0.05" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /></div>
               <div className="space-y-1.5"><Label htmlFor="watermark-rotation">Rotation°</Label><Input id="watermark-rotation" type="number" value={watermarkRotation} onChange={(event) => setWatermarkRotation(Number(event.target.value))} /></div>
@@ -2327,23 +2377,41 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
               <div className="space-y-1.5"><Label htmlFor="watermark-color">Colour</Label><div className="flex items-center gap-2"><input id="watermark-color" type="color" value={watermarkColor} onChange={(event) => setWatermarkColor(event.target.value)} aria-label="Watermark colour" className="h-9 w-10 cursor-pointer rounded-[10px] border border-input bg-background p-1" /><span className="text-xs tabular-nums text-foreground">{watermarkColor}</span></div></div>
             </div>
             <div className="flex gap-2">
-              {editingWatermarkId && <Button variant="secondary" className="flex-1" onClick={() => setEditingWatermarkId(null)}>Cancel</Button>}
-              <Button className="flex-1" disabled={!watermarkText.trim()} onClick={saveWatermark}><Save />{editingWatermarkId ? 'Update' : 'Apply to all pages'}</Button>
+              {editingWatermarkId && <Button variant="secondary" className="flex-1" onClick={() => { setEditingWatermarkId(null); setWatermarkRangeError(null); }}>Cancel</Button>}
+              <Button className="flex-1" disabled={!watermarkText.trim()} onClick={saveWatermark}><Save />{editingWatermarkId ? 'Update' : watermarkScope === 'all' ? 'Apply to all pages' : watermarkScope === 'current' ? `Apply to page ${page}` : 'Apply to pages'}</Button>
             </div>
             <div className="space-y-1.5 pt-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground">Watermarks ({activeWatermarks.length})</p>
               {activeWatermarks.length === 0 && <p className="text-xs text-foreground">No watermarks applied.</p>}
-              {activeWatermarks.map((wm) => (
+              {activeWatermarks.map((wm) => {
+                const scopeLabel = formatWatermarkScopeLabel(wm, visiblePages.length ? visiblePages : [currentSourcePage]);
+                return (
                 <div key={wm.id} className={cn('flex items-center gap-2 rounded-[8px] border bg-background px-2 py-1.5', editingWatermarkId === wm.id ? 'border-primary' : 'border-border')}>
                   <span className="h-4 w-4 shrink-0 rounded-[4px] border border-border" style={{ backgroundColor: wm.color }} aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium text-foreground">{wm.text}</p>
+                    <p className="truncate text-xs font-medium text-foreground">{wm.text} · {scopeLabel}</p>
                     <p className="truncate text-[11px] text-foreground">{wm.fontSize}pt · {Math.round(wm.opacity * 100)}% · {wm.rotation}°</p>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => { setEditingWatermarkId(wm.id); setWatermarkText(wm.text); setWatermarkOpacity(wm.opacity); setWatermarkRotation(wm.rotation); setWatermarkFontSize(wm.fontSize); setWatermarkColor(wm.color); }}>Edit</Button>
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setEditingWatermarkId(wm.id);
+                    setWatermarkText(wm.text);
+                    setWatermarkOpacity(wm.opacity);
+                    setWatermarkRotation(wm.rotation);
+                    setWatermarkFontSize(wm.fontSize);
+                    setWatermarkColor(wm.color);
+                    setWatermarkRangeError(null);
+                    if (wm.pages === undefined) {
+                      setWatermarkScope('all');
+                      setWatermarkRange('');
+                    } else {
+                      setWatermarkScope('range');
+                      setWatermarkRange(formatWatermarkRangeInput(wm, visiblePages.length ? visiblePages : [currentSourcePage]));
+                    }
+                  }}>Edit</Button>
                   <Button variant="ghost" size="sm" aria-label={`Remove watermark ${wm.text}`} onClick={() => removeWatermark(wm)}>Remove</Button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2532,7 +2600,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         </div>
       </div>
     );
-  }, [activeColor, activeFillColor, activeKind, activePanel, activeWatermarks, applyDefaultStyle, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcTitle, calcPick, calcCompare, calcResultLabel, calcDifferenceLabel, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, commitUndoable, defaultStyle, showCalcHeader, calcPreviewInitialScale, captureCalcPreviewSize, placedCalcSearch, hoveredCalcId, calcDescError, setSearch, effectiveCalcResult, calcResultDraft, currentSourcePage, decryptPassword, editingCalcId, editingWatermarkId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkColor, watermarkFontSize, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeFillColor, activeKind, activePanel, activeWatermarks, applyDefaultStyle, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcTitle, calcPick, calcCompare, calcResultLabel, calcDifferenceLabel, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, commitUndoable, defaultStyle, showCalcHeader, calcPreviewInitialScale, captureCalcPreviewSize, placedCalcSearch, hoveredCalcId, calcDescError, setSearch, effectiveCalcResult, calcResultDraft, currentSourcePage, decryptPassword, editingCalcId, editingWatermarkId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkColor, watermarkFontSize, watermarkOpacity, watermarkRange, watermarkRangeError, watermarkRotation, watermarkScope, watermarkText]);
 
   const historyEntries = useMemo(() => {
     const fallbackDate = document?.updated_at ?? document?.created_at ?? new Date().toISOString();
@@ -2658,7 +2726,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
           </div>
           </div>
           {editing && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'link' ? 'To place a link, click on the page.' : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
-          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} fillColor={activeFillColor} textColor={activeTextColor} editing={editing} watermarks={activeWatermarks} editingTextId={editing ? editingTextId : null} onEditText={setEditingTextId} onEditSignature={(sig) => setSignatureDialog({ annotation: sig, isEdit: true })} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
+          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} fillColor={activeFillColor} textColor={activeTextColor} editing={editing} watermark={currentPageWatermark} editingTextId={editing ? editingTextId : null} onEditText={setEditingTextId} onEditSignature={(sig) => setSignatureDialog({ annotation: sig, isEdit: true })} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
         </section>
         {editing && <aside style={{ width: toolsCollapsed ? 48 : editPanelWidth }} className={cn("relative flex min-h-0 shrink-0 border-l border-border bg-card", !toolsCollapsed && "pdf-edit-panel min-w-[360px] max-w-[calc(100vw-64px)]")}>
           {toolsCollapsed ? <div className="flex w-12 justify-center pt-2"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="Expand Tools Panel" onClick={() => setToolsCollapsed(false)}><ToolsPanelIcon /></Button></TooltipTrigger><TooltipContent side="left">Expand Tools Panel</TooltipContent></Tooltip></div> : <>

@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import type { PdfTrialBalanceLink } from '@/lib/pdfTrialBalance';
 import type { PdfEngagementLink } from '@/lib/pdfEngagementLinks';
+import { normalizeWatermarks } from '@/lib/pdfWatermarks';
 
 export const PDF_BUCKET = 'engagement-pdfs';
 
@@ -102,6 +103,7 @@ export interface PdfWatermark {
   rotation: number;
   fontSize: number;
   color: string;
+  pages?: number[];
 }
 
 export interface PdfHistoryEntry {
@@ -174,17 +176,20 @@ export function resolveCalcLabel(value: string | undefined, fallback: string): s
   return value?.trim() || fallback;
 }
 
-export function getEditStateWatermarks(state: Pick<PdfEditState, 'watermark' | 'watermarks'>): PdfWatermark[] {
-  if (state.watermarks !== undefined) return state.watermarks;
+export function getEditStateWatermarks(
+  state: Pick<PdfEditState, 'watermark' | 'watermarks'>,
+  allPages?: number[],
+): PdfWatermark[] {
+  if (state.watermarks !== undefined) return normalizeWatermarks(state.watermarks, allPages);
   if (state.watermark?.applied && state.watermark.text.trim()) {
-    return [{
+    return normalizeWatermarks([{
       id: 'legacy-watermark',
       text: state.watermark.text,
       opacity: Number.isFinite(state.watermark.opacity) ? state.watermark.opacity : 0.3,
       rotation: Number.isFinite(state.watermark.rotation) ? state.watermark.rotation : 45,
       fontSize: 48,
       color: '#595959',
-    }];
+    }], allPages);
   }
   return [];
 }
