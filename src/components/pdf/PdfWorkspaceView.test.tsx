@@ -84,6 +84,31 @@ describe('PDF editor view-only controls', () => {
     expect(persistPdfEditState).not.toHaveBeenCalled();
   });
 
+  it('cycles the Fit button between fit to page and fit width', async () => {
+    await setup();
+    const fitButton = () => screen.getByRole('button', { name: 'Fit' });
+    expect(fitButton().querySelector('svg')).toHaveClass('lucide-maximize');
+
+    fireEvent.click(fitButton());
+    const fittedToPage = screen.getByRole('button', { name: 'Fit to page' });
+    expect(fittedToPage).toHaveAttribute('aria-pressed', 'true');
+    expect(fittedToPage.querySelector('svg')).toHaveClass('lucide-shrink');
+
+    fireEvent.click(fittedToPage);
+    const fittedToWidth = screen.getByRole('button', { name: 'Fit width' });
+    expect(fittedToWidth).toHaveAttribute('aria-pressed', 'true');
+    expect(fittedToWidth.querySelector('svg')).toHaveClass('lucide-move-horizontal');
+
+    fireEvent.click(fittedToWidth);
+    const fittedAgain = screen.getByRole('button', { name: 'Fit to page' });
+    expect(fittedAgain).toHaveAttribute('aria-pressed', 'true');
+    expect(fittedAgain.querySelector('svg')).toHaveClass('lucide-shrink');
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Fit options' }), { key: 'Enter' });
+    expect(screen.getByRole('menuitem', { name: 'Fit to page' }).querySelector('svg')).toHaveClass('lucide-check');
+    expect(screen.getByRole('menuitem', { name: 'Fit width' }).querySelector('svg')).toBeNull();
+  });
+
   it('Print and Download export without view rotation', async () => {
     await setup();
     const downloaded: Blob[] = [];
