@@ -1,6 +1,7 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './pdf-panel-reflow.css';
+import './pdf-page-bar.css';
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Ban, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle,
   Copy, Crosshair, Download, ExternalLink, FileText, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
@@ -865,7 +866,6 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const [pendingAnnotation, setPendingAnnotation] = useState<PdfAnnotation | null>(null);
   const [pendingValue, setPendingValue] = useState('');
   const [signatureDialog, setSignatureDialog] = useState<{ annotation: PdfAnnotation; isEdit: boolean } | null>(null);
-  const [pendingRedaction, setPendingRedaction] = useState<PdfAnnotation | null>(null);
   const [linkTab, setLinkTab] = useState('web');
   const [tbTab, setTbTab] = useState<'accounts' | 'lead-sheets'>('accounts');
   const [selectedTbCell, setSelectedTbCell] = useState<string | null>(null);
@@ -1191,7 +1191,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         handleRedo();
         return;
       }
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedAnnotationId && !editingTextId && !pendingAnnotation && !pendingRedaction && !signatureDialog) {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedAnnotationId && !editingTextId && !pendingAnnotation && !signatureDialog) {
         const selected = editStateRef.current.annotations.find((item) => item.id === selectedAnnotationId);
         if (selected && selected.kind !== 'comment') {
           event.preventDefault();
@@ -1202,7 +1202,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [deleteAnnotation, editing, editingTextId, handleRedo, handleUndo, pendingAnnotation, pendingRedaction, selectedAnnotationId, signatureDialog]);
+  }, [deleteAnnotation, editing, editingTextId, handleRedo, handleUndo, pendingAnnotation, selectedAnnotationId, signatureDialog]);
 
 
   const addAnnotation = useCallback((annotation: PdfAnnotation) => {
@@ -1238,7 +1238,13 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       return;
     }
     if (annotation.kind === 'redaction') {
-      setPendingRedaction(annotation);
+      const stamped: PdfAnnotation = {
+        ...annotation,
+        author: annotation.author ?? currentMentionUser.name,
+        createdAt: annotation.createdAt ?? new Date().toISOString(),
+      };
+      commitUndoable((current) => withHistory({ ...current, annotations: [...current.annotations, stamped] }, { kind: 'redaction', title: `Redaction added on page ${stamped.page}`, page: stamped.page, color: stamped.color, targetId: stamped.id }));
+      setSelectedAnnotationId(stamped.id);
       setActiveKind(null);
       return;
     }
@@ -1323,18 +1329,6 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     setSignatureDialog(null);
     setSelectedAnnotationId(annotation.id);
   }, [commitUndoable, signatureDialog, updateAnnotation]);
-
-  const confirmPendingRedaction = useCallback(() => {
-    if (!pendingRedaction) return;
-    const stamped: PdfAnnotation = {
-      ...pendingRedaction,
-      author: currentMentionUser.name,
-      createdAt: new Date().toISOString(),
-    };
-    commitUndoable((current) => withHistory({ ...current, annotations: [...current.annotations, stamped] }, { kind: 'redaction', title: `Redaction added on page ${stamped.page}`, page: stamped.page, color: stamped.color, targetId: stamped.id }));
-    setPendingRedaction(null);
-    setSelectedAnnotationId(stamped.id);
-  }, [commitUndoable, pendingRedaction]);
 
   const confirmPendingAnnotation = useCallback(() => {
     const value = pendingValue.trim();
@@ -2583,15 +2577,17 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-36 shrink-0 border-r border-border bg-muted/30 lg:block"><ScrollArea className="h-full p-2">{visiblePages.map((sourcePage, index) => <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} label={index + 1} rotation={editState.rotations[String(sourcePage)] ?? 0} active={page === index + 1} onClick={() => setPage(index + 1)} />)}</ScrollArea></aside>
         <section className="flex min-w-0 flex-1 flex-col">
-          <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
+          <div className="pdf-page-bar-container shrink-0">
+          <div className={cn('pdf-page-bar flex items-center justify-between border-b border-border px-4', editing && 'pdf-page-bar-editing')}>
             <div className="flex items-center gap-2">
-              {editing && <><div className="flex items-center gap-2">
-                <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" disabled={!undoStack.past.length} onClick={handleUndo} aria-label="Undo"><Undo2 /></Button></TooltipTrigger><TooltipContent>Undo ({isMacPlatform() ? '⌘Z' : 'Ctrl+Z'})</TooltipContent></Tooltip>
-                <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" disabled={!undoStack.future.length} onClick={handleRedo} aria-label="Redo"><Redo2 /></Button></TooltipTrigger><TooltipContent>Redo ({isMacPlatform() ? '⌘⇧Z' : 'Ctrl+Shift+Z'})</TooltipContent></Tooltip>
-              </div><span aria-hidden="true" className="h-5 w-px bg-border" /></>}
               <Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button>
             </div>
+            {editing && <div className="pdf-page-bar-history flex items-center gap-2" role="group" aria-label="Undo and redo">
+              <Tooltip><TooltipTrigger asChild><Button variant="secondary" size="sm" disabled={!undoStack.past.length} onClick={handleUndo} aria-label="Undo"><Undo2 /><span className="pdf-history-label">Undo</span></Button></TooltipTrigger><TooltipContent>Undo ({isMacPlatform() ? '⌘Z' : 'Ctrl+Z'})</TooltipContent></Tooltip>
+              <Tooltip><TooltipTrigger asChild><Button variant="secondary" size="sm" disabled={!undoStack.future.length} onClick={handleRedo} aria-label="Redo"><Redo2 /><span className="pdf-history-label">Redo</span></Button></TooltipTrigger><TooltipContent>Redo ({isMacPlatform() ? '⌘⇧Z' : 'Ctrl+Shift+Z'})</TooltipContent></Tooltip>
+            </div>}
             <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(effectiveZoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
+          </div>
           </div>
           {editing && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
           <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} fillColor={activeFillColor} editing={editing} watermarks={activeWatermarks} editingTextId={editing ? editingTextId : null} onEditText={setEditingTextId} onEditSignature={(sig) => setSignatureDialog({ annotation: sig, isEdit: true })} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
@@ -2622,20 +2618,6 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={deleting} onClick={(event) => { event.preventDefault(); void handleDeleteDocument(); }}>
               {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}Delete
             </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={!!pendingRedaction} onOpenChange={(open) => { if (!open) setPendingRedaction(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Add redaction?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Redaction permanently removes content on export.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmPendingRedaction}>Add redaction</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

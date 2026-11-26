@@ -29,3 +29,5 @@
 - [x] 10. Text box & Callout: selection-only formatting (and caret-next styling), preserved selection across toolbar controls, active/mixed toolbar states, styled-run export & tests.
 - [x] Move Undo/Redo to the page bar, preserving edit-only controls and shortcuts.
 - [x] Repair edited-PDF printing, add fallback/loading/error handling and tests, and verify live preview (headless Chromium; native OS dialogs and other browsers remain unverified).
+- [x] Remove redaction confirmation; verify immediate placement, editing, and undo/redo.
+- [x] Absolutely centre bordered Undo/Redo with narrow-width handling; verify bar screenshots and tests.

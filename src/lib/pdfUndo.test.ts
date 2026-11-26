@@ -3,6 +3,22 @@ import { emptyPdfEditState, getEditStateWatermarks, resolveCalcLabel } from './p
 import { applyUndoSnapshot, captureUndoSnapshot, emptyUndoStack, popRedo, popUndo, pushUndo } from './pdfUndo';
 
 describe('PDF undo/redo stack', () => {
+  it('undoes and redoes an immediately added redaction and its resized bounds', () => {
+    const initial = emptyPdfEditState();
+    const added = { ...initial, annotations: [{ id: 'redact1', kind: 'redaction' as const, page: 1, x: 10, y: 20, width: 15, height: 8, color: '#000000' }] };
+    const resized = { ...added, annotations: [{ ...added.annotations[0], x: 30, width: 25, height: 12 }] };
+    const stack = pushUndo(pushUndo(emptyUndoStack<ReturnType<typeof captureUndoSnapshot>>(), captureUndoSnapshot(initial)), captureUndoSnapshot(added));
+    const undoResize = popUndo(stack, captureUndoSnapshot(resized));
+    if (!undoResize) throw new Error('Missing resize undo');
+    const restored = applyUndoSnapshot(resized, undoResize.state);
+    expect(restored.annotations[0]).toMatchObject({ x: 10, width: 15, height: 8 });
+    const undoAdd = popUndo(undoResize.stack, captureUndoSnapshot(restored));
+    if (!undoAdd) throw new Error('Missing add undo');
+    expect(applyUndoSnapshot(restored, undoAdd.state).annotations).toEqual([]);
+    const redoAdd = popRedo(undoAdd.stack, captureUndoSnapshot(initial));
+    if (!redoAdd) throw new Error('Missing add redo');
+    expect(applyUndoSnapshot(initial, redoAdd.state).annotations[0]?.id).toBe('redact1');
+  });
   it('undoes and redoes annotation add, move, and delete in order without touching page order', () => {
     const initial = { ...emptyPdfEditState(), pageOrder: [1, 2] };
     let stack = emptyUndoStack<ReturnType<typeof captureUndoSnapshot>>();

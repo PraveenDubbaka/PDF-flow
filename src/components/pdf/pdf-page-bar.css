@@ -1,0 +1,30 @@
+.pdf-page-bar-container {
+  container-type: inline-size;
+}
+.pdf-page-bar {
+  position: relative;
+  height: 48px;
+}
+.pdf-page-bar-history {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+@container (max-width: 620px) {
+  .pdf-page-bar-history .pdf-history-label { display: none; }
+  .pdf-page-bar-history button { width: 32px; padding: 0; }
+}
+/* Below this width even icon-only history controls cannot share the same row
+   without colliding. Keep them absolutely centred on a second row. */
+@container (max-width: 460px) {
+  .pdf-page-bar-editing { height: 88px; align-items: flex-start; padding-top: 8px; }
+  .pdf-page-bar-editing > div:first-child { position: absolute; left: 16px; top: 8px; white-space: nowrap; flex-shrink: 0; }
+  .pdf-page-bar-editing > div:last-child { position: absolute; right: 16px; top: 8px; }
+  .pdf-page-bar-editing .pdf-page-bar-history { top: 64px; }
+}
+@container (max-width: 340px) {
+  .pdf-page-bar-editing { height: 124px; }
+  .pdf-page-bar-editing > div:last-child { position: absolute; right: 16px; top: 40px; }
+  .pdf-page-bar-editing .pdf-page-bar-history { top: 100px; }
+}
