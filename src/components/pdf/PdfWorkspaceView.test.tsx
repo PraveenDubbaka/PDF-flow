@@ -8,6 +8,7 @@ import { persistPdfEditState, getPdfDocument, getPdfBlobUrl, emptyPdfEditState }
 import type { PdfEditState } from '@/lib/pdfDocuments';
 import { loadPdfAnnotationDefaults, savePdfAnnotationDefaults, SYSTEM_ANNOTATION_STYLE_DEFAULTS, type PdfAnnotationStyleDefaults } from '@/lib/pdfAnnotationDefaults';
 import { normalizeColorToHex } from '@/lib/pdfRichText';
+import { FEATURES } from '@/lib/featureFlags';
 
 vi.mock('@/lib/pdfDocuments', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/lib/pdfDocuments')>(),
@@ -37,13 +38,14 @@ vi.mock('pdfjs-dist', () => ({
 }));
 
 beforeEach(() => {
+  vi.spyOn(FEATURES, 'signatureAnnotation', 'get').mockReturnValue(true);
   vi.stubGlobal('URL', class extends URL {
     static createObjectURL = vi.fn().mockReturnValue('blob:letter-test');
     static revokeObjectURL = vi.fn();
   });
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.stubGlobal('BroadcastChannel', class { close() {} postMessage() {} });
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ setTransform: vi.fn(), clearRect: vi.fn() } as unknown as CanvasRenderingContext2D);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
@@ -66,6 +68,37 @@ async function setup(initialEditState?: Partial<PdfEditState>, documentId = 'pdf
 }
 
 describe('PDF editor workspace controls', () => {
+  it('hides signature creation when disabled but keeps saved signatures rendered, editable and deletable', async () => {
+    vi.spyOn(FEATURES, 'signatureAnnotation', 'get').mockReturnValue(false);
+    await setup({ annotations: [{ id: 'saved-signature', kind: 'signature', page: 1, x: 10, y: 10, width: 24, height: 12, color: '#111827', signerLabel: 'Prepared by Praveen', signedDate: '2026-11-26' }] });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.queryByRole('button', { name: 'Signature' })).not.toBeInTheDocument();
+    const stamp = document.querySelector('[data-annotation-id="saved-signature"]');
+    if (!(stamp instanceof HTMLElement)) throw new Error('Saved signature missing');
+    expect(stamp).toBeVisible();
+    expect(screen.getByText(/p\.1.*Signature — Praveen/)).toBeInTheDocument();
+    fireEvent.doubleClick(stamp);
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(stamp);
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(document.querySelector('[data-annotation-id="saved-signature"]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(document.querySelector('[data-annotation-id="saved-signature"]')).toBeVisible();
+  });
+
+  it('opens the full signature creation dialog when enabled', async () => {
+    await setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Signature' }));
+    const pageEl = document.querySelector('[data-pdf-page="1"]');
+    if (!(pageEl instanceof HTMLElement)) throw new Error('Page missing');
+    vi.spyOn(pageEl, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 612, height: 792, right: 612, bottom: 792, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.click(pageEl, { clientX: 120, clientY: 160 });
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    for (const name of ['Draw', 'Type', 'Upload']) expect(screen.getByRole('tab', { name })).toBeInTheDocument();
+  });
+
   it('uses red text, green borders and no fill for new annotations without saved colours', async () => {
     vi.mocked(loadPdfAnnotationDefaults).mockResolvedValue({ ...SYSTEM_ANNOTATION_STYLE_DEFAULTS });
     await setup();

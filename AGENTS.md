@@ -1,4 +1,5 @@
 # Architecture rules
+- Gate only PDF signature creation and its tool tile with `FEATURES.signatureAnnotation` in `src/lib/featureFlags.ts`; keep saved-signature editing, rendering and export independent so disabling creation never hides saved data.
 
 - Size shared calculation stamps with shared intrinsic label/value columns, wrapping labels at 240px and keeping first-line values separated by at least 12px; mirror wrapping in export and measure previews without forcing output width so both borders contain every row.
 

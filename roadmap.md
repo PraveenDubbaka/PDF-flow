@@ -1,4 +1,5 @@
 # PDF editor UAT feedback
+- [x] Hide Signature creation behind one flag; preserve existing signatures and code; 110 tests and build passed; real uploaded PDF verified for hidden tile, saved stamp/edit/move/delete/undo/export/reload with grid screenshot.
 - [x] Update system annotation defaults to red text/green border, preserving saved preferences; 108 tests and build passed, real uploaded PDF verified live with screenshots.
 - [x] Reorder tools and open on Annotations.
 - [x] Auto-save with status, Done, and a password-protection demo toggle.

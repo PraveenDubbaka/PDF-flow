@@ -29,6 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { LukaIcon } from '@/components/LukaIcon';
 import { cn } from '@/lib/utils';
+import { FEATURES } from '@/lib/featureFlags';
 import {
   emptyPdfEditState, deletePdfDocument, getEditStateWatermarks, getPdfBlobUrl, getPdfDocument, PdfAnnotation, PdfAnnotationKind, PdfCalculation, PdfCalcSource, PdfDocumentProperties,
   PdfDocumentRecord, PdfEditState, PdfHistoryEntry, PdfWatermark, persistPdfEditState, resolveCalcLabel, savePdfVersion,
@@ -1297,6 +1298,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       return;
     }
     if (annotation.kind === 'signature') {
+      if (!FEATURES.signatureAnnotation) return;
       setSignatureDialog({ annotation, isEdit: false });
       setActiveKind(null);
       return;
@@ -1383,6 +1385,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
 
   const confirmSignature = useCallback((draft: SignatureDraft) => {
     if (!signatureDialog) return;
+    if (!signatureDialog.isEdit && !FEATURES.signatureAnnotation) return;
     const fields = buildSignatureAnnotationFields(draft);
     if (signatureDialog.isEdit) {
       updateAnnotation(signatureDialog.annotation.id, fields);
@@ -2158,7 +2161,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       const shownFillColor = selectedStyleAnnotation?.fillColor;
       return (
       <div className="space-y-3">
-        <div className="pdf-annotation-grid grid grid-cols-4 gap-2">{ANNOTATION_TOOLS.map(({ kind, label, icon: Icon }) => <Tooltip key={kind}><TooltipTrigger asChild><Button variant={(kind === 'select' ? activeKind === null : activeKind === kind) ? 'default' : 'secondary'} aria-pressed={kind === 'select' ? activeKind === null : activeKind === kind} onClick={() => setActiveKind(kind === 'select' ? null : kind as PdfAnnotationKind)} aria-label={label}><Icon /><span className="pdf-annotation-label">{label}</span></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>)}</div>
+        <div className="pdf-annotation-grid grid grid-cols-4 gap-2">{ANNOTATION_TOOLS.filter(({ kind }) => kind !== 'signature' || FEATURES.signatureAnnotation).map(({ kind, label, icon: Icon }) => <Tooltip key={kind}><TooltipTrigger asChild><Button variant={(kind === 'select' ? activeKind === null : activeKind === kind) ? 'default' : 'secondary'} aria-pressed={kind === 'select' ? activeKind === null : activeKind === kind} onClick={() => setActiveKind(kind === 'select' ? null : kind as PdfAnnotationKind)} aria-label={label}><Icon /><span className="pdf-annotation-label">{label}</span></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>)}</div>
         {selectedStyleAnnotation && <div role="group" aria-label="Selected annotation colours" className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="w-10 shrink-0 text-xs text-foreground">Border</span>
