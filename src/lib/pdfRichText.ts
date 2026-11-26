@@ -11,8 +11,9 @@ export interface StyledTextRun {
 
 const ALLOWED_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'SPAN', 'BR', 'DIV', 'P', 'FONT']);
 const DROPPED_TAGS = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT']);
+const INLINE_STYLE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'SPAN', 'FONT']);
 
-function normalizeColorToHex(raw: string | null | undefined): string | undefined {
+export function normalizeColorToHex(raw: string | null | undefined): string | undefined {
   if (!raw) return undefined;
   const value = raw.trim().toLowerCase();
   if (!value || value === 'transparent' || value === 'inherit' || value === 'initial' || value === 'rgba(0, 0, 0, 0)') return undefined;
@@ -30,13 +31,18 @@ function normalizeColorToHex(raw: string | null | undefined): string | undefined
   return undefined;
 }
 
+const stripZeroWidth = (text: string) => text.replace(/\u200B/g, '');
+
 export function sanitizeRichText(html: string): string {
   if (!html.trim()) return '';
   const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html');
   const root = doc.body.firstElementChild;
   if (!root) return '';
   const cleanNode = (node: Node): Node | null => {
-    if (node.nodeType === Node.TEXT_NODE) return doc.createTextNode(node.textContent ?? '');
+    if (node.nodeType === Node.TEXT_NODE) {
+      const cleanText = stripZeroWidth(node.textContent ?? '');
+      return cleanText ? doc.createTextNode(cleanText) : null;
+    }
     if (node.nodeType !== Node.ELEMENT_NODE) return null;
     const el = node as HTMLElement;
     const tag = el.tagName.toUpperCase();
@@ -61,18 +67,22 @@ export function sanitizeRichText(html: string): string {
       target.style.fontSize = `${px}px`;
     }
     if (el.style.fontWeight === 'bold' || Number(el.style.fontWeight) >= 600) target.style.fontWeight = 'bold';
+    else if (el.style.fontWeight === 'normal' || el.style.fontWeight === '400') target.style.fontWeight = 'normal';
     if (el.style.fontStyle === 'italic') target.style.fontStyle = 'italic';
+    else if (el.style.fontStyle === 'normal') target.style.fontStyle = 'normal';
     if (el.style.textDecorationLine || el.style.textDecoration) {
       const dec = `${el.style.textDecorationLine} ${el.style.textDecoration}`;
       const parts: string[] = [];
       if (dec.includes('underline')) parts.push('underline');
       if (dec.includes('line-through')) parts.push('line-through');
       if (parts.length) target.style.textDecoration = parts.join(' ');
+      else if (dec.includes('none')) target.style.textDecoration = 'none';
     }
     Array.from(el.childNodes).forEach((child) => {
       const cleaned = cleanNode(child);
       if (cleaned) target.appendChild(cleaned);
     });
+    if (INLINE_STYLE_TAGS.has(tag) && target.childNodes.length === 0) return null;
     return target;
   };
   const out = doc.createElement('div');
@@ -86,7 +96,26 @@ export function sanitizeRichText(html: string): string {
 export function extractPlainText(html: string): string {
   if (!html) return '';
   const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html');
-  return (doc.body.textContent ?? '').replace(/\u00a0/g, ' ').trim();
+  const root = doc.body.firstElementChild;
+  if (!root) return '';
+  const parts: string[] = [];
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parts.push(stripZeroWidth(node.textContent ?? '').replace(/\u00a0/g, ' '));
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const tag = (node as HTMLElement).tagName.toUpperCase();
+    if (tag === 'BR') {
+      parts.push('\n');
+      return;
+    }
+    const isBlock = (tag === 'DIV' || tag === 'P') && parts.length > 0 && !parts[parts.length - 1]?.endsWith('\n');
+    if (isBlock) parts.push('\n');
+    Array.from(node.childNodes).forEach(walk);
+  };
+  Array.from(root.childNodes).forEach(walk);
+  return parts.join('').trim();
 }
 
 export function parseRichTextRuns(html: string, fallbackText: string, defaultColor: string, defaultSize = 12): StyledTextRun[][] {
@@ -105,7 +134,7 @@ export function parseRichTextRuns(html: string, fallbackText: string, defaultCol
 
   const walk = (node: Node, style: Omit<StyledTextRun, 'text'>) => {
     if (node.nodeType === Node.TEXT_NODE) {
-      const text = (node.textContent ?? '').replace(/\u00a0/g, ' ');
+      const text = stripZeroWidth(node.textContent ?? '').replace(/\u00a0/g, ' ');
       if (text) lines[lines.length - 1]?.push({ ...style, text });
       return;
     }
@@ -117,19 +146,29 @@ export function parseRichTextRuns(html: string, fallbackText: string, defaultCol
     if (isBlock) lines.push([]);
     const next = { ...style };
     if (tag === 'B' || tag === 'STRONG' || el.style.fontWeight === 'bold' || Number(el.style.fontWeight) >= 600) next.bold = true;
+    else if (el.style.fontWeight === 'normal' || el.style.fontWeight === '400') next.bold = false;
     if (tag === 'I' || tag === 'EM' || el.style.fontStyle === 'italic') next.italic = true;
+    else if (el.style.fontStyle === 'normal') next.italic = false;
     const dec = `${el.style.textDecorationLine} ${el.style.textDecoration}`;
-    if (tag === 'U' || dec.includes('underline')) next.underline = true;
-    if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL' || dec.includes('line-through')) next.strike = true;
+    if (dec.trim() === 'none') {
+      next.underline = false;
+      next.strike = false;
+    } else {
+      if (tag === 'U' || dec.includes('underline')) next.underline = true;
+      if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL' || dec.includes('line-through')) next.strike = true;
+    }
     const color = normalizeColorToHex(el.style.color || el.getAttribute('color'));
     if (color) next.color = color;
     const bg = normalizeColorToHex(el.style.backgroundColor);
     if (bg) next.highlight = bg;
+    else if (el.style.backgroundColor === 'transparent') next.highlight = undefined;
     const sizeMatch = el.style.fontSize.match(/^(\d+(?:\.\d+)?)px$/);
     if (sizeMatch) next.fontSize = Math.max(8, Math.min(48, Number(sizeMatch[1])));
     Array.from(el.childNodes).forEach((child) => walk(child, next));
   };
   Array.from(root.childNodes).forEach((child) => walk(child, base));
-  const nonEmpty = lines.filter((line) => line.length > 0);
-  return nonEmpty.length ? nonEmpty : fallbackText ? [[{ ...base, text: fallbackText }]] : [];
+  const hasAnyRun = lines.some((line) => line.length > 0);
+  if (!hasAnyRun) return fallbackText ? [[{ ...base, text: fallbackText }]] : [];
+  while (lines.length > 1 && lines[lines.length - 1]?.length === 0) lines.pop();
+  return lines;
 }

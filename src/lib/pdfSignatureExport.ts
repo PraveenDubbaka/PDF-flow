@@ -122,7 +122,7 @@ export async function drawSignatureStampToPdf({
   const sigTop = y + cardHeight - padY;
   const sigAreaHeight = Math.max(10, sigTop - sigBottom);
 
-  if (sig.signatureMode === 'draw' && sig.signatureImage) {
+  if ((sig.signatureMode === 'draw' || sig.signatureMode === 'upload') && sig.signatureImage) {
     try {
       const bytes = decodeDataUrlBytes(sig.signatureImage);
       const embedded = sig.signatureImage.includes('image/jpeg')

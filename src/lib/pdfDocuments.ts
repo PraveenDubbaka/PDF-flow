@@ -82,9 +82,10 @@ export interface PdfAnnotation {
   engagementLink?: PdfEngagementLink;
   richText?: string;
   fillColor?: string;
+  fixedHeight?: boolean;
   signerLabel?: string;
   signedDate?: string;
-  signatureMode?: 'draw' | 'type';
+  signatureMode?: 'draw' | 'type' | 'upload';
   signatureImage?: string;
   signatureText?: string;
   signatureFont?: string;

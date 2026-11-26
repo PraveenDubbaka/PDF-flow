@@ -24,3 +24,6 @@
 - [x] 5. Undo / Redo buttons and shortcuts for annotations, redactions, and watermarks.
 - [x] 6. Print button in header printing the edited PDF document.
 - [x] 7. Editable/resizable redactions with grouped list + optional confirmation, and multi-watermark editing with font size & colour.
+- [x] 8. Signature: add Upload mode (PNG/JPG/SVG up to 2 MB, background removal, Replace/Remove, stamp/export/undo parity).
+- [x] 9. Text box & Callout: resizable with corner/edge handles when selected and while editing, auto-grow height, single undo on release, wrapped PDF export.
+- [x] 10. Text box & Callout: selection-only formatting (and caret-next styling), preserved selection across toolbar controls, active/mixed toolbar states, styled-run export & tests.

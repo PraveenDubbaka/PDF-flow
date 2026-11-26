@@ -38,7 +38,8 @@ import { CalculationPreview } from '@/components/pdf/CalculationPreview';
 import { ResizableCalculationStamp } from '@/components/pdf/ResizableCalculationStamp';
 import { PdfRichTextBox } from '@/components/pdf/PdfRichTextBox';
 import { ResizableRedactionBox } from '@/components/pdf/ResizableRedactionBox';
-import { parseRichTextRuns } from '@/lib/pdfRichText';
+import { ResizableTextBoxHandles } from '@/components/pdf/ResizableTextBoxHandles';
+import { drawRichTextBoxToPdf } from '@/lib/pdfRichTextExport';
 import { PdfSignatureDialog } from '@/components/pdf/PdfSignatureDialog';
 import { ResizableSignatureStamp } from '@/components/pdf/PdfSignatureStamp';
 import { buildSignatureAnnotationFields, formatSignatureCaption, formatSignatureListTitle, type SignatureDraft } from '@/lib/pdfSignature';
@@ -319,12 +320,17 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   const pageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: string; startX: number; startY: number; x: number; y: number; width: number; height: number; moved: boolean; annotation: PdfAnnotation } | null>(null);
   const suppressClick = useRef(false);
+  const suppressNextClick = () => {
+    suppressClick.current = true;
+    window.setTimeout(() => { suppressClick.current = false; }, 0);
+  };
   const [textItems, setTextItems] = useState<{ text: string; x: number; y: number; width: number; height: number }[]>([]);
   const highlightRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 612, height: 792 });
   const [drawing, setDrawing] = useState<{ x: number; y: number }[] | null>(null);
   const [pulsingId, setPulsingId] = useState<string | null>(null);
   const [redactionDraft, setRedactionDraft] = useState<{ id: string; x: number; y: number; width: number; height: number } | null>(null);
+  const [textBoxDraft, setTextBoxDraft] = useState<{ id: string; x: number; y: number; width: number; height: number } | null>(null);
 
   useEffect(() => {
     if (!pulseCalc) return;
@@ -570,7 +576,11 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
         const annotation = isCalculationAnnotation(storedAnnotation, calculations) ? { ...storedAnnotation, kind: 'calculation' as const } : storedAnnotation;
         const isRichBox = annotation.kind === 'text' || annotation.kind === 'callout';
         const isEditingText = !!editing && editingTextId === annotation.id && isRichBox;
-        const boxRect = annotation.kind === 'redaction' && redactionDraft?.id === annotation.id ? redactionDraft : annotation;
+        const boxRect = annotation.kind === 'redaction' && redactionDraft?.id === annotation.id
+          ? redactionDraft
+          : isRichBox && textBoxDraft?.id === annotation.id
+            ? textBoxDraft
+            : annotation;
         const tbTooltip = annotation.engagementLink
           ? engagementLinkTooltip(annotation.engagementLink)
           : (() => { const link = resolveTrialBalanceLink(annotation, trialBalanceAccounts); return link ? trialBalanceLinkTooltip(link, trialBalanceAccounts) : annotation.label; })();
@@ -641,15 +651,54 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           {annotation.kind === 'strikeout' && annotation.regions && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">{annotation.regions.map((r, index) => <line key={index} x1={(r.x - annotation.x) / annotation.width * 100} x2={(r.x + r.width - annotation.x) / annotation.width * 100} y1={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} y2={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />)}</svg>}
           {annotation.kind === 'squiggly' && <svg className="h-full w-full" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0 16 Q2.5 10 5 16 T10 16 T15 16 T20 16 T25 16 T30 16 T35 16 T40 16 T45 16 T50 16 T55 16 T60 16 T65 16 T70 16 T75 16 T80 16 T85 16 T90 16 T95 16 T100 16" fill="none" stroke={annotation.color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" /></svg>}
           {isRichBox && (
-            <PdfRichTextBox
-              annotation={annotation}
-              editing={isEditingText}
-              canEdit={!!editing}
-              colors={COLORS}
-              onCommit={(changes) => onUpdate?.(annotation.id, changes)}
-              onFillColor={(nextFill) => onUpdate?.(annotation.id, { fillColor: nextFill })}
-              onClose={() => onEditText?.(null)}
-            />
+            <>
+              <PdfRichTextBox
+                annotation={annotation}
+                editing={isEditingText}
+                canEdit={!!editing}
+                colors={COLORS}
+                currentHeightPct={boxRect.height}
+                onCommit={(changes) => {
+                  setTextBoxDraft((current) => (current?.id === annotation.id ? null : current));
+                  onUpdate?.(annotation.id, changes);
+                }}
+                onFillColor={(nextFill) => onUpdate?.(annotation.id, { fillColor: nextFill })}
+                onAutoGrowHeight={(nextHeight) => {
+                  setTextBoxDraft((current) => {
+                    const base = current?.id === annotation.id ? current : { x: annotation.x, y: annotation.y, width: annotation.width, height: annotation.height };
+                    return { id: annotation.id, ...base, height: nextHeight };
+                  });
+                }}
+                onClose={() => {
+                  setTextBoxDraft((current) => (current?.id === annotation.id ? null : current));
+                  onEditText?.(null);
+                }}
+              />
+              <ResizableTextBoxHandles
+                rect={{ x: boxRect.x, y: boxRect.y, width: boxRect.width, height: boxRect.height }}
+                visible={!!editing && (selectedId === annotation.id || isEditingText) && !activeKind && !placingCalc && !pickingValue}
+                onResizePreview={(next) => setTextBoxDraft(next ? { id: annotation.id, ...next } : null)}
+                onResizeCommit={(next, { resizedVertically }) => {
+                  suppressNextClick();
+                  const bounds = pageRef.current?.getBoundingClientRect();
+                  const contentEl = pageRef.current?.querySelector<HTMLElement>(
+                    `[data-annotation-id="${annotation.id}"] [role="textbox"], [data-annotation-id="${annotation.id}"] [data-rich-text-content]`,
+                  );
+                  let nextHeight = next.height;
+                  let fixedHeight = annotation.fixedHeight;
+                  if (bounds && bounds.height > 0 && contentEl) {
+                    const neededPx = contentEl.scrollHeight + 12;
+                    const newBoxPx = (next.height / 100) * bounds.height;
+                    if (resizedVertically) {
+                      fixedHeight = newBoxPx + 1 < neededPx;
+                    } else if (!annotation.fixedHeight && neededPx > newBoxPx + 1) {
+                      nextHeight = Math.min(100 - next.y, (neededPx / bounds.height) * 100);
+                    }
+                  }
+                  onUpdate?.(annotation.id, { x: next.x, y: next.y, width: next.width, height: nextHeight, fixedHeight });
+                }}
+              />
+            </>
           )}
           {annotation.kind === 'signature' && (
             <ResizableSignatureStamp
@@ -660,7 +709,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
               onCommit={({ scale, width, height, dx, dy }) => {
                 const bounds = pageRef.current?.getBoundingClientRect();
                 if (!bounds) return;
-                suppressClick.current = true;
+                suppressNextClick();
                 onUpdate?.(annotation.id, {
                   stampScale: scale / zoom,
                   x: annotation.x + (dx / bounds.width) * 100,
@@ -676,7 +725,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
               rect={{ x: annotation.x, y: annotation.y, width: annotation.width, height: annotation.height }}
               selected={!!editing && selectedId === annotation.id && !activeKind && !placingCalc && !pickingValue}
               onResizePreview={(next) => setRedactionDraft(next ? { id: annotation.id, ...next } : null)}
-              onResizeCommit={(next) => { suppressClick.current = true; onUpdate?.(annotation.id, next); }}
+              onResizeCommit={(next) => { suppressNextClick(); onUpdate?.(annotation.id, next); }}
               onDelete={() => { onDelete?.(annotation.id); onSelect(null); }}
             />
           )}
@@ -1708,36 +1757,18 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         } else if (item.kind === 'squiggly') {
           for (let step = 0; step < boxWidth; step += 3) copiedPage.drawLine({ start: { x: x + step, y: y + (Math.floor(step / 3) % 2 ? 2 : 0) }, end: { x: x + Math.min(step + 3, boxWidth), y: y + (Math.floor(step / 3) % 2 ? 0 : 2) }, color, thickness: 1 });
         } else if (item.kind === 'callout' || item.kind === 'text') {
-          copiedPage.drawRectangle({
-            x, y, width: boxWidth, height: boxHeight,
-            borderColor: color, borderWidth: 1,
-            ...(item.fillColor ? { color: hexToRgb(item.fillColor) } : {}),
+          drawRichTextBoxToPdf({
+            page: copiedPage,
+            item,
+            x,
+            y,
+            boxWidth,
+            boxHeight,
+            fontRegular,
+            fontBold: font,
+            fontItalic,
+            fontBoldItalic,
           });
-          if (item.kind === 'callout') copiedPage.drawLine({ start: { x, y }, end: { x: x - 6, y: y - 6 }, color, thickness: 1 });
-          const runs = parseRichTextRuns(item.richText ?? '', item.label ?? item.value ?? '', '#111827', 10);
-          const safeRunText = (text: string) => text.replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
-          let cursorY = y + boxHeight - 4;
-          for (const lineRuns of runs) {
-            const maxFont = Math.max(8, ...lineRuns.map((run) => Math.max(8, run.fontSize * 0.8)));
-            cursorY -= maxFont + 2;
-            if (cursorY < y + 2) break;
-            let cursorX = x + 4;
-            for (const run of lineRuns) {
-              const text = safeRunText(run.text);
-              if (!text) continue;
-              const runFont = run.bold && run.italic ? fontBoldItalic : run.bold ? font : run.italic ? fontItalic : fontRegular;
-              const runSize = Math.max(7, run.fontSize * 0.8);
-              const runWidth = runFont.widthOfTextAtSize(text, runSize);
-              const runColor = hexToRgb(run.color);
-              if (run.highlight) {
-                copiedPage.drawRectangle({ x: cursorX, y: cursorY - runSize * 0.2, width: runWidth, height: runSize * 1.15, color: hexToRgb(run.highlight), opacity: 0.45 });
-              }
-              copiedPage.drawText(text, { x: cursorX, y: cursorY, size: runSize, font: runFont, color: runColor });
-              if (run.underline) copiedPage.drawLine({ start: { x: cursorX, y: cursorY - 1.5 }, end: { x: cursorX + runWidth, y: cursorY - 1.5 }, color: runColor, thickness: 0.75 });
-              if (run.strike) copiedPage.drawLine({ start: { x: cursorX, y: cursorY + runSize * 0.3 }, end: { x: cursorX + runWidth, y: cursorY + runSize * 0.3 }, color: runColor, thickness: 0.75 });
-              cursorX += runWidth;
-            }
-          }
         } else if (item.kind === 'signature') {
           await drawSignatureStampToPdf({
             output,

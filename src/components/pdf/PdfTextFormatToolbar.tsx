@@ -1,48 +1,18 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Ban, Bold, Highlighter, Italic, PaintBucket, Palette, Strikethrough, Underline } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { Ban, Bold, ChevronDown, Highlighter, Italic, PaintBucket, Palette, Strikethrough, Underline } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  applyFormatToRange,
+  DEFAULT_SELECTION_STATE,
+  getSelectionFormatState,
+  type RichTextFormatPatch,
+  type RichTextSelectionState,
+} from '@/lib/pdfRichTextEditing';
 import { cn } from '@/lib/utils';
 
 const FONT_SIZES = [10, 12, 14, 16, 20, 24] as const;
 
-type PickerMenu = 'text' | 'highlight' | 'fill' | null;
-
-function applyInlineStyle(
-  editor: HTMLDivElement | null,
-  styleProp: 'fontSize' | 'color' | 'backgroundColor',
-  value: string | null,
-  savedRange?: Range | null,
-) {
-  if (!editor) return;
-  editor.focus();
-  const selection = window.getSelection();
-  if (!selection) return;
-  let range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-  if ((!range || !editor.contains(range.commonAncestorContainer) || range.collapsed) && savedRange && editor.contains(savedRange.commonAncestorContainer) && !savedRange.collapsed) {
-    selection.removeAllRanges();
-    selection.addRange(savedRange);
-    range = savedRange;
-  }
-  if (!range) return;
-  if (!editor.contains(range.commonAncestorContainer)) return;
-  if (range.collapsed) return;
-  const span = document.createElement('span');
-  if (value) span.style[styleProp] = value;
-  else if (styleProp === 'backgroundColor') span.style.backgroundColor = 'transparent';
-  const fragment = range.extractContents();
-  // Clear nested overrides of the same property so the new style wins cleanly.
-  fragment.querySelectorAll<HTMLElement>('*').forEach((child) => {
-    if (styleProp === 'fontSize') child.style.fontSize = '';
-    if (styleProp === 'color') child.style.color = '';
-    if (styleProp === 'backgroundColor') child.style.backgroundColor = '';
-  });
-  span.appendChild(fragment);
-  range.insertNode(span);
-  const nextRange = document.createRange();
-  nextRange.selectNodeContents(span);
-  selection.removeAllRanges();
-  selection.addRange(nextRange);
-}
+type PickerMenu = 'size' | 'text' | 'highlight' | 'fill' | null;
 
 export function PdfTextFormatToolbar({
   editorRef,
@@ -58,27 +28,95 @@ export function PdfTextFormatToolbar({
   onFormatChange: () => void;
 }) {
   const [openMenu, setOpenMenu] = useState<PickerMenu>(null);
-  const [fontSize, setFontSize] = useState<number>(12);
+  const [state, setState] = useState<RichTextSelectionState>(DEFAULT_SELECTION_STATE);
   const savedRangeRef = useRef<Range | null>(null);
 
-  useEffect(() => {
-    const onSelectionChange = () => {
-      const editor = editorRef.current;
-      const selection = window.getSelection();
-      if (!editor || !selection || selection.rangeCount === 0) return;
+  const syncSelectionState = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
-      if (editor.contains(range.commonAncestorContainer) && !range.collapsed) {
+      if (editor.contains(range.commonAncestorContainer)) {
         savedRangeRef.current = range.cloneRange();
+        setState(getSelectionFormatState(editor, range));
+        return;
       }
-    };
-    document.addEventListener('selectionchange', onSelectionChange);
-    return () => document.removeEventListener('selectionchange', onSelectionChange);
+    }
+    if (savedRangeRef.current && editor.contains(savedRangeRef.current.commonAncestorContainer)) {
+      setState(getSelectionFormatState(editor, savedRangeRef.current));
+    }
   }, [editorRef]);
 
-  const exec = (command: 'bold' | 'italic' | 'underline' | 'strikeThrough') => {
-    editorRef.current?.focus();
-    document.execCommand(command, false);
-    onFormatChange();
+  useEffect(() => {
+    const editor = editorRef.current;
+    document.addEventListener('selectionchange', syncSelectionState);
+    editor?.addEventListener('keyup', syncSelectionState);
+    editor?.addEventListener('mouseup', syncSelectionState);
+    editor?.addEventListener('focus', syncSelectionState);
+    syncSelectionState();
+    return () => {
+      document.removeEventListener('selectionchange', syncSelectionState);
+      editor?.removeEventListener('keyup', syncSelectionState);
+      editor?.removeEventListener('mouseup', syncSelectionState);
+      editor?.removeEventListener('focus', syncSelectionState);
+    };
+  }, [editorRef, syncSelectionState]);
+
+  const restoreRange = useCallback((): Range | null => {
+    const editor = editorRef.current;
+    if (!editor) return null;
+    const selection = window.getSelection();
+    if (!selection) return null;
+    if (selection.rangeCount > 0) {
+      const current = selection.getRangeAt(0);
+      if (editor.contains(current.commonAncestorContainer)) {
+        savedRangeRef.current = current.cloneRange();
+        return current;
+      }
+    }
+    const saved = savedRangeRef.current;
+    if (saved && editor.contains(saved.commonAncestorContainer)) {
+      editor.focus();
+      selection.removeAllRanges();
+      selection.addRange(saved);
+      return saved;
+    }
+    editor.focus();
+    const fallback = editor.ownerDocument.createRange();
+    fallback.selectNodeContents(editor);
+    fallback.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(fallback);
+    savedRangeRef.current = fallback.cloneRange();
+    return fallback;
+  }, [editorRef]);
+
+  const applyPatch = useCallback(
+    (patch: RichTextFormatPatch) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const range = restoreRange();
+      if (!range) return;
+      const nextRange = applyFormatToRange(editor, range, patch);
+      const selection = window.getSelection();
+      if (nextRange && selection) {
+        editor.focus();
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+        savedRangeRef.current = nextRange.cloneRange();
+        setState(getSelectionFormatState(editor, nextRange));
+      }
+      onFormatChange();
+    },
+    [editorRef, onFormatChange, restoreRange],
+  );
+
+  const toggleMark = (key: 'bold' | 'italic' | 'underline' | 'strike') => {
+    const editor = editorRef.current;
+    const range = restoreRange();
+    const currentState = editor && range ? getSelectionFormatState(editor, range) : state;
+    applyPatch({ [key]: currentState[key] !== true });
   };
 
   const keepFocus = (event: React.MouseEvent) => {
@@ -86,6 +124,7 @@ export function PdfTextFormatToolbar({
     event.stopPropagation();
   };
 
+  const ariaPressed = (val: boolean | 'mixed'): boolean | 'mixed' => (val === 'mixed' ? 'mixed' : val);
   const fillOptions = ['#ffffff', ...colors];
 
   return (
@@ -94,60 +133,125 @@ export function PdfTextFormatToolbar({
       role="toolbar"
       aria-label="Text formatting"
       onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
       className="relative flex items-center gap-0.5 rounded-[8px] border border-border bg-popover px-1.5 py-1 text-popover-foreground shadow-elevation-2"
     >
-      <select
-        aria-label="Font size"
-        value={fontSize}
-        onMouseDown={(event) => event.stopPropagation()}
-        onChange={(event) => {
-          const next = Number(event.target.value);
-          setFontSize(next);
-          applyInlineStyle(editorRef.current, 'fontSize', `${next}px`, savedRangeRef.current);
-          onFormatChange();
-        }}
-        className="h-7 rounded-[6px] border border-border bg-background px-1.5 text-[12px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-      >
-        {FONT_SIZES.map((size) => <option key={size} value={size}>{size}px</option>)}
-      </select>
+      <div className="relative">
+        <button
+          type="button"
+          aria-label="Font size"
+          aria-haspopup="listbox"
+          aria-expanded={openMenu === 'size'}
+          onMouseDown={keepFocus}
+          onClick={() => setOpenMenu((m) => (m === 'size' ? null : 'size'))}
+          className="flex h-7 min-w-[54px] items-center justify-between gap-1 rounded-[6px] border border-border bg-background px-1.5 text-[12px] text-foreground hover:bg-muted/60 focus:outline-none"
+        >
+          <span>{state.fontSize === 'mixed' ? '—' : `${state.fontSize}px`}</span>
+          <ChevronDown className="h-3 w-3 opacity-70" />
+        </button>
+        {openMenu === 'size' && (
+          <div
+            role="listbox"
+            aria-label="Font size options"
+            className="absolute left-0 top-full z-50 mt-1 flex min-w-[68px] flex-col rounded-[8px] border border-border bg-popover p-1 shadow-elevation-2"
+          >
+            {FONT_SIZES.map((size) => {
+              const active = state.fontSize === size;
+              return (
+                <button
+                  key={size}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onMouseDown={keepFocus}
+                  onClick={() => {
+                    applyPatch({ fontSize: size });
+                    setOpenMenu(null);
+                  }}
+                  className={cn(
+                    'flex h-7 items-center rounded-[5px] px-2 text-left text-[12px]',
+                    active ? 'bg-accent font-medium text-accent-foreground' : 'text-foreground hover:bg-muted',
+                  )}
+                >
+                  {size}px
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-      <Button type="button" variant="ghost" size="icon-sm" className="h-7 w-7" aria-label="Bold" onMouseDown={keepFocus} onClick={() => exec('bold')}><Bold className="h-3.5 w-3.5" /></Button>
-      <Button type="button" variant="ghost" size="icon-sm" className="h-7 w-7" aria-label="Italic" onMouseDown={keepFocus} onClick={() => exec('italic')}><Italic className="h-3.5 w-3.5" /></Button>
-      <Button type="button" variant="ghost" size="icon-sm" className="h-7 w-7" aria-label="Underline" onMouseDown={keepFocus} onClick={() => exec('underline')}><Underline className="h-3.5 w-3.5" /></Button>
-      <Button type="button" variant="ghost" size="icon-sm" className="h-7 w-7" aria-label="Strikethrough" onMouseDown={keepFocus} onClick={() => exec('strikeThrough')}><Strikethrough className="h-3.5 w-3.5" /></Button>
+      <Button type="button" variant={state.bold === true ? 'secondary' : 'ghost'} size="icon-sm" className="h-7 w-7" aria-label="Bold" aria-pressed={ariaPressed(state.bold)} onMouseDown={keepFocus} onClick={() => toggleMark('bold')}><Bold className="h-3.5 w-3.5" /></Button>
+      <Button type="button" variant={state.italic === true ? 'secondary' : 'ghost'} size="icon-sm" className="h-7 w-7" aria-label="Italic" aria-pressed={ariaPressed(state.italic)} onMouseDown={keepFocus} onClick={() => toggleMark('italic')}><Italic className="h-3.5 w-3.5" /></Button>
+      <Button type="button" variant={state.underline === true ? 'secondary' : 'ghost'} size="icon-sm" className="h-7 w-7" aria-label="Underline" aria-pressed={ariaPressed(state.underline)} onMouseDown={keepFocus} onClick={() => toggleMark('underline')}><Underline className="h-3.5 w-3.5" /></Button>
+      <Button type="button" variant={state.strike === true ? 'secondary' : 'ghost'} size="icon-sm" className="h-7 w-7" aria-label="Strikethrough" aria-pressed={ariaPressed(state.strike)} onMouseDown={keepFocus} onClick={() => toggleMark('strike')}><Strikethrough className="h-3.5 w-3.5" /></Button>
 
       <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
 
       <div className="relative">
-        <Button type="button" variant={openMenu === 'text' ? 'secondary' : 'ghost'} size="icon-sm" className="h-7 w-7" aria-label="Text colour" aria-expanded={openMenu === 'text'} onMouseDown={keepFocus} onClick={() => setOpenMenu((m) => m === 'text' ? null : 'text')}>
+        <Button type="button" variant={openMenu === 'text' ? 'secondary' : 'ghost'} size="icon-sm" className="h-7 w-7" aria-label="Text colour" aria-expanded={openMenu === 'text'} onMouseDown={keepFocus} onClick={() => setOpenMenu((m) => (m === 'text' ? null : 'text'))}>
           <Palette className="h-3.5 w-3.5" />
         </Button>
         {openMenu === 'text' && (
           <div className="absolute left-0 top-full z-50 mt-1 flex items-center gap-1 rounded-[8px] border border-border bg-popover p-1.5 shadow-elevation-2">
-            {colors.map((color) => (
-              <button key={color} type="button" aria-label={`Text colour ${color}`} onMouseDown={keepFocus} onClick={() => { applyInlineStyle(editorRef.current, 'color', color); onFormatChange(); setOpenMenu(null); }} className="h-5 w-5 rounded-[4px] border border-border" style={{ backgroundColor: color }} />
-            ))}
+            {colors.map((color) => {
+              const active = state.color !== 'mixed' && state.color?.toLowerCase() === color.toLowerCase();
+              return (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={`Text colour ${color}`}
+                  aria-pressed={active}
+                  onMouseDown={keepFocus}
+                  onClick={() => { applyPatch({ color }); setOpenMenu(null); }}
+                  className={cn('h-5 w-5 rounded-[4px] border', active ? 'border-primary ring-1 ring-primary' : 'border-border')}
+                  style={{ backgroundColor: color }}
+                />
+              );
+            })}
           </div>
         )}
       </div>
 
       <div className="relative">
-        <Button type="button" variant={openMenu === 'highlight' ? 'secondary' : 'ghost'} size="icon-sm" className="h-7 w-7" aria-label="Highlight colour" aria-expanded={openMenu === 'highlight'} onMouseDown={keepFocus} onClick={() => setOpenMenu((m) => m === 'highlight' ? null : 'highlight')}>
+        <Button type="button" variant={openMenu === 'highlight' ? 'secondary' : 'ghost'} size="icon-sm" className="h-7 w-7" aria-label="Highlight colour" aria-expanded={openMenu === 'highlight'} onMouseDown={keepFocus} onClick={() => setOpenMenu((m) => (m === 'highlight' ? null : 'highlight'))}>
           <Highlighter className="h-3.5 w-3.5" />
         </Button>
         {openMenu === 'highlight' && (
           <div className="absolute left-0 top-full z-50 mt-1 flex items-center gap-1 rounded-[8px] border border-border bg-popover p-1.5 shadow-elevation-2">
-            <button type="button" aria-label="No highlight" title="No highlight" onMouseDown={keepFocus} onClick={() => { applyInlineStyle(editorRef.current, 'backgroundColor', null); onFormatChange(); setOpenMenu(null); }} className="flex h-5 w-5 items-center justify-center rounded-[4px] border border-border bg-background text-foreground"><Ban className="h-3 w-3" /></button>
-            {colors.map((color) => (
-              <button key={color} type="button" aria-label={`Highlight ${color}`} onMouseDown={keepFocus} onClick={() => { applyInlineStyle(editorRef.current, 'backgroundColor', color); onFormatChange(); setOpenMenu(null); }} className="h-5 w-5 rounded-[4px] border border-border" style={{ backgroundColor: color }} />
-            ))}
+            <button
+              type="button"
+              aria-label="No highlight"
+              title="No highlight"
+              aria-pressed={state.highlight === null}
+              onMouseDown={keepFocus}
+              onClick={() => { applyPatch({ highlight: null }); setOpenMenu(null); }}
+              className={cn('flex h-5 w-5 items-center justify-center rounded-[4px] border bg-background text-foreground', state.highlight === null ? 'border-primary ring-1 ring-primary' : 'border-border')}
+            >
+              <Ban className="h-3 w-3" />
+            </button>
+            {colors.map((color) => {
+              const active = state.highlight !== 'mixed' && state.highlight?.toLowerCase() === color.toLowerCase();
+              return (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={`Highlight ${color}`}
+                  aria-pressed={active}
+                  onMouseDown={keepFocus}
+                  onClick={() => { applyPatch({ highlight: color }); setOpenMenu(null); }}
+                  className={cn('h-5 w-5 rounded-[4px] border', active ? 'border-primary ring-1 ring-primary' : 'border-border')}
+                  style={{ backgroundColor: color }}
+                />
+              );
+            })}
           </div>
         )}
       </div>
 
       <div className="relative">
-        <Button type="button" variant={openMenu === 'fill' ? 'secondary' : 'ghost'} size="icon-sm" className="h-7 w-7" aria-label="Box fill colour" aria-expanded={openMenu === 'fill'} onMouseDown={keepFocus} onClick={() => setOpenMenu((m) => m === 'fill' ? null : 'fill')}>
+        <Button type="button" variant={openMenu === 'fill' ? 'secondary' : 'ghost'} size="icon-sm" className="h-7 w-7" aria-label="Box fill colour" aria-expanded={openMenu === 'fill'} onMouseDown={keepFocus} onClick={() => setOpenMenu((m) => (m === 'fill' ? null : 'fill'))}>
           <PaintBucket className="h-3.5 w-3.5" />
         </Button>
         {openMenu === 'fill' && (

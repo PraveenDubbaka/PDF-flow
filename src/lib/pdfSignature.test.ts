@@ -11,6 +11,11 @@ import {
   formatSignatureListTitle,
   resolveSignatureData,
 } from './pdfSignature';
+import {
+  MAX_SIGNATURE_UPLOAD_BYTES,
+  removeNearWhitePixels,
+  validateSignatureUploadFile,
+} from './pdfSignatureUpload';
 import { drawSignatureStampToPdf } from './pdfSignatureExport';
 import type { PdfAnnotation } from './pdfDocuments';
 
@@ -109,6 +114,41 @@ describe('PDF signature data model and legacy migration', () => {
     expect(canPlaceSignature({ signatureMode: 'draw', signatureImage: undefined, signatureText: '', hasDrawnStrokes: true })).toBe(true);
     expect(canPlaceSignature({ signatureMode: 'type', signatureImage: undefined, signatureText: '   ', hasDrawnStrokes: false })).toBe(false);
     expect(canPlaceSignature({ signatureMode: 'type', signatureImage: undefined, signatureText: 'Alex', hasDrawnStrokes: false })).toBe(true);
+    expect(canPlaceSignature({ signatureMode: 'upload', signatureImage: undefined, signatureText: '' })).toBe(false);
+    expect(canPlaceSignature({ signatureMode: 'upload', signatureImage: TINY_TRANSPARENT_PNG, signatureText: '' })).toBe(true);
+  });
+
+  it('saves structured upload signature data, validates file type/size, and removes near-white pixels', () => {
+    const fields = buildSignatureAnnotationFields({
+      signatureMode: 'upload',
+      signatureImage: TINY_TRANSPARENT_PNG,
+      signatureText: '',
+      signatureFont: 'Dancing Script',
+      inkColor: '#1f2a44',
+      signerName: 'Alex Chen',
+      signerRole: 'Reviewed by',
+      signedDate: '2026-11-26',
+    });
+    expect(fields.signatureMode).toBe('upload');
+    expect(fields.signatureImage).toBe(TINY_TRANSPARENT_PNG);
+    expect(fields.signatureText).toBeUndefined();
+    expect(resolveSignatureData(fields)).toMatchObject({
+      signatureMode: 'upload',
+      signatureImage: TINY_TRANSPARENT_PNG,
+      signerName: 'Alex Chen',
+    });
+
+    expect(validateSignatureUploadFile({ name: 'sig.png', type: 'image/png', size: 1024 })).toBeNull();
+    expect(validateSignatureUploadFile({ name: 'sig.jpg', type: 'image/jpeg', size: 1024 })).toBeNull();
+    expect(validateSignatureUploadFile({ name: 'sig.svg', type: 'image/svg+xml', size: 1024 })).toBeNull();
+    expect(validateSignatureUploadFile({ name: 'doc.pdf', type: 'application/pdf', size: 1024 })).toMatch(/PNG, JPG, or SVG/i);
+    expect(validateSignatureUploadFile({ name: 'huge.png', type: 'image/png', size: MAX_SIGNATURE_UPLOAD_BYTES + 1 })).toMatch(/2 MB/i);
+
+    // Pixel 0: near-white (250,250,250,255) -> alpha 0; Pixel 1: dark ink (20,30,60,255) -> unchanged
+    const pixels = new Uint8ClampedArray([250, 250, 250, 255, 20, 30, 60, 255]);
+    removeNearWhitePixels(pixels);
+    expect(pixels[3]).toBe(0);
+    expect(pixels[7]).toBe(255);
   });
 });
 
@@ -208,6 +248,21 @@ describe('PDF signature export', () => {
       item: drawnItem,
       x: 260,
       y: 620,
+      boxWidth: 160,
+      boxHeight: 80,
+      fontRegular,
+      fontMedium,
+      fontItalicFallback,
+      scriptFontCache: cache,
+      loadFontBytes: loadLocalFont,
+    });
+
+    await drawSignatureStampToPdf({
+      output: doc,
+      page,
+      item: { ...drawnItem, id: 'sig-upload', signatureMode: 'upload' },
+      x: 260,
+      y: 500,
       boxWidth: 160,
       boxHeight: 80,
       fontRegular,

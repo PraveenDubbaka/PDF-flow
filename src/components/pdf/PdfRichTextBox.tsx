@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { MessageSquareText } from 'lucide-react';
 import type { PdfAnnotation } from '@/lib/pdfDocuments';
 import { extractPlainText, sanitizeRichText } from '@/lib/pdfRichText';
+import { cleanTypedZeroWidthSpaces } from '@/lib/pdfRichTextEditing';
 import { PdfTextFormatToolbar } from './PdfTextFormatToolbar';
 
 function escapeHtml(text: string): string {
@@ -13,25 +14,48 @@ export function PdfRichTextBox({
   editing,
   canEdit,
   colors,
+  currentHeightPct,
   onCommit,
   onFillColor,
+  onAutoGrowHeight,
   onClose,
 }: {
   annotation: PdfAnnotation;
   editing: boolean;
   canEdit: boolean;
   colors: string[];
-  onCommit: (changes: { richText: string; label: string }) => void;
+  currentHeightPct?: number;
+  onCommit: (changes: { richText: string; label: string; height?: number }) => void;
   onFillColor: (color: string | undefined) => void;
+  onAutoGrowHeight?: (heightPct: number) => void;
   onClose: () => void;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const latestHtml = useRef<string>(annotation.richText ?? '');
+  const autoHeightRef = useRef<number | null>(null);
   const committedRef = useRef(false);
+
+  const measureAutoGrow = useCallback(() => {
+    if (!editing || annotation.fixedHeight || !onAutoGrowHeight) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    const page = editor.closest('[data-pdf-page]')?.getBoundingClientRect();
+    if (!page || page.height <= 0) return;
+    // Account for vertical padding (8px) + border (4px) around the editable content.
+    const neededPx = editor.scrollHeight + 12;
+    const currentPct = currentHeightPct ?? autoHeightRef.current ?? annotation.height;
+    const currentPx = (currentPct / 100) * page.height;
+    if (neededPx > currentPx + 1) {
+      const nextPct = Math.min(100 - annotation.y, (neededPx / page.height) * 100);
+      autoHeightRef.current = nextPct;
+      onAutoGrowHeight(nextPct);
+    }
+  }, [annotation.fixedHeight, annotation.height, annotation.y, currentHeightPct, editing, onAutoGrowHeight]);
 
   useEffect(() => {
     if (!editing || !editorRef.current) return;
     committedRef.current = false;
+    autoHeightRef.current = null;
     const initial = annotation.richText ? sanitizeRichText(annotation.richText) : escapeHtml(annotation.label ?? '');
     editorRef.current.innerHTML = initial;
     latestHtml.current = initial;
@@ -46,14 +70,24 @@ export function PdfRichTextBox({
     }
   }, [editing, annotation.id]);
 
+  useEffect(() => {
+    if (!editing) return;
+    const frame = window.requestAnimationFrame(measureAutoGrow);
+    return () => window.cancelAnimationFrame(frame);
+  }, [annotation.width, editing, measureAutoGrow]);
+
   const commit = () => {
     if (committedRef.current) return;
     committedRef.current = true;
     const raw = editorRef.current ? editorRef.current.innerHTML : latestHtml.current;
     const sanitized = sanitizeRichText(raw);
     const plain = extractPlainText(sanitized);
-    if (sanitized !== (annotation.richText ?? '') || plain !== (annotation.label ?? '')) {
-      onCommit({ richText: sanitized, label: plain });
+    const nextHeight = autoHeightRef.current && autoHeightRef.current > annotation.height + 0.05
+      ? autoHeightRef.current
+      : undefined;
+    autoHeightRef.current = null;
+    if (sanitized !== (annotation.richText ?? '') || plain !== (annotation.label ?? '') || nextHeight !== undefined) {
+      onCommit({ richText: sanitized, label: plain, ...(nextHeight !== undefined ? { height: nextHeight } : {}) });
     }
   };
 
@@ -83,7 +117,10 @@ export function PdfRichTextBox({
             colors={colors}
             fillColor={annotation.fillColor}
             onFillColor={onFillColor}
-            onFormatChange={() => { if (editorRef.current) latestHtml.current = editorRef.current.innerHTML; }}
+            onFormatChange={() => {
+              if (editorRef.current) latestHtml.current = editorRef.current.innerHTML;
+              measureAutoGrow();
+            }}
           />
         </div>
       )}
@@ -98,7 +135,11 @@ export function PdfRichTextBox({
           suppressContentEditableWarning
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
-          onInput={(event) => { latestHtml.current = event.currentTarget.innerHTML; }}
+          onInput={(event) => {
+            cleanTypedZeroWidthSpaces(event.currentTarget);
+            latestHtml.current = event.currentTarget.innerHTML;
+            measureAutoGrow();
+          }}
           onKeyDown={(event) => {
             event.stopPropagation();
             if (event.key === 'Escape') {
@@ -107,12 +148,12 @@ export function PdfRichTextBox({
               onClose();
             }
           }}
-          className="h-full min-h-[18px] w-full min-w-[40px] cursor-text select-text overflow-auto break-words outline-none"
+          className="h-full min-h-[12px] w-full min-w-0 cursor-text select-text overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words leading-snug outline-none"
         />
       ) : safeHtml ? (
-        <div className="h-full w-full overflow-hidden break-words leading-snug" dangerouslySetInnerHTML={{ __html: safeHtml }} />
+        <div data-rich-text-content className="h-full w-full overflow-hidden whitespace-pre-wrap break-words leading-snug" dangerouslySetInnerHTML={{ __html: safeHtml }} />
       ) : annotation.label ? (
-        <span className="h-full w-full overflow-hidden break-words leading-snug">{annotation.label}</span>
+        <span data-rich-text-content className="h-full w-full overflow-hidden whitespace-pre-wrap break-words leading-snug">{annotation.label}</span>
       ) : canEdit ? (
         <span className="italic opacity-60">Double-click to edit</span>
       ) : null}

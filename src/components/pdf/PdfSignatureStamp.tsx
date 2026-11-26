@@ -27,7 +27,7 @@ export function SignatureStamp({
 }) {
   const fontOption = resolveSignatureFont(signature.signatureFont);
   const caption = formatSignatureCaption(signature.signerRole, signature.signerName);
-  const showDrawImage = signature.signatureMode === 'draw' && Boolean(signature.signatureImage);
+  const showImage = (signature.signatureMode === 'draw' || signature.signatureMode === 'upload') && Boolean(signature.signatureImage);
   const showTypedText = signature.signatureMode === 'type' && Boolean(signature.signatureText.trim());
   const typedSize = signature.signatureText.length > 22 ? 18 : signature.signatureText.length > 16 ? 21 : 25;
 
@@ -42,7 +42,7 @@ export function SignatureStamp({
       }}
     >
       <div className="flex h-[40px] w-full items-end justify-center overflow-hidden pb-0.5">
-        {showDrawImage ? (
+        {showImage ? (
           <img
             src={signature.signatureImage}
             alt={signature.signerName ? `${signature.signerName} signature` : 'Signature'}

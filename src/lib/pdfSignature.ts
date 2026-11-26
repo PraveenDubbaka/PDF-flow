@@ -1,6 +1,6 @@
 import type { PdfAnnotation } from './pdfDocuments';
 
-export type SignatureMode = 'draw' | 'type';
+export type SignatureMode = 'draw' | 'type' | 'upload';
 export type SignatureFontName = 'Dancing Script' | 'Great Vibes' | 'Caveat';
 
 export interface SignatureInkOption {
@@ -58,7 +58,7 @@ let memoryLastMode: SignatureMode = 'draw';
 export function getLastSignatureMode(): SignatureMode {
   try {
     const stored = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(SESSION_MODE_KEY) : null;
-    if (stored === 'draw' || stored === 'type') return stored;
+    if (stored === 'draw' || stored === 'type' || stored === 'upload') return stored;
   } catch {
     // Fall back to in-memory session state.
   }
@@ -96,14 +96,14 @@ export function resolveSignatureData(annotation: Partial<PdfAnnotation>): Resolv
   const inkColor = annotation.inkColor || annotation.color || DEFAULT_SIGNATURE_INK;
   const signedDate = (annotation.signedDate ?? '').trim();
 
-  if (annotation.signatureMode === 'draw' || annotation.signatureMode === 'type') {
+  if (annotation.signatureMode === 'draw' || annotation.signatureMode === 'type' || annotation.signatureMode === 'upload') {
     const signerName = (annotation.signerName ?? '').trim();
     const signerRole = (annotation.signerRole ?? '').trim();
     const signatureFont = resolveSignatureFont(annotation.signatureFont).name;
     const signatureText = (annotation.signatureText ?? signerName).trim();
     return {
       signatureMode: annotation.signatureMode,
-      signatureImage: annotation.signatureMode === 'draw' ? annotation.signatureImage : undefined,
+      signatureImage: annotation.signatureMode === 'draw' || annotation.signatureMode === 'upload' ? annotation.signatureImage : undefined,
       signatureText,
       signatureFont,
       inkColor,
@@ -139,6 +139,9 @@ export function canPlaceSignature(draft: Pick<SignatureDraft, 'signatureMode' | 
   if (draft.signatureMode === 'draw') {
     return Boolean(draft.hasDrawnStrokes || (draft.signatureImage && draft.signatureImage.startsWith('data:image/')));
   }
+  if (draft.signatureMode === 'upload') {
+    return Boolean(draft.signatureImage && draft.signatureImage.startsWith('data:image/'));
+  }
   return draft.signatureText.trim().length > 0;
 }
 
@@ -153,9 +156,9 @@ export function buildSignatureAnnotationFields(draft: SignatureDraft): Partial<P
   const displayName = signerName || signatureText || 'Untitled';
   const listTitle = `Signature — ${displayName}`;
 
-  if (draft.signatureMode === 'draw') {
+  if (draft.signatureMode === 'draw' || draft.signatureMode === 'upload') {
     return {
-      signatureMode: 'draw',
+      signatureMode: draft.signatureMode,
       signatureImage: draft.signatureImage,
       signatureText: undefined,
       signatureFont: undefined,

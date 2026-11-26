@@ -18,9 +18,15 @@ import {
   type SignatureFontName,
   type SignatureMode,
 } from '@/lib/pdfSignature';
+import {
+  processUploadedSignatureImage,
+  readFileAsDataUrl,
+  validateSignatureUploadFile,
+} from '@/lib/pdfSignatureUpload';
 import { cn } from '@/lib/utils';
 import { PdfSignaturePad, type SignatureStroke } from './PdfSignaturePad';
 import { SignatureStamp } from './PdfSignatureStamp';
+import { PdfSignatureUpload } from './PdfSignatureUpload';
 
 export function PdfSignatureDialog({
   open,
@@ -43,6 +49,11 @@ export function PdfSignatureDialog({
   const [strokes, setStrokes] = useState<SignatureStroke[]>([]);
   const [baseImage, setBaseImage] = useState<string | undefined>(undefined);
   const [drawnDataUrl, setDrawnDataUrl] = useState<string | undefined>(undefined);
+  const [uploadSourceUrl, setUploadSourceUrl] = useState<string | undefined>(undefined);
+  const [uploadedDataUrl, setUploadedDataUrl] = useState<string | undefined>(undefined);
+  const [removeBackground, setRemoveBackground] = useState(true);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [processingUpload, setProcessingUpload] = useState(false);
   const [signatureText, setSignatureText] = useState('');
   const [signatureFont, setSignatureFont] = useState<SignatureFontName>(DEFAULT_SIGNATURE_FONT);
   const [signerName, setSignerName] = useState(defaultName);
@@ -58,6 +69,10 @@ export function PdfSignatureDialog({
       setStrokes([]);
       setBaseImage(resolved.signatureMode === 'draw' ? resolved.signatureImage : undefined);
       setDrawnDataUrl(resolved.signatureMode === 'draw' ? resolved.signatureImage : undefined);
+      setUploadSourceUrl(resolved.signatureMode === 'upload' ? resolved.signatureImage : undefined);
+      setUploadedDataUrl(resolved.signatureMode === 'upload' ? resolved.signatureImage : undefined);
+      setRemoveBackground(true);
+      setUploadError(null);
       setSignatureText(resolved.signatureMode === 'type' ? resolved.signatureText : resolved.signerName);
       setSignatureFont(resolved.signatureFont);
       setSignerName(resolved.signerName);
@@ -69,6 +84,10 @@ export function PdfSignatureDialog({
       setStrokes([]);
       setBaseImage(undefined);
       setDrawnDataUrl(undefined);
+      setUploadSourceUrl(undefined);
+      setUploadedDataUrl(undefined);
+      setRemoveBackground(true);
+      setUploadError(null);
       setSignatureText(defaultName);
       setSignatureFont(DEFAULT_SIGNATURE_FONT);
       setSignerName(defaultName);
@@ -88,16 +107,59 @@ export function PdfSignatureDialog({
     setDrawnDataUrl(undefined);
   }, []);
 
+  const handleUploadFile = useCallback(async (file: File) => {
+    const validationError = validateSignatureUploadFile(file);
+    if (validationError) {
+      setUploadError(validationError);
+      return;
+    }
+    setUploadError(null);
+    setProcessingUpload(true);
+    try {
+      const rawUrl = await readFileAsDataUrl(file);
+      const processed = await processUploadedSignatureImage(rawUrl, removeBackground);
+      setUploadSourceUrl(rawUrl);
+      setUploadedDataUrl(processed);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Could not process the selected image.');
+    } finally {
+      setProcessingUpload(false);
+    }
+  }, [removeBackground]);
+
+  const handleToggleRemoveBackground = useCallback(async (checked: boolean) => {
+    setRemoveBackground(checked);
+    if (!uploadSourceUrl) return;
+    setProcessingUpload(true);
+    setUploadError(null);
+    try {
+      const processed = await processUploadedSignatureImage(uploadSourceUrl, checked);
+      setUploadedDataUrl(processed);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Could not update the signature image.');
+    } finally {
+      setProcessingUpload(false);
+    }
+  }, [uploadSourceUrl]);
+
+  const handleRemoveUpload = useCallback(() => {
+    setUploadSourceUrl(undefined);
+    setUploadedDataUrl(undefined);
+    setUploadError(null);
+  }, []);
+
+  const activeImage = mode === 'draw' ? drawnDataUrl : mode === 'upload' ? uploadedDataUrl : undefined;
+
   const canPlace = canPlaceSignature({
     signatureMode: mode,
-    signatureImage: drawnDataUrl,
+    signatureImage: activeImage,
     signatureText,
     hasDrawnStrokes: strokes.length > 0,
   });
 
   const previewSignature = {
     signatureMode: mode,
-    signatureImage: mode === 'draw' ? drawnDataUrl : undefined,
+    signatureImage: activeImage,
     signatureText: mode === 'type' ? signatureText : '',
     signatureFont,
     inkColor,
@@ -111,7 +173,7 @@ export function PdfSignatureDialog({
     setLastSignatureMode(mode);
     onSubmit({
       signatureMode: mode,
-      signatureImage: mode === 'draw' ? drawnDataUrl : undefined,
+      signatureImage: activeImage,
       signatureText: mode === 'type' ? signatureText : '',
       signatureFont,
       inkColor,
@@ -129,8 +191,8 @@ export function PdfSignatureDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div role="tablist" aria-label="Signature input mode" className="grid grid-cols-2 gap-1 rounded-[8px] bg-muted p-1">
-            {(['draw', 'type'] as const).map((tab) => (
+          <div role="tablist" aria-label="Signature input mode" className="grid grid-cols-3 gap-1 rounded-[8px] bg-muted p-1">
+            {(['draw', 'type', 'upload'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -142,7 +204,7 @@ export function PdfSignatureDialog({
                   mode === tab ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {tab === 'draw' ? 'Draw' : 'Type'}
+                {tab === 'draw' ? 'Draw' : tab === 'type' ? 'Type' : 'Upload'}
               </button>
             ))}
           </div>
@@ -155,6 +217,16 @@ export function PdfSignatureDialog({
               onChangeStrokes={setStrokes}
               onClearAll={handleClearDraw}
               onExportImage={setDrawnDataUrl}
+            />
+          ) : mode === 'upload' ? (
+            <PdfSignatureUpload
+              previewUrl={uploadedDataUrl}
+              removeBackground={removeBackground}
+              error={uploadError}
+              processing={processingUpload}
+              onSelectFile={handleUploadFile}
+              onToggleRemoveBackground={handleToggleRemoveBackground}
+              onRemove={handleRemoveUpload}
             />
           ) : (
             <div className="space-y-2.5">
