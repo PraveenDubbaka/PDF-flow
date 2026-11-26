@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { PdfAnnotation } from '@/lib/pdfDocuments';
 import {
   canPlaceSignature,
@@ -191,23 +192,13 @@ export function PdfSignatureDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div role="tablist" aria-label="Signature input mode" className="grid grid-cols-3 gap-1 rounded-[8px] bg-muted p-1">
-            {(['draw', 'type', 'upload'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                role="tab"
-                aria-selected={mode === tab}
-                onClick={() => handleModeChange(tab)}
-                className={cn(
-                  'h-8 rounded-[6px] text-[13px] font-medium transition-colors',
-                  mode === tab ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {tab === 'draw' ? 'Draw' : tab === 'type' ? 'Type' : 'Upload'}
-              </button>
-            ))}
-          </div>
+          <Tabs value={mode} onValueChange={(value) => handleModeChange(value as SignatureMode)}>
+            <TabsList aria-label="Signature input mode" className="w-full">
+              <TabsTrigger value="draw" className="flex-1">Draw</TabsTrigger>
+              <TabsTrigger value="type" className="flex-1">Type</TabsTrigger>
+              <TabsTrigger value="upload" className="flex-1">Upload</TabsTrigger>
+            </TabsList>
+          </Tabs>
 
           {mode === 'draw' ? (
             <PdfSignaturePad

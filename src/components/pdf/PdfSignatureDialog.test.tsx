@@ -86,7 +86,9 @@ describe('PdfSignatureDialog', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Type' }));
+    const typeTab = screen.getByRole('tab', { name: 'Type' });
+    fireEvent.mouseDown(typeTab, { button: 0 });
+    fireEvent.click(typeTab);
     const input = screen.getByLabelText('Signature');
     const placeButton = screen.getByRole('button', { name: 'Place signature' });
 
@@ -165,7 +167,9 @@ describe('PdfSignatureDialog', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('tab', { name: 'Upload' }));
+      const uploadTab = screen.getByRole('tab', { name: 'Upload' });
+      fireEvent.mouseDown(uploadTab, { button: 0 });
+      fireEvent.click(uploadTab);
       const placeButton = screen.getByRole('button', { name: 'Place signature' });
       expect(placeButton).toBeDisabled();
 
