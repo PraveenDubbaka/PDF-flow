@@ -89,7 +89,10 @@ import { ShareWithClientDialog } from "@/components/ShareWithClientDialog";
 import { LetterSectionPage, type LetterSectionPageHandle } from "@/components/LetterSectionPage";
 import { CustomSection } from "@/components/Sidebar";
 import { PdfWorkspace } from "@/components/pdf/PdfWorkspace";
-import { EngagementLetterPreview } from "@/components/pdf/EngagementLetterPreview";
+import { DocumentPreviewModal } from "@/components/pdf/DocumentPreviewModal";
+import { EngagementDocumentPreviewTrigger } from "@/components/pdf/EngagementDocumentPreviewTrigger";
+import { extractFsPagesHtml, type DocumentPreviewVariant } from "@/lib/documentPreviewPdf";
+import { isLetterChecklist, resolveEngagementPreviewTarget } from "@/lib/engagementDocumentPreview";
 import { NotesWorksheet } from "@/components/NotesWorksheet";
 import { NotesSlidePanel } from "@/components/NotesSlidePanel";
 import { ClientResponseDialog } from "@/components/ClientResponseDialog";
@@ -1010,8 +1013,9 @@ export default function EngagementDetail() {
  const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
  const [objectiveExpanded, setObjectiveExpanded] = useState(false);
  const [isLetterEditing, setIsLetterEditing] = useState(false);
- const [showLetterPreview, setShowLetterPreview] = useState(false);
+ const [previewDoc, setPreviewDoc] = useState<{ title: string; html: string; variant: DocumentPreviewVariant } | null>(null);
   const letterSaveRef = useRef<(() => void) | null>(null);
+  const fsViewerContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let cancelled = false;
     setPdfDocName(null);
@@ -1338,6 +1342,7 @@ export default function EngagementDetail() {
 
  // Sync custom letter existence state when navigating to/from custom sections
  useEffect(() => {
+ setPreviewDoc(null);
  if (checklistKey?.startsWith('custom-') && engagementId) {
  const html = readJsonFromLocalStorage<string | null>(`custom-letter-html-${engagementId}-${checklistKey}`, null);
  setCustomLetterExists(html !== null);
@@ -1346,6 +1351,41 @@ export default function EngagementDetail() {
  }
  setCustomLetterIsEditing(false);
  }, [checklistKey, engagementId]);
+
+ const openCurrentDocumentPreview = () => {
+ const customSec = checklistKey?.startsWith('custom-')
+ ? readJsonFromLocalStorage<CustomSection[]>(`engagement-custom-sections-${engagementId}`, []).find(s => s.id === checklistKey)
+ : undefined;
+ const target = resolveEngagementPreviewTarget({
+ checklistKey,
+ checklist,
+ pdfDocumentId,
+ customLetterExists,
+ customSectionName: customSec?.name,
+ });
+ if (!target) return;
+ if (target.source === 'fs') {
+ setPreviewDoc({ title: target.title, html: extractFsPagesHtml(fsViewerContainerRef.current, target.title), variant: target.variant });
+ return;
+ }
+ if (target.source === 'custom-letter') {
+ const html = letterPageRef.current?.getHtml()
+ || readJsonFromLocalStorage<string | null>(`custom-letter-html-${engagementId}-${checklistKey}`, null)
+ || '';
+ setPreviewDoc({ title: target.title, html, variant: target.variant });
+ return;
+ }
+ setPreviewDoc({ title: target.title, html: checklist?.sections?.[0]?.questions?.[0]?.text ?? '', variant: target.variant });
+ };
+ const activePreviewTarget = resolveEngagementPreviewTarget({
+ checklistKey,
+ checklist,
+ pdfDocumentId,
+ customLetterExists,
+ customSectionName: checklistKey?.startsWith('custom-')
+ ? readJsonFromLocalStorage<CustomSection[]>(`engagement-custom-sections-${engagementId}`, []).find(s => s.id === checklistKey)?.name
+ : undefined,
+ });
 
  // Redirect to first checklist when no key is in URL
  useEffect(() => {
@@ -2589,6 +2629,7 @@ export default function EngagementDetail() {
  ) : (
  <ExpandableIconButton variant="secondary" icon={<Pencil className="h-4 w-4" />} label="Edit" size="sm" onClick={() => setIsFSEditing(true)} />
  )}
+ <EngagementDocumentPreviewTrigger target={activePreviewTarget} onOpen={openCurrentDocumentPreview} />
  <ExpandableIconButton variant="secondary" icon={<Settings2 className="h-4 w-4" />} label="FS Settings" size="sm" onClick={() => setIsFSSettingsOpen(true)} />
  <ExpandableIconButton variant="secondary" icon={<LayoutGrid className="h-4 w-4" />} label="Layout" size="sm" onClick={() => setIsLayoutOpen(true)} />
  <ExpandableIconButton variant="secondary" icon={<MessageSquare className="h-4 w-4" />} label="Comments" size="sm" onClick={() => setIsFSCommentsOpen(v => !v)} />
@@ -2621,6 +2662,7 @@ export default function EngagementDetail() {
  ) : (
  <ExpandableIconButton variant="secondary" icon={<Pencil className="h-4 w-4" />} label="Edit" size="sm" onClick={() => letterPageRef.current?.startEditing()} />
  )}
+ <EngagementDocumentPreviewTrigger target={activePreviewTarget} onOpen={openCurrentDocumentPreview} />
  <DropdownMenu>
  <DropdownMenuTrigger asChild>
  <ExpandableIconButton variant="secondary" size="sm" icon={<Download className="h-4 w-4" />} label="Export" />
@@ -2681,7 +2723,7 @@ export default function EngagementDetail() {
  )}
  {checklist && !pdfDocumentId && <>
  {(() => {
- const isLetter = checklist?.sections?.length > 0 && checklist.sections[0]?.questions?.length > 0 && checklist.sections[0].questions[0]?.answerType === 'none' && !checklist.objective;
+ const isLetter = isLetterChecklist(checklist);
  if (isLetter) {
  return isLetterEditing ? (
  <>
@@ -2696,8 +2738,8 @@ export default function EngagementDetail() {
  <ExpandableIconButton variant="default" icon={<Save className="h-4 w-4" />} label="Save" size="sm" onClick={handleSave} />
  );
  })()}
- {['aud-el', 'aud-us-el', 'co-el'].includes(checklistKey ?? '') && (
- <ExpandableIconButton variant="secondary" icon={<Eye className="h-4 w-4" />} label="Preview" size="sm" onClick={() => setShowLetterPreview(true)} />
+ {!FS_PAGE_KEYS.has(checklistKey ?? '') && !checklistKey?.startsWith('custom-') && (
+ <EngagementDocumentPreviewTrigger target={activePreviewTarget} onOpen={openCurrentDocumentPreview} />
  )}
  <DropdownMenu>
  <DropdownMenuTrigger asChild>
@@ -2935,7 +2977,7 @@ export default function EngagementDetail() {
  <LayoutSettingsProvider>
  <CommentProvider>
  <FSCommentsBridge open={isFSCommentsOpen} currentScreen={FS_SCREEN_NAMES[FS_PAGE_TYPE_MAP[checklistKey]] ?? 'Balance Sheet'} />
- <div className="flex h-full overflow-hidden">
+ <div ref={fsViewerContainerRef} className="flex h-full overflow-hidden">
  <FSScrollCanvas onCommentsToggle={setIsFSCommentsOpen}>
  <FSPageViewer
  pageType={FS_PAGE_TYPE_MAP[checklistKey]}
@@ -3283,15 +3325,15 @@ export default function EngagementDetail() {
  isLetter={checklistKey?.startsWith('custom-') ? customLetterExists : !!(checklist?.sections?.length && checklist.sections[0]?.questions?.length && checklist.sections[0].questions[0]?.answerType === 'none' && !checklist.objective)}
  />
 
- {checklist && ['aud-el', 'aud-us-el', 'co-el'].includes(checklistKey ?? '') && (
- <EngagementLetterPreview
- open={showLetterPreview}
- onOpenChange={setShowLetterPreview}
+ <DocumentPreviewModal
+ open={previewDoc !== null}
+ onOpenChange={(nextOpen) => { if (!nextOpen) setPreviewDoc(null); }}
  engagementCode={displayId}
- letterHtml={checklist.sections?.[0]?.questions?.[0]?.text ?? ''}
+ documentTitle={previewDoc?.title ?? 'Engagement Letter'}
+ contentHtml={previewDoc?.html ?? ''}
  clientName={clientName !== 'Unknown Client' ? clientName : undefined}
+ variant={previewDoc?.variant ?? 'letter'}
  />
- )}
 
  <ConnectorsModal
  open={connectorsOpen}

@@ -142,6 +142,7 @@ export interface LetterSectionPageHandle {
  startEditing: () => void;
  saveEdits: () => void;
  cancelEdits: () => void;
+ getHtml: () => string;
 }
 
 interface LetterSectionPageProps {
@@ -184,6 +185,7 @@ export const LetterSectionPage = forwardRef<LetterSectionPageHandle, LetterSecti
  startEditing: () => { setIsEditing(true); onEditingChange?.(true); },
  saveEdits: () => { letterSaveRef.current?.(); },
  cancelEdits: () => { setIsEditing(false); onEditingChange?.(false); },
+ getHtml: () => letterHtml ?? '',
  }));
 
  const handleToggle = (id: string) => {

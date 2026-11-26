@@ -85,9 +85,9 @@ describe('Engagement Letter Preview modal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
     expect(screen.getByText('110%')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Hide page thumbnails' }));
-    expect(screen.queryByRole('complementary', { name: 'Letter page thumbnails' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: 'Document page thumbnails' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show page thumbnails' }));
-    expect(screen.getByRole('complementary', { name: 'Letter page thumbnails' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Document page thumbnails' })).toBeInTheDocument();
   });
 
   it('cycles Fit button states, shows active dropdown checkmark, recomputes on resize/page/rotation, and turns Fit off on zoom', async () => {
@@ -209,7 +209,7 @@ describe('Engagement Letter Preview modal', () => {
   it('shows Retry after an opening failure and recovers', async () => {
     vi.mocked(generateEngagementLetterPdf).mockRejectedValueOnce(new Error('Generation failed'));
     setup();
-    expect(await screen.findByText('We couldn’t open the engagement letter.')).toBeInTheDocument();
+    expect(await screen.findByText('We couldn’t open this document.')).toBeInTheDocument();
     expect(screen.getByText('Generation failed')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('Page 1 of 2')).toBeInTheDocument();
@@ -220,8 +220,8 @@ describe('Engagement Letter Preview modal', () => {
     vi.mocked(generateEngagementLetterPdf).mockReturnValue(new Promise(() => {}));
     setup();
     await act(async () => { await vi.advanceTimersByTimeAsync(LETTER_PREVIEW_TIMEOUT_MS + 1); });
-    expect(screen.getByText('We couldn’t open the engagement letter.')).toBeInTheDocument();
-    expect(screen.getByText('The letter took too long to open. Please try again.')).toBeInTheDocument();
+    expect(screen.getByText('We couldn’t open this document.')).toBeInTheDocument();
+    expect(screen.getByText('The document took too long to open. Please try again.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 });
