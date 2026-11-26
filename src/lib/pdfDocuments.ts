@@ -84,6 +84,13 @@ export interface PdfAnnotation {
   fillColor?: string;
   signerLabel?: string;
   signedDate?: string;
+  signatureMode?: 'draw' | 'type';
+  signatureImage?: string;
+  signatureText?: string;
+  signatureFont?: string;
+  inkColor?: string;
+  signerName?: string;
+  signerRole?: string;
 }
 
 export interface PdfWatermark {

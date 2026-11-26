@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import { PDFDocument, degrees, rgb, StandardFonts, pushGraphicsState, popGraphicsState, rectangle, clip, endPath } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -38,6 +39,10 @@ import { ResizableCalculationStamp } from '@/components/pdf/ResizableCalculation
 import { PdfRichTextBox } from '@/components/pdf/PdfRichTextBox';
 import { ResizableRedactionBox } from '@/components/pdf/ResizableRedactionBox';
 import { parseRichTextRuns } from '@/lib/pdfRichText';
+import { PdfSignatureDialog } from '@/components/pdf/PdfSignatureDialog';
+import { ResizableSignatureStamp } from '@/components/pdf/PdfSignatureStamp';
+import { buildSignatureAnnotationFields, formatSignatureCaption, formatSignatureListTitle, type SignatureDraft } from '@/lib/pdfSignature';
+import { drawSignatureStampToPdf } from '@/lib/pdfSignatureExport';
 import { applyUndoSnapshot, captureUndoSnapshot, emptyUndoStack, popRedo, popUndo, pushUndo, type PdfUndoSnapshot, type UndoStack } from '@/lib/pdfUndo';
 import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
@@ -276,7 +281,7 @@ function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, o
 
 const PLACE_NOUN: Partial<Record<PdfAnnotationKind, string>> = { link: 'link', comment: 'comment', 'trial-balance': 'TB link', callout: 'callout', signature: 'signature' };
 
-function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, fillColor, editing, watermarks, editingTextId, onEditText, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations, hoveredCalcId, onHoverCalc, pulseCalc, placeNoun, onTrialBalanceLink, trialBalanceAccounts }: {
+function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, fillColor, editing, watermarks, editingTextId, onEditText, onEditSignature, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations, hoveredCalcId, onHoverCalc, pulseCalc, placeNoun, onTrialBalanceLink, trialBalanceAccounts }: {
   placeNoun?: string | null;
   onTrialBalanceLink: (annotation: PdfAnnotation) => void;
   trialBalanceAccounts: TrialBalanceAccount[];
@@ -292,6 +297,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   watermarks?: PdfWatermark[];
   editingTextId?: string | null;
   onEditText?: (id: string | null) => void;
+  onEditSignature?: (annotation: PdfAnnotation) => void;
   onAdd: (annotation: PdfAnnotation) => void;
   onSelect: (id: string | null) => void;
   selectedId: string | null;
@@ -417,7 +423,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
     onAdd({
       id: crypto.randomUUID(), kind: activeKind, page: pageNumber, x, y,
       width: isPoint ? 4 : isRichBox || isSig ? 24 : 18,
-      height: isPoint ? 4 : isRichBox ? 8 : isSig ? 7 : 5,
+      height: isPoint ? 4 : isRichBox ? 8 : isSig ? 11 : 5,
       color: activeKind === 'comment' ? '#f59e0b' : activeKind === 'link' ? '#1C63A6' : activeKind === 'trial-balance' ? '#2563eb' : color,
       ...(isRichBox && fillColor ? { fillColor } : {}),
     });
@@ -577,10 +583,16 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           onPointerUp={(event) => endDrag(event)}
           onPointerCancel={(event) => endDrag(event, true)}
           onDoubleClick={(event) => {
-            if (!editing || activeKind || !isRichBox) return;
-            event.stopPropagation();
-            onSelect(annotation.id);
-            onEditText?.(annotation.id);
+            if (!editing || activeKind) return;
+            if (isRichBox) {
+              event.stopPropagation();
+              onSelect(annotation.id);
+              onEditText?.(annotation.id);
+            } else if (annotation.kind === 'signature') {
+              event.stopPropagation();
+              onSelect(annotation.id);
+              onEditSignature?.(annotation);
+            }
           }}
           data-calc-id={annotation.kind === 'calculation' ? annotation.id : undefined}
           onMouseEnter={annotation.kind === 'calculation' ? () => onHoverCalc?.(annotation.id) : undefined}
@@ -603,6 +615,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             !activeKind && !pickingValue && (annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'comment') && 'outline-none hover:outline hover:outline-1 hover:outline-offset-2 hover:outline-primary/50',
             annotation.kind === 'calculation' && 'border-none rounded-[4px]',
             annotation.kind === 'calculation' && pulsingId === annotation.id && 'animate-pulse',
+            annotation.kind === 'signature' && 'rounded-[4px]',
             selectedId === annotation.id && annotation.kind !== 'calculation' && 'ring-2 ring-primary ring-offset-1',
             annotation.kind === 'comment' && 'flex items-center justify-center rounded-sm border-none bg-warning text-warning-foreground',
             (annotation.kind === 'link' || annotation.kind === 'trial-balance') && 'flex max-w-[60%] items-center gap-1 whitespace-nowrap rounded-full border-none bg-primary/10 px-2 py-0.5',
@@ -616,13 +629,13 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
           )}
           style={{
             left: `${boxRect.x}%`, top: `${boxRect.y}%`,
-            width: annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'calculation' ? 'auto' : `${boxRect.width}%`,
-            height: annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'calculation' ? 'auto' : `${boxRect.height}%`,
+            width: annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'calculation' || annotation.kind === 'signature' ? 'auto' : `${boxRect.width}%`,
+            height: annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'calculation' || annotation.kind === 'signature' ? 'auto' : `${boxRect.height}%`,
             borderColor: annotation.color,
             backgroundColor: annotation.kind === 'highlight' ? annotation.color : isRichBox ? (annotation.fillColor ?? 'transparent') : undefined,
             boxShadow: annotation.kind === 'calculation' && (pulsingId === annotation.id || hoveredCalcId === annotation.id) ? `0 0 0 3px ${annotation.color}66` : undefined,
           }}
-          title={annotation.kind === 'trial-balance' ? tbTooltip : annotation.kind === 'link' ? annotation.engagementLink ? engagementLinkTooltip(annotation.engagementLink) : annotation.value ?? annotation.label : annotation.label}
+          title={annotation.kind === 'trial-balance' ? tbTooltip : annotation.kind === 'link' ? annotation.engagementLink ? engagementLinkTooltip(annotation.engagementLink) : annotation.value ?? annotation.label : annotation.kind === 'signature' ? formatSignatureListTitle(annotation) : annotation.label}
         >
           {annotation.kind === 'freehand' && annotation.points && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={annotation.points.map((p) => `${(p.x - annotation.x) / annotation.width * 100},${(p.y - annotation.y) / annotation.height * 100}`).join(' ')} fill="none" stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" /></svg>}
           {annotation.kind === 'strikeout' && annotation.regions && <svg className="h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">{annotation.regions.map((r, index) => <line key={index} x1={(r.x - annotation.x) / annotation.width * 100} x2={(r.x + r.width - annotation.x) / annotation.width * 100} y1={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} y2={(r.y + r.height / 2 - annotation.y) / annotation.height * 100} stroke={annotation.color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />)}</svg>}
@@ -639,11 +652,24 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             />
           )}
           {annotation.kind === 'signature' && (
-            <div className="flex h-full w-full flex-col justify-end px-1 py-0.5" style={{ color: annotation.color }}>
-              <div className="w-full border-b" style={{ borderColor: annotation.color }} />
-              <span className="mt-1 truncate text-[11px] font-semibold leading-tight">{annotation.signerLabel ?? annotation.label ?? 'Reviewed'}</span>
-              {annotation.signedDate && <span className="truncate text-[10px] leading-tight opacity-80">{annotation.signedDate}</span>}
-            </div>
+            <ResizableSignatureStamp
+              annotation={annotation}
+              scale={(annotation.stampScale ?? 1) * zoom}
+              minimumScale={0.5 * zoom}
+              selected={!!editing && selectedId === annotation.id && !activeKind && !placingCalc && !pickingValue}
+              onCommit={({ scale, width, height, dx, dy }) => {
+                const bounds = pageRef.current?.getBoundingClientRect();
+                if (!bounds) return;
+                suppressClick.current = true;
+                onUpdate?.(annotation.id, {
+                  stampScale: scale / zoom,
+                  x: annotation.x + (dx / bounds.width) * 100,
+                  y: annotation.y + (dy / bounds.height) * 100,
+                  width: (width / bounds.width) * 100,
+                  height: (height / bounds.height) * 100,
+                });
+              }}
+            />
           )}
           {annotation.kind === 'redaction' && (
             <ResizableRedactionBox
@@ -788,8 +814,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [pendingAnnotation, setPendingAnnotation] = useState<PdfAnnotation | null>(null);
   const [pendingValue, setPendingValue] = useState('');
-  const [pendingSignatureLabel, setPendingSignatureLabel] = useState(() => `Reviewed by ${currentMentionUser.name}`);
-  const [pendingSignatureDate, setPendingSignatureDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [signatureDialog, setSignatureDialog] = useState<{ annotation: PdfAnnotation; isEdit: boolean } | null>(null);
   const [pendingRedaction, setPendingRedaction] = useState<PdfAnnotation | null>(null);
   const [linkTab, setLinkTab] = useState('web');
   const [tbTab, setTbTab] = useState<'accounts' | 'lead-sheets'>('accounts');
@@ -1116,7 +1141,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         handleRedo();
         return;
       }
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedAnnotationId && !editingTextId && !pendingAnnotation && !pendingRedaction) {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedAnnotationId && !editingTextId && !pendingAnnotation && !pendingRedaction && !signatureDialog) {
         const selected = editStateRef.current.annotations.find((item) => item.id === selectedAnnotationId);
         if (selected && selected.kind !== 'comment') {
           event.preventDefault();
@@ -1127,7 +1152,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [deleteAnnotation, editing, editingTextId, handleRedo, handleUndo, pendingAnnotation, pendingRedaction, selectedAnnotationId]);
+  }, [deleteAnnotation, editing, editingTextId, handleRedo, handleUndo, pendingAnnotation, pendingRedaction, selectedAnnotationId, signatureDialog]);
 
 
   const addAnnotation = useCallback((annotation: PdfAnnotation) => {
@@ -1158,9 +1183,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       return;
     }
     if (annotation.kind === 'signature') {
-      setPendingAnnotation(annotation);
-      setPendingSignatureLabel(`Reviewed by ${currentMentionUser.name}`);
-      setPendingSignatureDate(new Date().toISOString().slice(0, 10));
+      setSignatureDialog({ annotation, isEdit: false });
       setActiveKind(null);
       return;
     }
@@ -1231,24 +1254,25 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     setPendingValue('');
   };
 
-  const confirmSignature = useCallback(() => {
-    const signerLabel = pendingSignatureLabel.trim();
-    if (!pendingAnnotation || !signerLabel) return;
-    const signedDate = pendingSignatureDate.trim();
-    const label = signedDate ? `${signerLabel} · ${signedDate}` : signerLabel;
+  const confirmSignature = useCallback((draft: SignatureDraft) => {
+    if (!signatureDialog) return;
+    const fields = buildSignatureAnnotationFields(draft);
+    if (signatureDialog.isEdit) {
+      updateAnnotation(signatureDialog.annotation.id, fields);
+      setSelectedAnnotationId(signatureDialog.annotation.id);
+      setSignatureDialog(null);
+      return;
+    }
     const annotation: PdfAnnotation = {
-      ...pendingAnnotation,
-      signerLabel,
-      signedDate,
-      label,
-      value: label,
+      ...signatureDialog.annotation,
+      ...fields,
       author: currentMentionUser.name,
       createdAt: new Date().toISOString(),
     };
-    commitUndoable((current) => withHistory({ ...current, annotations: [...current.annotations, annotation] }, { kind: 'signature', title: label, page: annotation.page, color: annotation.color, targetId: annotation.id }));
-    setPendingAnnotation(null);
+    commitUndoable((current) => withHistory({ ...current, annotations: [...current.annotations, annotation] }, { kind: 'signature', title: annotation.label ?? 'Signature', page: annotation.page, color: annotation.color, targetId: annotation.id }));
+    setSignatureDialog(null);
     setSelectedAnnotationId(annotation.id);
-  }, [commitUndoable, pendingAnnotation, pendingSignatureDate, pendingSignatureLabel]);
+  }, [commitUndoable, signatureDialog, updateAnnotation]);
 
   const confirmPendingRedaction = useCallback(() => {
     if (!pendingRedaction) return;
@@ -1631,10 +1655,13 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     if (metadata.creator) output.setCreator(metadata.creator);
     const sourceIndices = visiblePages.map((sourcePage) => sourcePage - 1);
     const copied = await output.copyPages(source, sourceIndices);
+    output.registerFontkit(fontkit);
     const font = await output.embedFont(StandardFonts.HelveticaBold);
     const fontRegular = await output.embedFont(StandardFonts.Helvetica);
     const fontItalic = await output.embedFont(StandardFonts.HelveticaOblique);
     const fontBoldItalic = await output.embedFont(StandardFonts.HelveticaBoldOblique);
+    const fontTimesItalic = await output.embedFont(StandardFonts.TimesRomanItalic);
+    const scriptFontCache = new Map<string, Awaited<ReturnType<typeof output.embedFont>>>();
     const exportWatermarks = getEditStateWatermarks(editState);
     for (let index = 0; index < copied.length; index += 1) {
       const copiedPage = copied[index];
@@ -1712,11 +1739,19 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             }
           }
         } else if (item.kind === 'signature') {
-          const lineY = y + boxHeight * 0.55;
-          copiedPage.drawLine({ start: { x, y: lineY }, end: { x: x + boxWidth, y: lineY }, color, thickness: 1 });
-          const signer = (item.signerLabel ?? item.label ?? '').replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
-          if (signer) copiedPage.drawText(signer, { x: x + 2, y: Math.max(y + 10, lineY - 11), size: 9, font, color });
-          if (item.signedDate) copiedPage.drawText(item.signedDate.replace(/[^\x20-\x7E\xA0-\xFF]/g, ''), { x: x + 2, y: Math.max(y + 1, lineY - 21), size: 8, font: fontRegular, color });
+          await drawSignatureStampToPdf({
+            output,
+            page: copiedPage,
+            item,
+            x,
+            y,
+            boxWidth,
+            boxHeight,
+            fontRegular,
+            fontMedium: font,
+            fontItalicFallback: fontTimesItalic,
+            scriptFontCache,
+          });
         } else if (item.kind === 'strikeout') {
           const regions = item.regions ?? [{ x: item.x, y: item.y, width: item.width, height: item.height }];
           for (const region of regions) copiedPage.drawLine({ start: { x: width * region.x / 100, y: height - height * (region.y + region.height / 2) / 100 }, end: { x: width * (region.x + region.width) / 100, y: height - height * (region.y + region.height / 2) / 100 }, color, thickness: 1.5 });
@@ -2093,7 +2128,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             </div>
           </div>
         </div>
-        <div className="space-y-2">{editState.annotations.filter((item) => !['comment', 'link', 'trial-balance', 'image', 'calculation', 'redaction'].includes(item.kind)).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => { setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }} onRename={(label) => updateAnnotation(item.id, item.kind === 'signature' ? { signerLabel: label, label: item.signedDate ? `${label} · ${item.signedDate}` : label } : { label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>
+        <div className="space-y-2">{editState.annotations.filter((item) => !['comment', 'link', 'trial-balance', 'image', 'calculation', 'redaction'].includes(item.kind)).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => { setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }} onRename={(label) => updateAnnotation(item.id, item.kind === 'signature' ? { signerName: label, signerLabel: formatSignatureCaption(item.signerRole ?? '', label), label: `Signature — ${label || 'Untitled'}` } : { label })} onColor={(color) => updateAnnotation(item.id, item.kind === 'signature' ? { color, inkColor: color } : { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>
       </div>
     );
     if (activePanel === 'comments') {
@@ -2552,7 +2587,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(effectiveZoom * 100)}%</span><Button variant="ghost" size="icon-sm" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
           </div>
           {editing && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
-          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} fillColor={activeFillColor} editing={editing} watermarks={activeWatermarks} editingTextId={editing ? editingTextId : null} onEditText={setEditingTextId} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
+          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} fillColor={activeFillColor} editing={editing} watermarks={activeWatermarks} editingTextId={editing ? editingTextId : null} onEditText={setEditingTextId} onEditSignature={(sig) => setSignatureDialog({ annotation: sig, isEdit: true })} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
         </section>
         {editing && <aside style={{ width: toolsCollapsed ? 48 : editPanelWidth }} className={cn("relative flex min-h-0 shrink-0 border-l border-border bg-card", !toolsCollapsed && "pdf-edit-panel min-w-[360px] max-w-[calc(100vw-64px)]")}>
           {toolsCollapsed ? <div className="flex w-12 justify-center pt-2"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="Expand Tools Panel" onClick={() => setToolsCollapsed(false)}><ToolsPanelIcon /></Button></TooltipTrigger><TooltipContent side="left">Expand Tools Panel</TooltipContent></Tooltip></div> : <>
@@ -2597,11 +2632,19 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <PdfSignatureDialog
+        open={!!signatureDialog}
+        editingAnnotation={signatureDialog?.isEdit ? signatureDialog.annotation : null}
+        defaultName={currentMentionUser.name}
+        defaultDate={new Date().toISOString().slice(0, 10)}
+        onClose={() => setSignatureDialog(null)}
+        onSubmit={confirmSignature}
+      />
       <Dialog open={!!pendingAnnotation} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
         <DialogContent className={pendingAnnotation?.kind === 'link' ? cn('pdf-add-link-dialog pdf-tb-dialog flex w-[520px] max-w-[calc(100vw-32px)] flex-col', linkTab === 'engagement' && 'max-h-[60vh]') : pendingAnnotation?.kind === 'trial-balance' ? 'pdf-tb-dialog flex max-h-[75vh] w-[880px] max-w-[calc(100vw-32px)] flex-col' : 'max-w-sm'} onEscapeKeyDown={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }} onInteractOutside={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>
-              {pendingAnnotation?.kind === 'link' ? 'Add link' : pendingAnnotation?.kind === 'trial-balance' ? 'Link to Trial Balance' : pendingAnnotation?.kind === 'signature' ? 'Add signature' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
+              {pendingAnnotation?.kind === 'link' ? 'Add link' : pendingAnnotation?.kind === 'trial-balance' ? 'Link to Trial Balance' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
             </DialogTitle>
           </DialogHeader>
           {pendingAnnotation?.kind === 'link' && <Tabs className="shrink-0" value={linkTab} onValueChange={setLinkTab}><TabsList className="w-full"><TabsTrigger value="web" className="flex-1">Web URL</TabsTrigger><TabsTrigger value="engagement" className="flex-1">Engagement</TabsTrigger></TabsList></Tabs>}
@@ -2667,36 +2710,6 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
               </div>
               )}
             </div>
-          ) : pendingAnnotation?.kind === 'signature' ? (
-          <>
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="signature-label">Label</Label>
-                <Input
-                  id="signature-label"
-                  autoFocus
-                  value={pendingSignatureLabel}
-                  placeholder="Reviewed by Name"
-                  onChange={(event) => setPendingSignatureLabel(event.target.value)}
-                  onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); confirmSignature(); } }}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="signature-date">Date</Label>
-                <Input
-                  id="signature-date"
-                  type="date"
-                  value={pendingSignatureDate}
-                  onChange={(event) => setPendingSignatureDate(event.target.value)}
-                  onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); confirmSignature(); } }}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => setPendingAnnotation(null)}>Cancel</Button>
-              <Button disabled={!pendingSignatureLabel.trim()} onClick={confirmSignature}>Add signature</Button>
-            </DialogFooter>
-          </>
           ) : (
           <>
           {pendingAnnotation?.kind === 'link' && <Label>Link to web URL</Label>}
@@ -2751,7 +2764,7 @@ function AnnotationRow({ item, selected, onSelect, onRename, onDelete, onColor }
           />
         ) : (
           <button type="button" className="flex-1 truncate text-left text-xs font-medium text-foreground" onDoubleClick={() => setRenaming(true)}>
-            p.{item.page} {item.label || item.value || item.kind}
+            p.{item.page} {item.kind === 'signature' ? formatSignatureListTitle(item) : (item.label || item.value || item.kind)}
           </button>
         )}
         <button

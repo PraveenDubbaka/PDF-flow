@@ -27,3 +27,4 @@
 - Scope EngagementLinkPicker by mode so Hyperlink > Engagement hides procedure lead sheets while Trial Balance > Lead sheets reuses the same tree, line-item toggles, tooltips, and procedure navigation.
 - Manage PDF annotation, calculation, redaction, and watermark undo/redo through a dedicated snapshot stack (`src/lib/pdfUndo.ts`) that leaves non-annotation page state intact and records drag/resize commits once on release.
 - Persist multiple PDF watermarks in `edit_state.watermarks` (migrating legacy single `watermark` on read) and draw all watermarks on both the live page canvas and exported/printed PDF bytes.
+- Render and export PDF signatures as bordered stamp cards (`src/lib/pdfSignature.ts`, `src/lib/pdfSignatureExport.ts`, `PdfSignatureStamp.tsx`, `PdfSignatureDialog.tsx`) storing draw/type fields while migrating legacy `signerLabel`/`signedDate` records on read and embedding subsetted script fonts with an italic fallback.
