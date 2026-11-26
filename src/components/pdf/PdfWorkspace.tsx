@@ -1902,7 +1902,10 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     if (printing) return;
     setPrinting(true);
     try {
-      await printGeneratedPdf(createSavedBytes, createPdfPrinter(() => toast.info(`Use ${isMacPlatform() ? '⌘P' : 'Ctrl+P'} to print`)));
+      await printGeneratedPdf(createSavedBytes, createPdfPrinter((openPdf) => toast.info(`Use ${isMacPlatform() ? '⌘P' : 'Ctrl+P'} to print`, openPdf ? {
+        action: { label: 'Open PDF', onClick: openPdf },
+        duration: 600000,
+      } : undefined)));
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : 'Unable to print this PDF.');
     } finally {

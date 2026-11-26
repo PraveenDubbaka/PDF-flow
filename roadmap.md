@@ -33,3 +33,4 @@
 - [x] Absolutely centre bordered Undo/Redo with narrow-width handling; verify bar screenshots and tests.
 - [x] Fix undefined page-bounds export assertion in shared Save/Download/Print; cover missing edit state and all signature/rich-text exports.
 - [x] Verify main-screen view/edit Download and Print, plus pop-out Print; run tests and commit (headless Chromium print invocation; native OS dialog and user's original PDF remain unverified).
+- [x] Remove pre-opened print fallback tab; test success, PDF-only fallback and blocked-popup action, and verify main-screen view/edit and pop-out printing without new tabs (headless Chromium; native dialog appearance remains unverified).

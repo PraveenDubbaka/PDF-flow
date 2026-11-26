@@ -23,19 +23,16 @@ export function isMacPlatform() {
   return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
 }
 
-export function createPdfPrinter(onManualPrint: () => void): PdfPrinter {
-  // Reserve the fallback during the click, before PDF generation loses user activation.
-  let fallbackWindow = window.open('about:blank', '_blank');
-  if (fallbackWindow) fallbackWindow.opener = null;
+export function createPdfPrinter(onManualPrint: (openPdf?: () => void) => void): PdfPrinter {
   let frame: HTMLIFrameElement | null = null;
   let blobUrl: string | null = null;
+  let cleanupTimer: number | undefined;
   const dispose = () => {
+    window.clearTimeout(cleanupTimer);
     frame?.remove();
     frame = null;
     if (blobUrl) URL.revokeObjectURL(blobUrl);
     blobUrl = null;
-    fallbackWindow?.close();
-    fallbackWindow = null;
   };
   return {
     dispose,
@@ -43,9 +40,9 @@ export function createPdfPrinter(onManualPrint: () => void): PdfPrinter {
       // Native PDF viewers in frames do not reliably expose print(). Render the
       // exported (edited) PDF as ordinary printable HTML instead, at 144 dpi.
       const task = pdfjs.getDocument({ data: bytes.slice() });
-      const pdf = await task.promise;
       const pages: string[] = [];
       try {
+        const pdf = await task.promise;
         for (let index = 1; index <= pdf.numPages; index++) {
           const page = await pdf.getPage(index);
           const viewport = page.getViewport({ scale: 2 });
@@ -86,29 +83,30 @@ export function createPdfPrinter(onManualPrint: () => void): PdfPrinter {
       target.addEventListener('afterprint', dispose, { once: true });
       target.focus();
       target.print();
-      fallbackWindow?.close();
-      fallbackWindow = null;
       // Do not revoke/remove while a print dialog may still be consuming pages.
-      window.setTimeout(dispose, 600000);
+      cleanupTimer = window.setTimeout(dispose, 600000);
     },
     async fallback(bytes) {
-      frame?.remove();
-      frame = null;
+      dispose();
       blobUrl = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'application/pdf' }));
-      const target = fallbackWindow && !fallbackWindow.closed ? fallbackWindow : window.open('about:blank', '_blank');
-      if (!target) {
-        dispose();
-        throw new Error('Allow pop-ups for this site, then click Print again.');
-      }
-      target.opener = null;
-      target.addEventListener('load', () => {
-        try { target.focus(); target.print(); } catch { /* Native viewer: use its print command. */ }
-      }, { once: true });
-      target.location.href = blobUrl;
-      // Viewer print can fail silently, so always provide the manual shortcut.
-      onManualPrint();
-      fallbackWindow = null; // Leave the PDF tab open for manual printing.
-      window.setTimeout(() => { if (blobUrl) URL.revokeObjectURL(blobUrl); blobUrl = null; }, 600000);
+      const openPdf = () => {
+        if (!blobUrl) return;
+        const target = window.open(blobUrl, '_blank');
+        if (!target) {
+          // Keep the URL alive so the toast action can retry with a fresh gesture.
+          onManualPrint(openPdf);
+          return;
+        }
+        target.opener = null;
+        target.addEventListener('load', () => {
+          try { target.focus(); target.print(); } catch { /* Native viewer: use its print command. */ }
+        }, { once: true });
+        target.addEventListener('afterprint', () => { target.close(); dispose(); }, { once: true });
+        // Viewer print can fail silently, so always provide the manual shortcut.
+        onManualPrint();
+      };
+      openPdf();
+      cleanupTimer = window.setTimeout(dispose, 600000);
     },
   };
 }
