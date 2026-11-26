@@ -65,13 +65,13 @@ describe('PdfAddLinkDialog consolidated link picker', () => {
       'Balance Sheet',
     );
 
-    // Engagement type: full left-panel engagement tree with "Search engagement" placeholder
+    // Engagement type: left-panel engagement tree without PR Procedures
     chooseLinkType('Engagement');
     expect(screen.getByPlaceholderText('Search engagement')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'CO Client Onboarding' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'DO Documents' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'TB Trial Balance & Adjusting Entries' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'PR Procedures' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'PR Procedures' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'FS Financial Statements' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'SO Completion & Signoffs' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Client Onboarding/ }));
@@ -111,5 +111,53 @@ describe('PdfAddLinkDialog consolidated link picker', () => {
     expect(screen.getByRole('button', { name: 'Trial Balance (general)' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /1010 Cash & Bank · PY1: 237,307\.23/ }));
     expect(props.onSelectTrialBalanceAccount).toHaveBeenCalledWith(ACCOUNTS[0], 'PY1');
+  }, 15000);
+
+  it('keeps identical fixed width and height classes across all five link types, expansions, and empty searches', () => {
+    renderDialog();
+    const expectedSizeClasses = [
+      'w-[840px]',
+      'max-w-[calc(100vw-32px)]',
+      'h-[640px]',
+      'max-h-[calc(100dvh-32px)]',
+    ];
+    const assertDialogFixed = () => {
+      const dialog = screen.getByRole('dialog');
+      for (const cls of expectedSizeClasses) {
+        expect(dialog.className).toContain(cls);
+      }
+      return dialog.className;
+    };
+
+    const baseline = assertDialogFixed(); // Web URL
+
+    chooseLinkType('Document');
+    expect(assertDialogFixed()).toBe(baseline);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search documents' }), { target: { value: 'zzzz-no-match' } });
+    expect(screen.getByText('No documents found')).toBeInTheDocument();
+    expect(assertDialogFixed()).toBe(baseline);
+
+    chooseLinkType('Engagement');
+    expect(assertDialogFixed()).toBe(baseline);
+    expect(screen.queryByRole('button', { name: 'PR Procedures' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'CO Client Onboarding' }));
+    expect(assertDialogFixed()).toBe(baseline);
+    fireEvent.click(screen.getByRole('button', { name: 'CO Client Onboarding' }));
+    expect(assertDialogFixed()).toBe(baseline);
+
+    chooseLinkType('Lead sheet');
+    expect(assertDialogFixed()).toBe(baseline);
+    fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Current assets' }));
+    expect(assertDialogFixed()).toBe(baseline);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search lead sheets' }), { target: { value: 'zzzz-no-match' } });
+    expect(screen.getByText('No results')).toBeInTheDocument();
+    expect(assertDialogFixed()).toBe(baseline);
+
+    chooseLinkType('Trial balance');
+    expect(assertDialogFixed()).toBe(baseline);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search trial balance accounts' }), { target: { value: 'zzzz-no-match' } });
+    expect(screen.getByText('No accounts found')).toBeInTheDocument();
+    expect(assertDialogFixed()).toBe(baseline);
   }, 15000);
 });

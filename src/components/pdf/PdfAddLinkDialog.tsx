@@ -69,7 +69,6 @@ export function PdfAddLinkDialog({
   const [urlValue, setUrlValue] = useState('');
   const [docSearch, setDocSearch] = useState('');
   const [tbSearch, setTbSearch] = useState('');
-  const [engagementLeadSheetOpen, setEngagementLeadSheetOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -77,12 +76,10 @@ export function PdfAddLinkDialog({
     setUrlValue('');
     setDocSearch('');
     setTbSearch('');
-    setEngagementLeadSheetOpen(false);
   }, [open]);
 
   const handleTypeChange = (next: PdfLinkType) => {
     setLinkType(next);
-    setEngagementLeadSheetOpen(false);
     writeSessionLinkType(next);
   };
 
@@ -101,19 +98,15 @@ export function PdfAddLinkDialog({
     );
   }, [tbSearch, trialBalanceAccounts]);
 
-  const wide = linkType === 'lead-sheet' || linkType === 'trial-balance' || (linkType === 'engagement' && engagementLeadSheetOpen);
-
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
       <DialogContent
         aria-describedby={undefined}
         className={cn(
-          'pdf-add-link-dialog pdf-tb-dialog flex max-w-[calc(100vw-32px)] flex-col',
-          wide ? 'max-h-[75vh] w-[880px]' : 'w-[520px]',
-          (linkType === 'engagement' || linkType === 'document') && 'max-h-[65vh]',
+          'pdf-add-link-dialog pdf-tb-dialog flex h-[640px] max-h-[calc(100dvh-32px)] w-[840px] max-w-[calc(100vw-32px)] flex-col',
         )}
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>Add link</DialogTitle>
         </DialogHeader>
 
@@ -134,8 +127,8 @@ export function PdfAddLinkDialog({
         </div>
 
         {linkType === 'web' && (
-          <>
-            <div className="space-y-1">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto">
+            <div className="shrink-0 space-y-1">
               <Label htmlFor="pdf-web-link-input" className="text-[13px] font-medium text-foreground">Web URL</Label>
               <Input
                 id="pdf-web-link-input"
@@ -151,15 +144,15 @@ export function PdfAddLinkDialog({
                 }}
               />
             </div>
-            <DialogFooter>
+            <DialogFooter className="shrink-0 flex-row justify-end gap-2">
               <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
               <Button type="button" disabled={!urlValue.trim()} onClick={() => onSelectWebUrl(urlValue.trim())}>Add link</Button>
             </DialogFooter>
-          </>
+          </div>
         )}
 
         {linkType === 'document' && (
-          <div className="flex min-h-0 min-w-0 flex-col gap-2">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
             <Input
               className="shrink-0"
               autoFocus
@@ -168,7 +161,7 @@ export function PdfAddLinkDialog({
               value={docSearch}
               onChange={(event) => setDocSearch(event.target.value)}
             />
-            <div className="min-h-0 overflow-auto rounded-[8px] border border-border">
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-[8px] border border-border">
               {filteredDocuments.length === 0 ? (
                 <p className="p-3 text-[13px] text-foreground">No documents found</p>
               ) : (
@@ -197,15 +190,16 @@ export function PdfAddLinkDialog({
 
         {linkType === 'engagement' && (
           <EngagementLinkPicker
+            key="engagement"
             mode="engagement"
             engagementId={engagementId}
-            onExpandedLeadSheetChange={setEngagementLeadSheetOpen}
             onSelect={(link) => onSelectEngagementLink(link, engagementLinkLabel(link))}
           />
         )}
 
         {linkType === 'lead-sheet' && (
           <EngagementLinkPicker
+            key="lead-sheets"
             mode="lead-sheets"
             engagementId={engagementId}
             onSelect={(link) => onSelectEngagementLink(link, engagementLinkLabel(link))}
@@ -215,13 +209,14 @@ export function PdfAddLinkDialog({
         {linkType === 'trial-balance' && (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
             <Input
+              className="shrink-0"
               autoFocus
               aria-label="Search trial balance accounts"
               value={tbSearch}
               placeholder="Search account no. or description"
               onChange={(event) => setTbSearch(event.target.value)}
             />
-            <div className="max-h-72 overflow-auto rounded-[8px] border border-border">
+            <div className="min-h-0 flex-1 overflow-auto rounded-[8px] border border-border">
               <table className="w-full min-w-[680px] text-xs">
                 <thead className="sticky top-0 bg-muted">
                   <tr className="text-left text-foreground">
@@ -300,6 +295,11 @@ export function PdfAddLinkDialog({
                       })}
                     </tr>
                   ))}
+                  {filteredAccounts.length === 0 && (
+                    <tr className="border-t border-border">
+                      <td colSpan={5} className="px-2 py-3 text-[13px] text-foreground">No accounts found</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

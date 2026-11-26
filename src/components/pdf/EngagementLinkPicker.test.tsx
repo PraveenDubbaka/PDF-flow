@@ -18,13 +18,16 @@ const setup = (mode: 'engagement' | 'lead-sheets' = 'engagement', engagementId =
 };
 
 describe('Engagement and Lead sheet link pickers', () => {
-  it('shows every top-level left-panel section in order in Engagement mode with Search engagement placeholder', () => {
+  it('shows every non-Procedures left-panel section in order in Engagement mode and excludes PR Procedures from tree and search', () => {
     const onSelect = setup('engagement', 'COMP-demo');
     expect(screen.getByPlaceholderText('Search engagement')).toBeInTheDocument();
-    const expectedSections = engagementSidebarTrees(false).engagementTree;
+    const expectedSections = engagementSidebarTrees(false).engagementTree.filter(
+      (section) => !(section.code === 'PR' && section.label === 'Procedures'),
+    );
     for (const section of expectedSections) {
       expect(screen.getByRole('button', { name: `${section.code} ${section.label}` })).toBeInTheDocument();
     }
+    expect(screen.queryByRole('button', { name: 'PR Procedures' })).not.toBeInTheDocument();
 
     // Folders expand/collapse without selecting a link
     fireEvent.click(screen.getByRole('button', { name: 'CO Client Onboarding' }));
@@ -46,6 +49,14 @@ describe('Engagement and Lead sheet link pickers', () => {
     fireEvent.click(screen.getByRole('button', { name: 'SO Completion & Signoffs' }));
     fireEvent.click(screen.getByRole('button', { name: 'SO Signoffs' }));
     expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ route: 'checklist/so-so', reference: 'SO' }));
+
+    // Search under Engagement never returns procedure groups, lead sheets, or line items
+    const searchInput = screen.getByPlaceholderText('Search engagement');
+    for (const term of ['Procedures', 'Current assets', 'Accounts receivable', '1100']) {
+      fireEvent.change(searchInput, { target: { value: term } });
+      expect(screen.getByText('No results')).toBeInTheDocument();
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    }
   });
 
   it('matches the procedure lead sheet hierarchy, rows, columns, totals, and real attached docs for multiple lead sheets', () => {
@@ -125,9 +136,9 @@ describe('Engagement and Lead sheet link pickers', () => {
     }));
   }, 15000);
 
-  it('opens the exact same lead-sheet view inside PR Procedures in Engagement mode and allows collapse while searching', () => {
-    const onSelect = setup('engagement', 'AUD-demo');
-    fireEvent.change(screen.getByPlaceholderText('Search engagement'), { target: { value: 'Accounts receivable' } });
+  it('allows collapsing and re-expanding lead-sheet line items while searching in Lead sheet mode', () => {
+    const onSelect = setup('lead-sheets', 'AUD-demo');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search lead sheets' }), { target: { value: 'Accounts receivable' } });
     expect(screen.getByRole('columnheader', { name: 'Acc No.' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Change(%)' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Hide line items' }));

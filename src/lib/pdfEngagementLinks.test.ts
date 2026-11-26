@@ -11,9 +11,11 @@ import {
   engagementLinkLabel,
   engagementLinkTooltip,
   engagementTargetPath,
+  excludeProcedureHierarchy,
   formatLeadSheetAmount,
   getEngagementDocuments,
   getEngagementLinkTree,
+  getEngagementMenuTree,
   getProcedureSectionTree,
   inferPdfLinkType,
   leadSheetAmount,
@@ -42,6 +44,30 @@ describe('Engagement hyperlinks', () => {
     expect(nodes.some((node) => node.route === 'trial-balance')).toBe(true);
     localStorage.removeItem('audit-590-wp-proc-map-AUD-audit');
     localStorage.removeItem('engagement-node-docs-AUD-audit');
+  });
+  it('excludes PR Procedures and all procedure lead sheets from the Engagement menu tree across all templates', () => {
+    const sidebarTrees = engagementSidebarTrees(false);
+    const cases = [
+      { id: 'COMP-demo', source: sidebarTrees.engagementTree },
+      { id: 'AUD-demo', source: sidebarTrees.auditEngagementTree },
+      { id: 'AUD-US-demo', source: sidebarTrees.usAuditEngagementTree },
+    ];
+    const flatten = (nodes: ReturnType<typeof getEngagementMenuTree>): ReturnType<typeof getEngagementMenuTree> =>
+      nodes.flatMap((n) => [n, ...flatten(n.children ?? [])]);
+
+    for (const { id, source } of cases) {
+      const menuTree = getEngagementMenuTree(id);
+      expect(menuTree.map((s) => `${s.code} ${s.label}`)).toEqual(
+        source.filter((s) => !(s.code === 'PR' && s.label === 'Procedures')).map((s) => `${s.code} ${s.label}`),
+      );
+      const allNodes = flatten(menuTree);
+      expect(allNodes.some((n) => n.code === 'PR' && n.label === 'Procedures')).toBe(false);
+      expect(allNodes.some((n) => n.route?.startsWith('procedure/'))).toBe(false);
+    }
+
+    // CA Audit's "PR Populate Responses" subfolder under Risk Assessment stays intact
+    const caNodes = flatten(excludeProcedureHierarchy(getEngagementLinkTree('AUD-demo')));
+    expect(caNodes.some((n) => n.id === 'aud-ra-respond' && n.label === 'Populate Responses')).toBe(true);
   });
   it('makes Trial Balance and completion leaf items linkable while keeping folders non-linkable', () => {
     const tbLink = selectEngagementTarget({ id: 'tb', code: 'TB', label: 'Trial Balance & Adj. Entries', icon: 'folder', route: 'trial-balance' });

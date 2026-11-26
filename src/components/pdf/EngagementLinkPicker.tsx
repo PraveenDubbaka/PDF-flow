@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FileText, Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ import { XlsxIcon } from '@/components/icons/XlsxIcon';
 import { ProcedureLeadSheetTable } from '@/components/ProcedureLeadSheetTable';
 import { type SectionNode } from '@/lib/engagementLinkTree';
 import {
+  excludeProcedureHierarchy,
   filterProcedureHierarchy,
   getEngagementLinkTree,
   isEngagementFolderNode,
@@ -26,8 +27,6 @@ import {
 } from '@/lib/pdfEngagementLinks';
 
 export type EngagementPickerMode = 'engagement' | 'lead-sheets';
-
-const isLeadSheetNode = (node: SectionNode) => node.route?.startsWith('procedure/') === true;
 
 function renderFileIcon(name: string) {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
@@ -57,18 +56,16 @@ export function EngagementLinkPicker({
   engagementId,
   onSelect,
   mode = 'engagement',
-  onExpandedLeadSheetChange,
 }: {
   engagementId: string;
   onSelect: (link: PdfEngagementLink) => void;
   mode?: EngagementPickerMode;
-  onExpandedLeadSheetChange?: (hasOpen: boolean) => void;
 }) {
   const [search, setSearch] = useState('');
   const [searchCollapsed, setSearchCollapsed] = useState<Set<string>>(new Set());
   const tree = useMemo(() => {
     const source = getEngagementLinkTree(engagementId);
-    return mode === 'lead-sheets' ? filterProcedureHierarchy(source) : source;
+    return mode === 'lead-sheets' ? filterProcedureHierarchy(source) : excludeProcedureHierarchy(source);
   }, [engagementId, mode]);
   const [expanded, setExpanded] = useState<Set<string>>(() => (
     mode === 'lead-sheets' ? new Set(tree.map((node) => node.id)) : new Set()
@@ -85,20 +82,6 @@ export function EngagementLinkPicker({
     }
     return false;
   };
-
-  const hasOpenLeadSheet = useMemo(() => {
-    const check = (nodes: SectionNode[]): boolean => nodes.some((node) => {
-      if (query && !matches(node)) return false;
-      const open = query ? !searchCollapsed.has(node.id) : expanded.has(node.id);
-      if (isLeadSheetNode(node) && open) return true;
-      return node.children?.length ? check(node.children) : false;
-    });
-    return check(tree);
-  }, [expanded, query, searchCollapsed, tree]);
-
-  useEffect(() => {
-    onExpandedLeadSheetChange?.(hasOpenLeadSheet);
-  }, [hasOpenLeadSheet, onExpandedLeadSheetChange]);
 
   const render = (node: SectionNode, path: string): React.ReactNode => {
     if (query && !matches(node)) return null;
@@ -121,7 +104,7 @@ export function EngagementLinkPicker({
     const visibleDocs = query && !`${node.code ?? ''} ${node.label}`.toLowerCase().includes(query)
       ? docs.filter((doc) => doc.name.toLowerCase().includes(query))
       : docs;
-    return <div key={path}>
+    return <div key={path} className="min-w-0">
       <div className="flex min-w-0 items-center gap-1">
         <Button variant="ghost" className="min-w-0 flex-1 justify-start gap-2 px-1 text-xs font-normal" title={`${node.code ? `${node.code} ` : ''}${node.label}`} aria-expanded={folder && hasChildren ? open : undefined} onClick={() => { if (folder) { toggle(); return; } const link = selectEngagementTarget(node); if (link) onSelect(link); }}>
           {renderNodeIcon(node, folder, hasChildren, open)}
@@ -130,9 +113,9 @@ export function EngagementLinkPicker({
         </Button>
         {!folder && hasChildren && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className="shrink-0" aria-label={`${open ? 'Hide' : 'Show'} ${isLeadSheet ? 'line items' : 'items'}`} aria-expanded={open} onClick={toggle}>{open ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}</Button></TooltipTrigger><TooltipContent>{open ? (isLeadSheet ? 'Hide line items' : 'Hide items') : (isLeadSheet ? 'Show line items' : 'Show items')}</TooltipContent></Tooltip>}
       </div>
-      {hasChildren && open && <div className="ml-4 border-l border-border pl-1.5">
+      {hasChildren && open && <div className="ml-4 min-w-0 border-l border-border pl-1.5">
         {childNodes.map((child, index) => render(child, `${path}/${child.id}-${index}`))}
-        {!!visibleRows.length && <div className="my-1"><ProcedureLeadSheetTable mode="picker" rows={visibleRows} leadSheetCode={node.code} onSelectRow={(row) => { const link = selectEngagementTarget(node, row); if (link) onSelect(link); }} onSelectCell={(row, column) => { const link = selectEngagementTarget(node, row, column); if (link) onSelect(link); }} /></div>}
+        {!!visibleRows.length && <div className="my-1 min-w-0"><ProcedureLeadSheetTable mode="picker" rows={visibleRows} leadSheetCode={node.code} onSelectRow={(row) => { const link = selectEngagementTarget(node, row); if (link) onSelect(link); }} onSelectCell={(row, column) => { const link = selectEngagementTarget(node, row, column); if (link) onSelect(link); }} /></div>}
         {!!visibleDocs.length && <div className="mt-1.5 border-t border-border pt-1.5">
           <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Documents</p>
           <div className="space-y-0.5">
@@ -149,5 +132,5 @@ export function EngagementLinkPicker({
   };
   const searchLabel = mode === 'lead-sheets' ? 'Search lead sheets' : 'Search engagement';
   const placeholder = mode === 'lead-sheets' ? 'Search lead sheet, line item, or document' : 'Search engagement';
-  return <div className="flex min-h-0 min-w-0 flex-col gap-2"><Input className="shrink-0" autoFocus aria-label={searchLabel} placeholder={placeholder} value={search} onChange={(event) => { setSearch(event.target.value); setSearchCollapsed(new Set()); }} /><div className="min-h-0 overflow-auto">{tree.map((node, index) => render(node, `${node.id}-${index}`))}{!tree.some(matches) && <p className="p-3 text-xs text-foreground">No results</p>}</div></div>;
+  return <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2"><Input className="shrink-0" autoFocus aria-label={searchLabel} placeholder={placeholder} value={search} onChange={(event) => { setSearch(event.target.value); setSearchCollapsed(new Set()); }} /><div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">{tree.map((node, index) => render(node, `${node.id}-${index}`))}{!tree.some(matches) && <p className="p-3 text-xs text-foreground">No results</p>}</div></div>;
 }

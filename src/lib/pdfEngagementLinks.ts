@@ -92,6 +92,17 @@ export function filterProcedureHierarchy(nodes: SectionNode[]): SectionNode[] {
   });
 }
 
+const hasProcedureRoute = (node: SectionNode): boolean =>
+  node.route?.startsWith('procedure/') === true || (node.children ?? []).some(hasProcedureRoute);
+
+export function excludeProcedureHierarchy(nodes: SectionNode[]): SectionNode[] {
+  return nodes.filter((node) => !(node.code === 'PR' && node.label === 'Procedures') && !hasProcedureRoute(node));
+}
+
+export function getEngagementMenuTree(engagementId: string): SectionNode[] {
+  return excludeProcedureHierarchy(getEngagementLinkTree(engagementId));
+}
+
 export function getProcedureSectionTree(engagementId: string): SectionNode[] {
   return filterProcedureHierarchy(getEngagementLinkTree(engagementId));
 }
