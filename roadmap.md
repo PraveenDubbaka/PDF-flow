@@ -27,5 +27,5 @@
 - [x] 8. Signature: add Upload mode (PNG/JPG/SVG up to 2 MB, background removal, Replace/Remove, stamp/export/undo parity).
 - [x] 9. Text box & Callout: resizable with corner/edge handles when selected and while editing, auto-grow height, single undo on release, wrapped PDF export.
 - [x] 10. Text box & Callout: selection-only formatting (and caret-next styling), preserved selection across toolbar controls, active/mixed toolbar states, styled-run export & tests.
-- [ ] Move Undo/Redo to the page bar, preserving edit-only controls and shortcuts.
-- [ ] Repair edited-PDF printing, add fallback/loading/error handling and tests, and verify live preview.
+- [x] Move Undo/Redo to the page bar, preserving edit-only controls and shortcuts.
+- [x] Repair edited-PDF printing, add fallback/loading/error handling and tests, and verify live preview (headless Chromium; native OS dialogs and other browsers remain unverified).
