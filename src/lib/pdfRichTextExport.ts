@@ -143,7 +143,7 @@ export function drawRichTextBoxToPdf({
     run.bold && run.italic ? fontBoldItalic : run.bold ? fontBold : run.italic ? fontItalic : fontRegular
   );
   const runPdfSize = (run: StyledTextRun) => Math.max(7, run.fontSize * 0.8);
-  const paragraphs = parseRichTextRuns(item.richText ?? '', item.label ?? item.value ?? '', '#111827', 12);
+  const paragraphs = parseRichTextRuns(item.richText ?? '', item.label ?? item.value ?? '', item.textColor || '#111827', 12);
   const wrappedLines = wrapRichTextRuns(paragraphs, contentWidth, (text, run) => (
     pickFont(run).widthOfTextAtSize(text, runPdfSize(run))
   ));

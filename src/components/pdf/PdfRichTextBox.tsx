@@ -107,6 +107,7 @@ export function PdfRichTextBox({
   const toolbarBelow = annotation.y < 10;
   const toolbarRight = annotation.x > 55;
   const safeHtml = annotation.richText ? sanitizeRichText(annotation.richText) : '';
+  const baseTextStyle = annotation.textColor ? { color: annotation.textColor } : undefined;
 
   return (
     <div className="relative flex h-full w-full items-start gap-1 px-1.5 py-1 text-xs text-foreground">
@@ -116,6 +117,7 @@ export function PdfRichTextBox({
             editorRef={editorRef}
             colors={colors}
             fillColor={annotation.fillColor}
+            defaultTextColor={annotation.textColor}
             onFillColor={onFillColor}
             onFormatChange={() => {
               if (editorRef.current) latestHtml.current = editorRef.current.innerHTML;
@@ -133,6 +135,7 @@ export function PdfRichTextBox({
           aria-multiline="true"
           contentEditable
           suppressContentEditableWarning
+          style={baseTextStyle}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
           onInput={(event) => {
@@ -151,11 +154,11 @@ export function PdfRichTextBox({
           className="h-full min-h-[12px] w-full min-w-0 cursor-text select-text overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words leading-snug outline-none"
         />
       ) : safeHtml ? (
-        <div data-rich-text-content className="h-full w-full overflow-hidden whitespace-pre-wrap break-words leading-snug" dangerouslySetInnerHTML={{ __html: safeHtml }} />
+        <div data-rich-text-content style={baseTextStyle} className="h-full w-full overflow-hidden whitespace-pre-wrap break-words leading-snug" dangerouslySetInnerHTML={{ __html: safeHtml }} />
       ) : annotation.label ? (
-        <span data-rich-text-content className="h-full w-full overflow-hidden whitespace-pre-wrap break-words leading-snug">{annotation.label}</span>
+        <span data-rich-text-content style={baseTextStyle} className="h-full w-full overflow-hidden whitespace-pre-wrap break-words leading-snug">{annotation.label}</span>
       ) : canEdit ? (
-        <span className="italic opacity-60">Double-click to edit</span>
+        <span style={baseTextStyle} className="italic opacity-60">Double-click to edit</span>
       ) : null}
     </div>
   );

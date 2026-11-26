@@ -18,17 +18,19 @@ export function PdfTextFormatToolbar({
   editorRef,
   colors,
   fillColor,
+  defaultTextColor,
   onFillColor,
   onFormatChange,
 }: {
   editorRef: RefObject<HTMLDivElement | null>;
   colors: string[];
   fillColor?: string;
+  defaultTextColor?: string;
   onFillColor: (color: string | undefined) => void;
   onFormatChange: () => void;
 }) {
   const [openMenu, setOpenMenu] = useState<PickerMenu>(null);
-  const [state, setState] = useState<RichTextSelectionState>(DEFAULT_SELECTION_STATE);
+  const [state, setState] = useState<RichTextSelectionState>({ ...DEFAULT_SELECTION_STATE, color: defaultTextColor ?? null });
   const savedRangeRef = useRef<Range | null>(null);
 
   const syncSelectionState = useCallback(() => {
@@ -39,14 +41,14 @@ export function PdfTextFormatToolbar({
       const range = selection.getRangeAt(0);
       if (editor.contains(range.commonAncestorContainer)) {
         savedRangeRef.current = range.cloneRange();
-        setState(getSelectionFormatState(editor, range));
+        setState(getSelectionFormatState(editor, range, defaultTextColor));
         return;
       }
     }
     if (savedRangeRef.current && editor.contains(savedRangeRef.current.commonAncestorContainer)) {
-      setState(getSelectionFormatState(editor, savedRangeRef.current));
+      setState(getSelectionFormatState(editor, savedRangeRef.current, defaultTextColor));
     }
-  }, [editorRef]);
+  }, [defaultTextColor, editorRef]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -105,17 +107,17 @@ export function PdfTextFormatToolbar({
         selection.removeAllRanges();
         selection.addRange(nextRange);
         savedRangeRef.current = nextRange.cloneRange();
-        setState(getSelectionFormatState(editor, nextRange));
+        setState(getSelectionFormatState(editor, nextRange, defaultTextColor));
       }
       onFormatChange();
     },
-    [editorRef, onFormatChange, restoreRange],
+    [defaultTextColor, editorRef, onFormatChange, restoreRange],
   );
 
   const toggleMark = (key: 'bold' | 'italic' | 'underline' | 'strike') => {
     const editor = editorRef.current;
     const range = restoreRange();
-    const currentState = editor && range ? getSelectionFormatState(editor, range) : state;
+    const currentState = editor && range ? getSelectionFormatState(editor, range, defaultTextColor) : state;
     applyPatch({ [key]: currentState[key] !== true });
   };
 

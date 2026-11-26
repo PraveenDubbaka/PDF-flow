@@ -1,8 +1,10 @@
 import { engagementSidebarTrees, type SectionNode } from './engagementLinkTree';
 import { TEMPLATE_CONFIG } from './engagementTemplatesData';
-import { getAccountsForProcedure, type Row } from './tbGroups';
-import { formatTrialBalanceAmount, type TrialBalanceColumn } from './pdfTrialBalance';
+import { getAccountsForProcedure, PROCEDURE_LS_MAP, type Row } from './tbGroups';
+import { type TrialBalanceColumn } from './pdfTrialBalance';
 import { initialGlobalWorksheets, type WorksheetTemplate } from '@/data/globalWorksheets';
+
+export type PdfLinkType = 'web' | 'document' | 'engagement' | 'lead-sheet' | 'trial-balance';
 
 export interface PdfEngagementLink {
   targetId: string;
@@ -11,7 +13,42 @@ export interface PdfEngagementLink {
   name: string;
   lineId?: string;
   column?: TrialBalanceColumn;
+  kind?: 'document' | 'engagement' | 'lead-sheet';
+  documentId?: string;
+  leadSheetRef?: string;
 }
+
+export interface LeadSheetDocument {
+  id: string;
+  name: string;
+  route: string;
+}
+
+export interface EngagementDocumentItem {
+  id: string;
+  name: string;
+  section: string;
+  link: PdfEngagementLink;
+}
+
+const MOCK_LEAD_SHEET_DOCUMENTS: Record<string, { id: string; name: string }[]> = {
+  A: [
+    { id: 'ls-doc-a-1', name: 'Bank Confirmation - RBC 2025.pdf' },
+    { id: 'ls-doc-a-2', name: 'Year-End Bank Reconciliation.xlsx' },
+  ],
+  B: [
+    { id: 'ls-doc-b-1', name: 'AR Aging Summary 2025.pdf' },
+    { id: 'ls-doc-b-2', name: 'Subsequent Cash Receipts Testing.xlsx' },
+  ],
+  BB: [
+    { id: 'ls-doc-bb-1', name: 'AP Subledger Listing 2025.pdf' },
+    { id: 'ls-doc-bb-2', name: 'Search for Unrecorded Liabilities.xlsx' },
+  ],
+  '20': [
+    { id: 'ls-doc-20-1', name: 'Revenue Cutoff Sample Support.pdf' },
+    { id: 'ls-doc-20-2', name: 'Deferred Revenue Rollforward.xlsx' },
+  ],
+};
 
 function read<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback; } catch { return fallback; }
@@ -59,24 +96,145 @@ export function leadSheetAmount(row: Row, column: TrialBalanceColumn) {
   return column === 'Original' ? row.original : column === 'PY1' ? row.py1 : row.py2;
 }
 
-export function selectEngagementTarget(node: SectionNode, row?: Row, column?: TrialBalanceColumn): PdfEngagementLink | null {
-  if (!node.route || node.route === 'trial-balance') return null;
-  if (row && (!column || leadSheetAmount(row, column) == null || !Number.isFinite(leadSheetAmount(row, column)))) return null;
-  const rows = node.route.startsWith('procedure/') ? leadSheetRows(node.route.slice('procedure/'.length)) : [];
+export function formatLeadSheetAmount(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '–';
+  const formatted = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return value < 0 ? `(${formatted})` : formatted;
+}
+
+export function leadSheetDocuments(engagementId: string, node: SectionNode): LeadSheetDocument[] {
+  const route = node.route ?? '';
+  const procedureId = route.startsWith('procedure/') ? route.slice('procedure/'.length) : node.id;
+  const lsCode = PROCEDURE_LS_MAP[procedureId] ?? node.code ?? '';
+  const storedDocs = read<Record<string, { id: string; name: string; type?: string }[]>>(`engagement-node-docs-${engagementId}`, {});
+  const uploaded: LeadSheetDocument[] = (storedDocs[node.id] ?? [])
+    .filter((doc) => doc.type !== 'note')
+    .map((doc) => ({ id: doc.id, name: doc.name, route: `pdf/${doc.id}` }));
+  const mocks: LeadSheetDocument[] = (MOCK_LEAD_SHEET_DOCUMENTS[lsCode] ?? [])
+    .filter((mock) => !uploaded.some((doc) => doc.id === mock.id))
+    .map((mock) => ({ id: mock.id, name: mock.name, route: route || `procedure/${procedureId}` }));
+  return [...uploaded, ...mocks];
+}
+
+export function getLeadSheetNodes(engagementId: string): SectionNode[] {
+  const result: SectionNode[] = [];
+  const walk = (nodes: SectionNode[]) => {
+    for (const node of nodes) {
+      if (node.route?.startsWith('procedure/')) result.push(node);
+      if (node.children?.length) walk(node.children);
+    }
+  };
+  walk(getEngagementLinkTree(engagementId));
+  return result;
+}
+
+export function getEngagementDocuments(engagementId: string): EngagementDocumentItem[] {
+  const items: EngagementDocumentItem[] = [];
+  const seen = new Set<string>();
+  const walk = (nodes: SectionNode[], section: string) => {
+    for (const node of nodes) {
+      if (node.route && (node.icon === 'doc' || node.route.startsWith('pdf/'))) {
+        if (!seen.has(node.id)) {
+          seen.add(node.id);
+          items.push({
+            id: node.id,
+            name: node.label,
+            section,
+            link: { targetId: node.id, route: node.route, reference: '', name: node.label, kind: 'document', documentId: node.id },
+          });
+        }
+      }
+      if (node.route?.startsWith('procedure/')) {
+        for (const doc of leadSheetDocuments(engagementId, node)) {
+          if (!seen.has(doc.id)) {
+            seen.add(doc.id);
+            items.push({
+              id: doc.id,
+              name: doc.name,
+              section: `${node.code ? `${node.code} ` : ''}${node.label}`,
+              link: selectLeadSheetDocument(node, doc),
+            });
+          }
+        }
+      }
+      if (node.children?.length) walk(node.children, node.label || section);
+    }
+  };
+  walk(getEngagementLinkTree(engagementId), 'Documents');
+  return items;
+}
+
+export function selectLeadSheetDocument(node: SectionNode, doc: LeadSheetDocument): PdfEngagementLink {
   return {
-    targetId: node.id, route: node.route, reference: row ? `${node.code ?? ''}.${rows.findIndex((item) => item.id === row.id) + 1}` : node.code ?? '',
-    name: row?.description ?? node.label, ...(row ? { lineId: row.id, column } : {}),
+    targetId: doc.id,
+    route: doc.route,
+    reference: '',
+    name: doc.name,
+    kind: 'document',
+    documentId: doc.id,
+    ...(node.code ? { leadSheetRef: node.code } : {}),
   };
 }
 
+export function selectEngagementTarget(node: SectionNode, row?: Row, column?: TrialBalanceColumn): PdfEngagementLink | null {
+  if (!node.route || node.route === 'trial-balance') return null;
+  if (row && column) {
+    const amount = leadSheetAmount(row, column);
+    if (amount == null || !Number.isFinite(amount)) return null;
+  }
+  const isDoc = node.icon === 'doc' || node.route.startsWith('pdf/');
+  const isLeadSheet = node.route.startsWith('procedure/');
+  return {
+    targetId: node.id,
+    route: node.route,
+    reference: isDoc ? '' : (node.code ?? ''),
+    name: row?.description ?? node.label,
+    kind: isDoc ? 'document' : isLeadSheet ? 'lead-sheet' : 'engagement',
+    ...(isDoc ? { documentId: node.id } : {}),
+    ...(row ? { lineId: row.id, ...(column ? { column } : {}) } : {}),
+  };
+}
+
+export function inferPdfLinkType(item: {
+  kind: string;
+  trialBalanceLink?: unknown;
+  trialBalanceGeneral?: boolean;
+  engagementLink?: PdfEngagementLink;
+}): PdfLinkType {
+  if (item.trialBalanceLink || item.trialBalanceGeneral || (item.kind === 'trial-balance' && !item.engagementLink)) {
+    return 'trial-balance';
+  }
+  const eng = item.engagementLink;
+  if (eng) {
+    if (eng.kind === 'document' || eng.documentId || eng.route.startsWith('pdf/') || /-fs-/.test(eng.route)) return 'document';
+    if (eng.kind === 'lead-sheet' || eng.route.startsWith('procedure/')) return 'lead-sheet';
+    return 'engagement';
+  }
+  return 'web';
+}
+
 export function engagementLinkLabel(link: PdfEngagementLink) {
-  return `${link.reference ? `${link.reference} ` : ''}${link.name}${link.lineId && link.column ? ` · ${link.column}` : ''}`;
+  if (link.kind === 'document' || link.documentId || link.route.startsWith('pdf/')) {
+    return link.name;
+  }
+  if (link.lineId) {
+    return `${link.reference ? `${link.reference} · ` : ''}${link.name}${link.column ? ` · ${link.column}` : ''}`;
+  }
+  return `${link.reference ? `${link.reference} ` : ''}${link.name}`;
 }
 
 export function engagementLinkTooltip(link: PdfEngagementLink) {
-  if (!link.lineId || !link.column) return engagementLinkLabel(link);
-  const row = leadSheetRows(link.route.replace('procedure/', '')).find((item) => item.id === link.lineId);
-  return `${engagementLinkLabel(link)} · ${formatTrialBalanceAmount(row ? leadSheetAmount(row, link.column) : null)}`;
+  if (link.kind === 'document' || link.documentId || link.route.startsWith('pdf/')) {
+    return link.leadSheetRef ? `${link.leadSheetRef} · ${link.name}` : link.name;
+  }
+  if (link.lineId) {
+    const row = leadSheetRows(link.route.replace('procedure/', '')).find((item) => item.id === link.lineId);
+    if (link.column) {
+      return `${engagementLinkLabel(link)} · ${formatLeadSheetAmount(row ? leadSheetAmount(row, link.column) : null)}`;
+    }
+    return row ? `${engagementLinkLabel(link)} · Original ${formatLeadSheetAmount(row.original)}` : engagementLinkLabel(link);
+  }
+  return engagementLinkLabel(link);
 }
 
 export function engagementTargetPath(engagementId: string, link: PdfEngagementLink, returnPath: string) {
@@ -85,5 +243,6 @@ export function engagementTargetPath(engagementId: string, link: PdfEngagementLi
   const params = new URLSearchParams({ document: returnPath, target: link.targetId, name: engagementLinkLabel(link) });
   if (link.lineId) params.set('line', link.lineId);
   if (link.column) params.set('column', link.column);
+  if (link.documentId) params.set('doc', link.documentId);
   return `/engagements/${engagementId}/${link.route}?${params}`;
 }

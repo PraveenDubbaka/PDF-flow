@@ -62,9 +62,13 @@
 .pdf-add-link-dialog :where([role='tablist']) {
   padding: 0;
 }
-.pdf-add-link-dialog :where([role='tab'], input, button, th, td, td span) {
+.pdf-add-link-dialog :where([role='tab'], [role='combobox'], input, button, th, td, td span) {
   font-size: 13px !important;
   letter-spacing: 0;
+}
+.pdf-add-link-select [role='option'] {
+  min-height: 32px;
+  font-size: 13px !important;
 }
 .pdf-add-link-dialog input::placeholder {
   font-size: 13px !important;

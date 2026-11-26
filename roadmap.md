@@ -35,3 +35,6 @@
 - [x] Verify main-screen view/edit Download and Print, plus pop-out Print; run tests and commit (headless Chromium print invocation; native OS dialog and user's original PDF remain unverified).
 - [x] Remove pre-opened print fallback tab; test success, PDF-only fallback and blocked-popup action, and verify main-screen view/edit and pop-out printing without new tabs (headless Chromium; native dialog appearance remains unverified).
 - [x] Restore normal engagement letters; add PDF editor Fit and temporary Rotate controls; verify main view/edit and pop-out, fit/keyboard/export isolation, responsive page-bar screenshots, and 77 tests. Rotated editing requires reset; phone verification uses the pop-out with tools collapsed.
+- [x] Merge Hyperlink and Trial balance into one Link tool with type dropdown, session memory, combined side-panel list with type icons, and placement bar.
+- [x] Build Lead sheet link view with reference-free line rows (Account description | Original | PY1 | PY2), clickable rows/amount cells, bracketed negatives, attached Documents group, and mock data.
+- [x] Add per-user default annotation style (text, border, background + No fill, Reset, Set as my default) persisted in user_preferences with RLS and applied to new annotations only; keep Signature tool unchanged.

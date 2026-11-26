@@ -132,9 +132,14 @@ function aggregateValue<T>(values: T[]): T | 'mixed' {
   return first as T;
 }
 
-export function getSelectionFormatState(editor: HTMLElement, range: Range | null): RichTextSelectionState {
+export function getSelectionFormatState(
+  editor: HTMLElement,
+  range: Range | null,
+  defaultTextColor?: string,
+): RichTextSelectionState {
+  const fallbackColor = normalizeColorToHex(defaultTextColor) ?? null;
   if (!range || !editor.contains(range.commonAncestorContainer)) {
-    return DEFAULT_SELECTION_STATE;
+    return { ...DEFAULT_SELECTION_STATE, color: fallbackColor };
   }
   if (range.collapsed) {
     const fmt = getEffectiveFormat(range.startContainer, editor);
@@ -143,7 +148,7 @@ export function getSelectionFormatState(editor: HTMLElement, range: Range | null
       italic: fmt.italic,
       underline: fmt.underline,
       strike: fmt.strike,
-      color: fmt.color ?? null,
+      color: fmt.color ?? fallbackColor,
       highlight: fmt.highlight ?? null,
       fontSize: fmt.fontSize,
       hasSelection: false,
@@ -159,7 +164,7 @@ export function getSelectionFormatState(editor: HTMLElement, range: Range | null
       italic: fmt.italic,
       underline: fmt.underline,
       strike: fmt.strike,
-      color: fmt.color ?? null,
+      color: fmt.color ?? fallbackColor,
       highlight: fmt.highlight ?? null,
       fontSize: fmt.fontSize,
       hasSelection: false,
@@ -171,7 +176,7 @@ export function getSelectionFormatState(editor: HTMLElement, range: Range | null
     italic: aggregateValue(formats.map((f) => f.italic)),
     underline: aggregateValue(formats.map((f) => f.underline)),
     strike: aggregateValue(formats.map((f) => f.strike)),
-    color: aggregateValue(formats.map((f) => f.color ?? null)),
+    color: aggregateValue(formats.map((f) => f.color ?? fallbackColor)),
     highlight: aggregateValue(formats.map((f) => f.highlight ?? null)),
     fontSize: aggregateValue(formats.map((f) => f.fontSize)),
     hasSelection: true,

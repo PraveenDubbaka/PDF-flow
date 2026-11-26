@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './pdf-panel-reflow.css';
 import './pdf-page-bar.css';
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Ban, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle,
-  Copy, Crosshair, Download, ExternalLink, FileText, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Ban, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, ClipboardCheck,
+  Copy, Crosshair, Download, ExternalLink, FileText, Globe, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
   History, MessageSquare, MousePointer2, Pen, Pencil, Plus, Printer, Redo2, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Signature, Sparkles, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, Undo2, X, ZoomIn, ZoomOut, Check, ArrowUpRight, PencilLine, MessageSquareText,
 } from 'lucide-react';
@@ -33,7 +33,7 @@ import {
   PdfDocumentRecord, PdfEditState, PdfHistoryEntry, PdfWatermark, persistPdfEditState, resolveCalcLabel, savePdfVersion,
 } from '@/lib/pdfDocuments';
 import { type TrialBalanceAccount } from '@/data/trialBalanceAccounts';
-import { trialBalanceColumns, type TrialBalanceColumn, formatTrialBalanceAmount, trialBalanceAmount, selectTrialBalanceAmount, trialBalanceLinkLabel, defaultTrialBalanceColumn, resolveTrialBalanceLink, trialBalanceLinkTooltip, documentReturnPath } from '@/lib/pdfTrialBalance';
+import { type TrialBalanceColumn, selectTrialBalanceAmount, trialBalanceLinkLabel, resolveTrialBalanceLink, trialBalanceLinkTooltip, documentReturnPath } from '@/lib/pdfTrialBalance';
 import { PdfCommentNote, MentionText } from '@/components/pdf/PdfCommentNote';
 import { CalculationPreview } from '@/components/pdf/CalculationPreview';
 import { ResizableCalculationStamp } from '@/components/pdf/ResizableCalculationStamp';
@@ -50,18 +50,26 @@ import { applyUndoSnapshot, captureUndoSnapshot, emptyUndoStack, popRedo, popUnd
 import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
 import { PdfAutoSave, PdfSaveStatus, requiresManualPdfSave } from '@/lib/pdfAutoSave';
-import { EngagementLinkPicker } from '@/components/pdf/EngagementLinkPicker';
+import { PdfAddLinkDialog } from '@/components/pdf/PdfAddLinkDialog';
+import { PdfDefaultStyleSection } from '@/components/pdf/PdfDefaultStyleSection';
+import {
+  extractAnnotationStyle,
+  loadPdfAnnotationDefaults,
+  savePdfAnnotationDefaults,
+  subscribePdfAnnotationDefaults,
+  SYSTEM_ANNOTATION_STYLE_DEFAULTS,
+  type PdfAnnotationStyleDefaults,
+} from '@/lib/pdfAnnotationDefaults';
 import { PdfEditSplitButton } from '@/components/pdf/PdfEditSplitButton';
 import { PdfPreviewControls } from '@/components/pdf/PdfPreviewControls';
 import { fitPreviewZoom, pdfViewShortcut, rotatePreview, type PdfFitMode } from '@/lib/pdfPreviewView';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { engagementLinkLabel, engagementLinkTooltip, engagementTargetPath, type PdfEngagementLink } from '@/lib/pdfEngagementLinks';
+import { engagementLinkTooltip, engagementTargetPath, inferPdfLinkType, type PdfEngagementLink, type PdfLinkType } from '@/lib/pdfEngagementLinks';
 import { useTrialBalanceAccounts } from '@/lib/trialBalanceSource';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
-type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'trial-balance' | 'comments' | 'redact' | 'security' | 'details' | 'ocr' | 'calculations' | 'luka';
+type ToolId = 'pages' | 'search' | 'images' | 'annotations' | 'links' | 'comments' | 'redact' | 'security' | 'details' | 'ocr' | 'calculations' | 'luka';
 type TextItemLike = { str: string; width: number; height: number; transform: number[] };
 type SearchMatch = { id: string; page: number; snippet: string; x: number; y: number; width: number; height: number };
 const makeHistory = (entry: { kind: PdfHistoryEntry['kind']; title: string; page?: number; color?: string; targetId?: string }): PdfHistoryEntry => ({
@@ -81,8 +89,7 @@ const withHistory = (state: PdfEditState, entry: Parameters<typeof makeHistory>[
 
 const TOOLS: { id: ToolId; label: string; icon: React.ElementType }[] = [
   { id: 'annotations', label: 'Annotations', icon: Pencil },
-  { id: 'links', label: 'Hyperlinks', icon: Link2 },
-  { id: 'trial-balance', label: 'Trial balance', icon: FileText },
+  { id: 'links', label: 'Link', icon: Link2 },
   { id: 'calculations', label: 'Calculator', icon: Calculator },
   { id: 'pages', label: 'Pages', icon: BookOpen },
   { id: 'search', label: 'Search', icon: Search },
@@ -284,9 +291,9 @@ function CalcAmountInput({ index, value, linked, picking, onValue, onOperator, o
   );
 }
 
-const PLACE_NOUN: Partial<Record<PdfAnnotationKind, string>> = { link: 'link', comment: 'comment', 'trial-balance': 'TB link', callout: 'callout', signature: 'signature' };
+const PLACE_NOUN: Partial<Record<PdfAnnotationKind, string>> = { link: 'link', comment: 'comment', callout: 'callout', signature: 'signature' };
 
-function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, fillColor, editing, watermarks, editingTextId, onEditText, onEditSignature, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations, hoveredCalcId, onHoverCalc, pulseCalc, placeNoun, onTrialBalanceLink, trialBalanceAccounts }: {
+function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, color, fillColor, textColor, editing, watermarks, editingTextId, onEditText, onEditSignature, onAdd, onSelect, selectedId, highlight, onUpdate, onDelete, placingCalc, onPlaceCalc, pickingValue, onPickValue, sourceHighlight, calculations, hoveredCalcId, onHoverCalc, pulseCalc, placeNoun, onTrialBalanceLink, trialBalanceAccounts }: {
   placeNoun?: string | null;
   onTrialBalanceLink: (annotation: PdfAnnotation) => void;
   trialBalanceAccounts: TrialBalanceAccount[];
@@ -298,6 +305,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
   activeKind: PdfAnnotationKind | null;
   color: string;
   fillColor?: string;
+  textColor?: string;
   editing?: boolean;
   watermarks?: PdfWatermark[];
   editingTextId?: string | null;
@@ -429,13 +437,15 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
     const { x, y } = relative(event);
     const isPoint = activeKind === 'comment' || activeKind === 'link' || activeKind === 'trial-balance';
     const isRichBox = activeKind === 'text' || activeKind === 'callout';
+    const isShapeWithFill = isRichBox || activeKind === 'rectangle' || activeKind === 'circle';
     const isSig = activeKind === 'signature';
     onAdd({
       id: crypto.randomUUID(), kind: activeKind, page: pageNumber, x, y,
       width: isPoint ? 4 : isRichBox || isSig ? 24 : 18,
       height: isPoint ? 4 : isRichBox ? 8 : isSig ? 11 : 5,
       color: activeKind === 'comment' ? '#f59e0b' : activeKind === 'link' ? '#1C63A6' : activeKind === 'trial-balance' ? '#2563eb' : color,
-      ...(isRichBox && fillColor ? { fillColor } : {}),
+      ...(isShapeWithFill && fillColor ? { fillColor } : {}),
+      ...(isRichBox && textColor ? { textColor } : {}),
     });
   };
 
@@ -646,7 +656,7 @@ function CanvasPage({ pdf, pageNumber, zoom, rotation, annotations, activeKind, 
             width: annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'calculation' || annotation.kind === 'signature' ? 'auto' : `${boxRect.width}%`,
             height: annotation.kind === 'link' || annotation.kind === 'trial-balance' || annotation.kind === 'calculation' || annotation.kind === 'signature' ? 'auto' : `${boxRect.height}%`,
             borderColor: annotation.color,
-            backgroundColor: annotation.kind === 'highlight' ? annotation.color : isRichBox ? (annotation.fillColor ?? 'transparent') : undefined,
+            backgroundColor: annotation.kind === 'highlight' ? annotation.color : (isRichBox || annotation.kind === 'rectangle' || annotation.kind === 'circle') ? (annotation.fillColor ?? 'transparent') : undefined,
             boxShadow: annotation.kind === 'calculation' && (pulsingId === annotation.id || hoveredCalcId === annotation.id) ? `0 0 0 3px ${annotation.color}66` : undefined,
           }}
           title={annotation.kind === 'trial-balance' ? tbTooltip : annotation.kind === 'link' ? annotation.engagementLink ? engagementLinkTooltip(annotation.engagementLink) : annotation.value ?? annotation.label : annotation.kind === 'signature' ? formatSignatureListTitle(annotation) : annotation.label}
@@ -865,16 +875,51 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const viewerRef = useRef<HTMLDivElement>(null);
   const [nativePageWidth, setNativePageWidth] = useState(765);
   const [activeKind, setActiveKind] = useState<PdfAnnotationKind | null>(null);
-  const [activeColor, setActiveColor] = useState(COLORS[1]);
-  const [activeFillColor, setActiveFillColor] = useState<string | undefined>(undefined);
+  const [defaultStyle, setDefaultStyle] = useState<PdfAnnotationStyleDefaults>(SYSTEM_ANNOTATION_STYLE_DEFAULTS);
+  const defaultStyleRef = useRef<PdfAnnotationStyleDefaults>(SYSTEM_ANNOTATION_STYLE_DEFAULTS);
+  const defaultStyleEditedRef = useRef(false);
+  const [activeColor, setActiveColor] = useState(SYSTEM_ANNOTATION_STYLE_DEFAULTS.borderColor);
+  const [activeFillColor, setActiveFillColor] = useState<string | undefined>(SYSTEM_ANNOTATION_STYLE_DEFAULTS.fillColor ?? undefined);
+  const [activeTextColor, setActiveTextColor] = useState(SYSTEM_ANNOTATION_STYLE_DEFAULTS.textColor);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [pendingAnnotation, setPendingAnnotation] = useState<PdfAnnotation | null>(null);
   const [pendingValue, setPendingValue] = useState('');
   const [signatureDialog, setSignatureDialog] = useState<{ annotation: PdfAnnotation; isEdit: boolean } | null>(null);
-  const [linkTab, setLinkTab] = useState('web');
-  const [tbTab, setTbTab] = useState<'accounts' | 'lead-sheets'>('accounts');
   const [selectedTbCell, setSelectedTbCell] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void loadPdfAnnotationDefaults().then((loaded) => {
+      if (!active || defaultStyleEditedRef.current) return;
+      defaultStyleRef.current = loaded;
+      setDefaultStyle(loaded);
+      setActiveColor(loaded.borderColor);
+      setActiveFillColor(loaded.fillColor ?? undefined);
+      setActiveTextColor(loaded.textColor);
+    });
+    const unsubscribe = subscribePdfAnnotationDefaults((next) => {
+      defaultStyleRef.current = next;
+      setDefaultStyle(next);
+      setActiveColor(next.borderColor);
+      setActiveFillColor(next.fillColor ?? undefined);
+      setActiveTextColor(next.textColor);
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
+
+  const applyDefaultStyle = useCallback((patch: Partial<PdfAnnotationStyleDefaults>) => {
+    defaultStyleEditedRef.current = true;
+    const next: PdfAnnotationStyleDefaults = { ...defaultStyleRef.current, ...patch };
+    defaultStyleRef.current = next;
+    setDefaultStyle(next);
+    setActiveColor(next.borderColor);
+    setActiveFillColor(next.fillColor ?? undefined);
+    setActiveTextColor(next.textColor);
+    void savePdfAnnotationDefaults(next).catch(() => {
+      toast.error('Unable to save your default annotation style.');
+    });
+  }, []);
 
   const [editState, setEditState] = useState<PdfEditState>(emptyPdfEditState());
   const editStateRef = useRef<PdfEditState>(editState);
@@ -1258,6 +1303,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
       const box: PdfAnnotation = {
         ...annotation,
         fillColor: annotation.fillColor ?? activeFillColor,
+        textColor: annotation.textColor ?? activeTextColor,
         author: annotation.author ?? currentMentionUser.name,
         createdAt: annotation.createdAt ?? new Date().toISOString(),
       };
@@ -1287,19 +1333,18 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     if (needsValue) {
       setPendingAnnotation(annotation);
       setPendingValue('');
-      setLinkTab('web');
-      setTbTab('accounts');
       setSelectedTbCell(null);
       setActiveKind(null);
       return;
     }
     const stamped: PdfAnnotation = {
       ...annotation,
+      ...((annotation.kind === 'rectangle' || annotation.kind === 'circle') && (annotation.fillColor ?? activeFillColor) ? { fillColor: annotation.fillColor ?? activeFillColor } : {}),
       author: annotation.author ?? currentMentionUser.name,
       createdAt: annotation.createdAt ?? new Date().toISOString(),
     };
     commitUndoable((current) => withHistory({ ...current, annotations: [...current.annotations, stamped] }, { kind: stamped.kind, title: stamped.label || stamped.value || `${stamped.kind.replace('-', ' ')} added`, page: stamped.page, color: stamped.color, targetId: stamped.id }));
-  }, [activeFillColor, commitUndoable]);
+  }, [activeFillColor, activeTextColor, commitUndoable]);
 
   const openTrialBalanceLink = async (annotation: PdfAnnotation) => {
     const link = resolveTrialBalanceLink(annotation, trialBalanceAccounts);
@@ -1324,7 +1369,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     const link = selectTrialBalanceAmount(account, column);
     if (!link) return;
     const label = trialBalanceLinkLabel(link);
-    const annotation: PdfAnnotation = { ...pendingAnnotation, value: label, label, trialBalanceLink: link };
+    const annotation: PdfAnnotation = { ...pendingAnnotation, kind: 'trial-balance', color: '#2563eb', value: label, label, trialBalanceLink: link };
     commitUndoable((current) => {
       const exists = current.annotations.some((item) => item.id === annotation.id);
       const annotations = exists ? current.annotations.map((item) => item.id === annotation.id ? annotation : item) : [...current.annotations, annotation];
@@ -1338,7 +1383,15 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
 
   const confirmStructuredLink = (fields: Partial<PdfAnnotation>, label: string) => {
     if (!pendingAnnotation) return;
-    const annotation = { ...pendingAnnotation, ...fields, label, value: label };
+    const isTb = !!fields.trialBalanceGeneral || !!fields.trialBalanceLink;
+    const annotation: PdfAnnotation = {
+      ...pendingAnnotation,
+      ...fields,
+      kind: isTb ? 'trial-balance' : 'link',
+      color: isTb ? '#2563eb' : '#1C63A6',
+      label,
+      value: label,
+    };
     commitUndoable((current) => withHistory({ ...current, annotations: [...current.annotations, annotation] }, { kind: annotation.kind, title: label, page: annotation.page, color: annotation.color, targetId: annotation.id }));
     setSelectedAnnotationId(annotation.id);
     setPendingAnnotation(null);
@@ -1765,9 +1818,9 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         } else if (item.kind === 'highlight') {
           copiedPage.drawRectangle({ x, y, width: boxWidth, height: boxHeight, color, opacity: 0.35 });
         } else if (item.kind === 'rectangle') {
-          copiedPage.drawRectangle({ x, y, width: boxWidth, height: boxHeight, borderColor: color, borderWidth: 1.5 });
+          copiedPage.drawRectangle({ x, y, width: boxWidth, height: boxHeight, borderColor: color, borderWidth: 1.5, ...(item.fillColor ? { color: hexToRgb(item.fillColor) } : {}) });
         } else if (item.kind === 'circle') {
-          copiedPage.drawEllipse({ x: x + boxWidth / 2, y: y + boxHeight / 2, xScale: boxWidth / 2, yScale: boxHeight / 2, borderColor: color, borderWidth: 1.5 });
+          copiedPage.drawEllipse({ x: x + boxWidth / 2, y: y + boxHeight / 2, xScale: boxWidth / 2, yScale: boxHeight / 2, borderColor: color, borderWidth: 1.5, ...(item.fillColor ? { color: hexToRgb(item.fillColor) } : {}) });
         } else if (item.kind === 'underline') {
           copiedPage.drawLine({ start: { x, y }, end: { x: x + boxWidth, y }, color, thickness: 1.5 });
         } else if (item.kind === 'squiggly') {
@@ -2144,25 +2197,43 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         </div>
       </div>
     );
-    if (activePanel === 'annotations') return (
+    if (activePanel === 'annotations') {
+      const selectedStyleAnnotation = editState.annotations.find(
+        (item) => item.id === selectedAnnotationId && !['comment', 'link', 'trial-balance', 'image', 'calculation', 'redaction'].includes(item.kind),
+      );
+      const shownBorderColor = selectedStyleAnnotation ? selectedStyleAnnotation.color : activeColor;
+      const shownFillColor = selectedStyleAnnotation ? selectedStyleAnnotation.fillColor : activeFillColor;
+      return (
       <div className="space-y-3">
         <div className="pdf-annotation-grid grid grid-cols-4 gap-2">{ANNOTATION_TOOLS.map(({ kind, label, icon: Icon }) => <Tooltip key={kind}><TooltipTrigger asChild><Button variant={(kind === 'select' ? activeKind === null : activeKind === kind) ? 'default' : 'secondary'} aria-pressed={kind === 'select' ? activeKind === null : activeKind === kind} onClick={() => setActiveKind(kind === 'select' ? null : kind as PdfAnnotationKind)} aria-label={label}><Icon /><span className="pdf-annotation-label">{label}</span></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>)}</div>
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="w-10 shrink-0 text-xs text-foreground">Border</span>
-            <div className="flex gap-2">{COLORS.map((color) => <button key={color} type="button" aria-label={`Colour ${color}`} onClick={() => { setActiveColor(color); if (selectedAnnotationId) updateAnnotation(selectedAnnotationId, { color }); }} className={cn('h-6 w-6 rounded-[6px] border', activeColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}</div>
+            <div className="flex gap-2">{COLORS.map((color) => <button key={color} type="button" aria-label={`Colour ${color}`} onClick={() => { if (selectedStyleAnnotation) { updateAnnotation(selectedStyleAnnotation.id, { color }); } else { setActiveColor(color); } }} className={cn('h-6 w-6 rounded-[6px] border', shownBorderColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}</div>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-10 shrink-0 text-xs text-foreground">Fill</span>
             <div className="flex gap-2">
-              <button type="button" aria-label="No fill" title="No fill" onClick={() => { setActiveFillColor(undefined); const target = editState.annotations.find((item) => item.id === selectedAnnotationId); if (target && (target.kind === 'text' || target.kind === 'callout')) updateAnnotation(target.id, { fillColor: undefined }); }} className={cn('flex h-6 w-6 items-center justify-center rounded-[6px] border bg-background text-foreground', !activeFillColor ? 'border-primary ring-2 ring-primary/40' : 'border-border')}><Ban className="h-3.5 w-3.5" /></button>
-              {['#ffffff', ...COLORS].map((color) => <button key={color} type="button" aria-label={`Fill colour ${color}`} onClick={() => { setActiveFillColor(color); const target = editState.annotations.find((item) => item.id === selectedAnnotationId); if (target && (target.kind === 'text' || target.kind === 'callout')) updateAnnotation(target.id, { fillColor: color }); }} className={cn('h-6 w-6 rounded-[6px] border', activeFillColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}
+              <button type="button" aria-label="No fill" title="No fill" onClick={() => { if (selectedStyleAnnotation && (selectedStyleAnnotation.kind === 'text' || selectedStyleAnnotation.kind === 'callout' || selectedStyleAnnotation.kind === 'rectangle' || selectedStyleAnnotation.kind === 'circle')) { updateAnnotation(selectedStyleAnnotation.id, { fillColor: undefined }); } else { setActiveFillColor(undefined); } }} className={cn('flex h-6 w-6 items-center justify-center rounded-[6px] border bg-background text-foreground', !shownFillColor ? 'border-primary ring-2 ring-primary/40' : 'border-border')}><Ban className="h-3.5 w-3.5" /></button>
+              {['#ffffff', ...COLORS].map((color) => <button key={color} type="button" aria-label={`Fill colour ${color}`} onClick={() => { if (selectedStyleAnnotation && (selectedStyleAnnotation.kind === 'text' || selectedStyleAnnotation.kind === 'callout' || selectedStyleAnnotation.kind === 'rectangle' || selectedStyleAnnotation.kind === 'circle')) { updateAnnotation(selectedStyleAnnotation.id, { fillColor: color }); } else { setActiveFillColor(color); } }} className={cn('h-6 w-6 rounded-[6px] border', shownFillColor === color ? 'border-primary ring-2 ring-primary/40' : 'border-border')} style={{ backgroundColor: color }} />)}
             </div>
           </div>
         </div>
+        <PdfDefaultStyleSection
+          colors={COLORS}
+          defaults={defaultStyle}
+          canSetFromSelected={!!selectedStyleAnnotation}
+          onChange={applyDefaultStyle}
+          onReset={() => applyDefaultStyle({ ...SYSTEM_ANNOTATION_STYLE_DEFAULTS })}
+          onSetFromSelected={() => {
+            if (!selectedStyleAnnotation) return;
+            applyDefaultStyle(extractAnnotationStyle(selectedStyleAnnotation, defaultStyle));
+            toast.success('Saved as your default style');
+          }}
+        />
         <div className="space-y-2">{editState.annotations.filter((item) => !['comment', 'link', 'trial-balance', 'image', 'calculation', 'redaction'].includes(item.kind)).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => { setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }} onRename={(label) => updateAnnotation(item.id, item.kind === 'signature' ? { signerName: label, signerLabel: formatSignatureCaption(item.signerRole ?? '', label), label: `Signature — ${label || 'Untitled'}` } : { label })} onColor={(color) => updateAnnotation(item.id, item.kind === 'signature' ? { color, inkColor: color } : { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>
       </div>
-    );
+    ); }
     if (activePanel === 'comments') {
       const comments = editState.annotations.filter((item) => item.kind === 'comment');
       const open = comments.filter((item) => !item.resolved);
@@ -2204,12 +2275,30 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         </div>
       );
     }
-    if (activePanel === 'links' || activePanel === 'trial-balance') {
-      const kind: PdfAnnotationKind = activePanel === 'links' ? 'link' : 'trial-balance';
-      const heading = activePanel === 'links' ? 'HYPERLINKS' : 'TRIAL BALANCE';
-      const hint = activePanel === 'trial-balance' ? 'Click anywhere on the page to drop a link, then pick a trial balance account or lead sheet.' : 'Click anywhere on the page to drop a link, then attach a web address or engagement item.';
-      const cta = activePanel === 'trial-balance' ? 'Add trial balance link' : 'Add link';
-      return <div className="space-y-3"><p className="text-xs font-semibold text-foreground">{heading}</p><p className="text-xs text-foreground">{hint}</p><Button variant={activeKind === kind ? 'default' : 'secondary'} aria-pressed={activeKind === kind} className="w-full" onClick={() => setActiveKind(activeKind === kind ? null : kind)}>{cta}</Button>{editState.annotations.filter((item) => item.kind === kind).map((item) => <AnnotationRow key={item.id} item={item} selected={selectedAnnotationId === item.id} onSelect={() => { if (kind === 'trial-balance' || item.engagementLink) { void openTrialBalanceLink(item); return; } setSelectedAnnotationId(item.id); setPage(Math.max(1, visiblePages.indexOf(item.page) + 1)); }} onRename={(label) => updateAnnotation(item.id, { label, value: label })} onColor={(color) => updateAnnotation(item.id, { color })} onDelete={() => deleteAnnotation(item.id)} />)}</div>;
+    if (activePanel === 'links') {
+      const links = editState.annotations.filter((item) => item.kind === 'link' || item.kind === 'trial-balance');
+      return (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-foreground">LINKS</p>
+          <p className="text-xs text-foreground">Click anywhere on the page to place a link, then choose a web URL, document, engagement item, lead sheet, or trial balance account.</p>
+          <Button variant={activeKind === 'link' ? 'default' : 'secondary'} aria-pressed={activeKind === 'link'} className="w-full" onClick={() => setActiveKind(activeKind === 'link' ? null : 'link')}>Add link</Button>
+          {links.map((item) => (
+            <AnnotationRow
+              key={item.id}
+              item={item}
+              selected={selectedAnnotationId === item.id}
+              onSelect={() => {
+                if (item.kind === 'trial-balance' || item.engagementLink) { void openTrialBalanceLink(item); return; }
+                setSelectedAnnotationId(item.id);
+                setPage(Math.max(1, visiblePages.indexOf(item.page) + 1));
+              }}
+              onRename={(label) => updateAnnotation(item.id, { label, value: label })}
+              onColor={(color) => updateAnnotation(item.id, { color })}
+              onDelete={() => deleteAnnotation(item.id)}
+            />
+          ))}
+        </div>
+      );
     }
     if (activePanel === 'redact') {
       const redactions = editState.annotations.filter((item) => item.kind === 'redaction');
@@ -2495,7 +2584,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         </div>
       </div>
     );
-  }, [activeColor, activeFillColor, activeKind, activePanel, activeWatermarks, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcTitle, calcPick, calcCompare, calcResultLabel, calcDifferenceLabel, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, commitUndoable, showCalcHeader, calcPreviewInitialScale, captureCalcPreviewSize, placedCalcSearch, hoveredCalcId, calcDescError, setSearch, effectiveCalcResult, calcResultDraft, currentSourcePage, decryptPassword, editingCalcId, editingWatermarkId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkColor, watermarkFontSize, watermarkOpacity, watermarkRotation, watermarkText]);
+  }, [activeColor, activeFillColor, activeKind, activePanel, activeWatermarks, applyDefaultStyle, armCalcPlacement, askLuka, bookmarkTitle, calcColor, calcPlacement, calcRows, calcTitle, calcPick, calcCompare, calcResultLabel, calcDifferenceLabel, calcResultOverride, calcShowResult, calcShowCompare, calcShowDifference, calcIncludeCompare, calcIncludeDifference, commitUndoable, defaultStyle, showCalcHeader, calcPreviewInitialScale, captureCalcPreviewSize, placedCalcSearch, hoveredCalcId, calcDescError, setSearch, effectiveCalcResult, calcResultDraft, currentSourcePage, decryptPassword, editingCalcId, editingWatermarkId, resetCalculator, startEditCalculation, placeCalculation, deleteAnnotation, detectedFonts, editState, goToMatch, jumpToMatch, lukaAnswer, lukaLoading, lukaQuestion, ocrRunning, ownerPassword, docImages, goToImage, page, pdf, properties, runOcr, runSearch, scanDocumentImages, scanningImages, search, searchIndex, searching, searchResults, selectedAnnotationId, selectedPages, updateAnnotation, userPassword, visiblePages, watermarkColor, watermarkFontSize, watermarkOpacity, watermarkRotation, watermarkText]);
 
   const historyEntries = useMemo(() => {
     const fallbackDate = document?.updated_at ?? document?.created_at ?? new Date().toISOString();
@@ -2623,9 +2712,9 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label="Zoom out" onClick={() => { setFitMode(null); setZoom((value) => Math.max(0.1, value - 0.1)); }}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(effectiveZoom * 100)}%</span><Button variant="ghost" size="icon-sm" aria-label="Zoom in" onClick={() => { setFitMode(null); setZoom((value) => value + 0.1); }}><ZoomIn /></Button></div></div>
           </div>
           </div>
-          {editing && canEditPage && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
+          {editing && canEditPage && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'link' ? 'To place a link, click on the page.' : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
           {editing && !canEditPage && <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-1 text-xs text-foreground"><span>Reset view rotation to edit</span><Button variant="secondary" size="sm" onClick={() => setViewRotation(0)}>Reset rotation</Button></div>}
-          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><div className="relative flex shrink-0 items-center justify-center" style={{ width: (viewRotation % 180 ? nativePageHeight : nativePageWidth) * effectiveZoom, height: (viewRotation % 180 ? nativePageWidth : nativePageHeight) * effectiveZoom }}><div data-view-rotation={viewRotation} className={cn("pdf-view-page shrink-0", !canEditPage && "pointer-events-none")}><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing && canEditPage ? activeKind : null} color={activeColor} fillColor={activeFillColor} editing={editing && canEditPage} watermarks={activeWatermarks} editingTextId={editing && canEditPage ? editingTextId : null} onEditText={setEditingTextId} onEditSignature={(sig) => setSignatureDialog({ annotation: sig, isEdit: true })} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={canEditPage ? updateAnnotation : undefined} onDelete={canEditPage ? deleteAnnotation : undefined} placingCalc={editing && canEditPage && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && canEditPage && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div></div></div>
+          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><div className="relative flex shrink-0 items-center justify-center" style={{ width: (viewRotation % 180 ? nativePageHeight : nativePageWidth) * effectiveZoom, height: (viewRotation % 180 ? nativePageWidth : nativePageHeight) * effectiveZoom }}><div data-view-rotation={viewRotation} className={cn("pdf-view-page shrink-0", !canEditPage && "pointer-events-none")}><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing && canEditPage ? activeKind : null} color={activeColor} fillColor={activeFillColor} textColor={activeTextColor} editing={editing && canEditPage} watermarks={activeWatermarks} editingTextId={editing && canEditPage ? editingTextId : null} onEditText={setEditingTextId} onEditSignature={(sig) => setSignatureDialog({ annotation: sig, isEdit: true })} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={canEditPage ? updateAnnotation : undefined} onDelete={canEditPage ? deleteAnnotation : undefined} placingCalc={editing && canEditPage && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && canEditPage && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div></div></div>
         </section>
         {editing && <aside style={{ width: toolsCollapsed ? 48 : editPanelWidth }} className={cn("relative flex min-h-0 shrink-0 border-l border-border bg-card", !toolsCollapsed && "pdf-edit-panel min-w-[360px] max-w-[calc(100vw-64px)]")}>
           {toolsCollapsed ? <div className="flex w-12 justify-center pt-2"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="Expand Tools Panel" onClick={() => setToolsCollapsed(false)}><ToolsPanelIcon /></Button></TooltipTrigger><TooltipContent side="left">Expand Tools Panel</TooltipContent></Tooltip></div> : <>
@@ -2664,100 +2753,46 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         onClose={() => setSignatureDialog(null)}
         onSubmit={confirmSignature}
       />
-      <Dialog open={!!pendingAnnotation} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
-        <DialogContent className={pendingAnnotation?.kind === 'link' ? cn('pdf-add-link-dialog pdf-tb-dialog flex w-[520px] max-w-[calc(100vw-32px)] flex-col', linkTab === 'engagement' && 'max-h-[60vh]') : pendingAnnotation?.kind === 'trial-balance' ? 'pdf-tb-dialog flex max-h-[75vh] w-[880px] max-w-[calc(100vw-32px)] flex-col' : 'max-w-sm'} onEscapeKeyDown={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }} onInteractOutside={(event) => { if (pendingAnnotation?.kind === 'trial-balance') event.preventDefault(); }}>
+      <PdfAddLinkDialog
+        open={pendingAnnotation?.kind === 'link' || pendingAnnotation?.kind === 'trial-balance'}
+        engagementId={engagementId ?? ''}
+        trialBalanceAccounts={trialBalanceAccounts}
+        selectedTbCell={selectedTbCell}
+        onClose={() => { setPendingAnnotation(null); setPendingValue(''); }}
+        onSelectWebUrl={(url) => confirmStructuredLink({}, url)}
+        onSelectEngagementLink={(link: PdfEngagementLink, label: string) => confirmStructuredLink({ engagementLink: link }, label)}
+        onSelectTrialBalanceGeneral={() => confirmStructuredLink({ trialBalanceGeneral: true }, 'Trial Balance')}
+        onSelectTrialBalanceAccount={confirmTrialBalanceAccount}
+      />
+      <Dialog open={!!pendingAnnotation && pendingAnnotation.kind !== 'link' && pendingAnnotation.kind !== 'trial-balance'} onOpenChange={(open) => { if (!open) { setPendingAnnotation(null); setPendingValue(''); } }}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>
-              {pendingAnnotation?.kind === 'link' ? 'Add link' : pendingAnnotation?.kind === 'trial-balance' ? 'Link to Trial Balance' : pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}
-            </DialogTitle>
+            <DialogTitle>{pendingAnnotation?.kind === 'comment' ? 'Comment' : 'Text'}</DialogTitle>
           </DialogHeader>
-          {pendingAnnotation?.kind === 'link' && <Tabs className="shrink-0" value={linkTab} onValueChange={setLinkTab}><TabsList className="w-full"><TabsTrigger value="web" className="flex-1">Web URL</TabsTrigger><TabsTrigger value="engagement" className="flex-1">Engagement</TabsTrigger></TabsList></Tabs>}
-          {pendingAnnotation?.kind === 'link' && linkTab === 'engagement' ? (
-            <EngagementLinkPicker mode="engagement" engagementId={engagementId ?? ''} onSelect={(link: PdfEngagementLink) => confirmStructuredLink({ engagementLink: link }, engagementLinkLabel(link))} />
-          ) : pendingAnnotation?.kind === 'trial-balance' ? (
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-              <Tabs className="shrink-0" value={tbTab} onValueChange={(value) => setTbTab(value as 'accounts' | 'lead-sheets')}>
-                <TabsList className="w-full">
-                  <TabsTrigger value="accounts" className="flex-1">Accounts</TabsTrigger>
-                  <TabsTrigger value="lead-sheets" className="flex-1">Lead sheets</TabsTrigger>
-                </TabsList>
-              </Tabs>
-              {tbTab === 'lead-sheets' ? (
-                <EngagementLinkPicker mode="lead-sheets" engagementId={engagementId ?? ''} onSelect={(link: PdfEngagementLink) => confirmStructuredLink({ engagementLink: link }, engagementLinkLabel(link))} />
-              ) : (
-              <div className="min-w-0 space-y-2">
-              <Input
-                autoFocus
-                value={pendingValue}
-                placeholder="Search account no. or description"
-                onChange={(event) => setPendingValue(event.target.value)}
-              />
-              <div className="max-h-72 overflow-auto rounded-[8px] border border-border">
-                <table className="w-full min-w-[680px] text-xs">
-                  <thead className="sticky top-0 bg-muted">
-                    <tr className="text-left text-foreground">
-                      <th className="whitespace-nowrap px-2 py-1.5 font-semibold">Acc No.</th>
-                      <th className="px-2 py-1.5 font-semibold">Description</th>
-                      {trialBalanceColumns.map((column) => <th key={column} className="whitespace-nowrap px-2 py-1.5 text-right font-semibold">{column}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-t border-border"><td colSpan={5} className="p-0"><Button variant="ghost" className="h-9 w-full justify-start rounded-none px-2 text-xs font-normal" onClick={() => confirmStructuredLink({ trialBalanceGeneral: true }, 'Trial Balance')}>Trial Balance (general)</Button></td></tr>
-                    {trialBalanceAccounts
-                      .filter((account) => {
-                        const query = pendingValue.trim().toLowerCase();
-                        if (!query) return true;
-                        return account.accNo.toLowerCase().includes(query) || account.description.toLowerCase().includes(query);
-                      })
-                      .map((account) => (
-                        <tr
-                          key={account.accNo + account.description}
-                          className="border-t border-border"
-                        >
-                          <td className="p-0 text-foreground"><Button variant="ghost" className="h-9 w-full justify-start rounded-none px-2 text-xs font-normal text-foreground" onClick={() => { const column = defaultTrialBalanceColumn(account); if (column) confirmTrialBalanceAccount(account, column); }}>{account.accNo}</Button></td>
-                          <td className="w-full p-0 text-foreground"><Button variant="ghost" title={account.description} className="h-9 w-full justify-start rounded-none px-2 text-xs font-normal text-foreground" onClick={() => { const column = defaultTrialBalanceColumn(account); if (column) confirmTrialBalanceAccount(account, column); }}><span className="max-w-[200px] truncate">{account.description}</span></Button></td>
-                          {trialBalanceColumns.map((column) => {
-                            const amount = trialBalanceAmount(account, column);
-                            const empty = amount == null || !Number.isFinite(amount);
-                            const selected = selectedTbCell === `${account.accNo}:${column}`;
-                            return <td key={column} className="p-0 text-right">
-                              <Button variant="ghost" disabled={empty} aria-pressed={selected} aria-label={`${account.accNo} ${account.description} · ${column}: ${formatTrialBalanceAmount(amount)}`}
-                                className={cn('pdf-tb-amount h-9 w-full justify-end rounded-none px-2 text-xs font-normal tabular-nums text-foreground', empty && 'pdf-tb-empty', selected && 'bg-primary/15 text-primary ring-1 ring-inset ring-primary')}
-                                onClick={() => confirmTrialBalanceAccount(account, column)}>{formatTrialBalanceAmount(amount)}</Button>
-                            </td>;
-                          })}
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-              </div>
-              )}
-            </div>
-          ) : (
-          <>
-          {pendingAnnotation?.kind === 'link' && <Label>Link to web URL</Label>}
           <Input
             autoFocus
             value={pendingValue}
-            placeholder={pendingAnnotation?.kind === 'link' ? 'https://example.com' : ''}
             onChange={(event) => setPendingValue(event.target.value)}
             onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); confirmPendingAnnotation(); } }}
           />
           <DialogFooter>
-            <Button variant="ghost" onClick={() => { setPendingAnnotation(null); setPendingValue(''); }}>Cancel</Button>
-            <Button disabled={!pendingValue.trim()} onClick={confirmPendingAnnotation}>
-              {pendingAnnotation?.kind === 'link' ? 'Add link' : 'Add'}
-            </Button>
+            <Button variant="secondary" onClick={() => { setPendingAnnotation(null); setPendingValue(''); }}>Cancel</Button>
+            <Button disabled={!pendingValue.trim()} onClick={confirmPendingAnnotation}>Add</Button>
           </DialogFooter>
-          </>
-          )}
         </DialogContent>
       </Dialog>
     </div>
 
   );
 }
+
+const LINK_TYPE_META: Record<PdfLinkType, { icon: React.ElementType; label: string }> = {
+  web: { icon: Globe, label: 'Web URL link' },
+  document: { icon: FileText, label: 'Document link' },
+  engagement: { icon: ClipboardCheck, label: 'Engagement link' },
+  'lead-sheet': { icon: BookOpen, label: 'Lead sheet link' },
+  'trial-balance': { icon: Landmark, label: 'Trial balance link' },
+};
 
 const KIND_ICONS: Record<string, React.ElementType> = {
   highlight: Highlighter, underline: Underline, strikeout: Strikethrough, freehand: Pen,
@@ -2770,17 +2805,22 @@ function AnnotationRow({ item, selected, onSelect, onRename, onDelete, onColor }
   const [renaming, setRenaming] = useState(false);
   const [picking, setPicking] = useState(false);
   const [draft, setDraft] = useState(item.label ?? item.value ?? '');
-  const KindIcon = item.engagementLink ? FileText : item.kind === 'link' ? ExternalLink : KIND_ICONS[item.kind] ?? MousePointer2;
+  const isLinkRow = item.kind === 'link' || item.kind === 'trial-balance';
+  const linkType = isLinkRow ? inferPdfLinkType(item) : null;
+  const KindIcon = linkType ? LINK_TYPE_META[linkType].icon : KIND_ICONS[item.kind] ?? MousePointer2;
+  const linkTypeLabel = linkType ? LINK_TYPE_META[linkType].label : undefined;
+  const stopRowClick = isLinkRow;
   return (
     <div className={cn('rounded-[8px] border bg-background px-2 py-2', selected ? 'border-primary' : 'border-border')} onClick={onSelect}>
       <div className="flex items-center gap-2">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-border" style={{ color: item.color }} aria-hidden>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-border" style={{ color: item.color }} title={linkTypeLabel} aria-label={linkTypeLabel} aria-hidden={!linkTypeLabel}>
           <KindIcon className="h-3.5 w-3.5" />
         </span>
         {renaming ? (
           <Input
             autoFocus
             value={draft}
+            onClick={(event) => { if (stopRowClick) event.stopPropagation(); }}
             onChange={(event) => setDraft(event.target.value)}
             onBlur={() => { onRename?.(draft.trim()); setRenaming(false); }}
             onKeyDown={(event) => { if (event.key === 'Enter') { onRename?.(draft.trim()); setRenaming(false); } }}
@@ -2795,15 +2835,15 @@ function AnnotationRow({ item, selected, onSelect, onRename, onDelete, onColor }
           type="button"
           aria-label="Change colour"
           disabled={!onColor}
-          onClick={() => setPicking((current) => !current)}
+          onClick={(event) => { if (stopRowClick) event.stopPropagation(); setPicking((current) => !current); }}
           className="h-5 w-5 shrink-0 rounded-[5px] border border-border"
           style={{ backgroundColor: item.color }}
         />
-        {onRename && <Button variant="ghost" size="icon-sm" onClick={(event) => { if (item.engagementLink || item.trialBalanceGeneral) event.stopPropagation(); setRenaming(true); }} aria-label="Rename"><Pencil /></Button>}
-        <Button variant="ghost" size="icon-sm" onClick={(event) => { if (item.engagementLink || item.trialBalanceGeneral) event.stopPropagation(); onDelete(); }} aria-label="Delete"><Trash2 /></Button>
+        {onRename && <Button variant="ghost" size="icon-sm" onClick={(event) => { if (stopRowClick) event.stopPropagation(); setRenaming(true); }} aria-label="Rename"><Pencil /></Button>}
+        <Button variant="ghost" size="icon-sm" onClick={(event) => { if (stopRowClick) event.stopPropagation(); onDelete(); }} aria-label="Delete"><Trash2 /></Button>
       </div>
       {picking && onColor && (
-        <div className="mt-2 flex gap-2 border-t border-border pt-2">
+        <div className="mt-2 flex gap-2 border-t border-border pt-2" onClick={(event) => { if (stopRowClick) event.stopPropagation(); }}>
           {COLORS.map((color) => (
             <button
               key={color}
