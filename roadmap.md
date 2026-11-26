@@ -38,3 +38,4 @@
 - [x] Merge Hyperlink and Trial balance into one Link tool with type dropdown, session memory, combined side-panel list with type icons, and placement bar.
 - [x] Build Lead sheet link view with reference-free line rows (Account description | Original | PY1 | PY2), clickable rows/amount cells, bracketed negatives, attached Documents group, and mock data.
 - [x] Add per-user default annotation style (text, border, background + No fill, Reset, Set as my default) persisted in user_preferences with RLS and applied to new annotations only; keep Signature tool unchanged.
+- [x] Remove Fit, view-only Rotate, and Print from the PDF editor while keeping centred Undo/Redo, zoom, Download, saved page rotation, and all other tools.

@@ -1,10 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import { PDFDocument, PDFName, rgb } from 'pdf-lib';
 import { exportPdfBytes } from './pdfExport';
 import { drawSignatureStampToPdf } from './pdfSignatureExport';
 import { drawRichTextBoxToPdf } from './pdfRichTextExport';
-import { printGeneratedPdf } from './pdfPrint';
 import type { PdfAnnotation } from './pdfDocuments';
 
 async function source(missingBounds = false) {
@@ -48,14 +47,5 @@ describe('shared PDF export in view and edit mode', () => {
     expect(rendered).toEqual(['type', 'draw', 'upload']);
     expect(cache.has('Dancing Script')).toBe(true);
     expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
-  });
-  it('Download and Print consume the same export bytes path', async () => {
-    const input = await source();
-    const generate = vi.fn(() => exportPdfBytes({ sourceBytes: input }));
-    const downloaded = await generate();
-    let printed: Uint8Array | undefined;
-    await printGeneratedPdf(generate, { print: async (bytes) => { printed = bytes; }, fallback: vi.fn(), dispose: vi.fn() });
-    expect(generate).toHaveBeenCalledTimes(2);
-    expect(printed).toEqual(downloaded);
   });
 });

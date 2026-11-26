@@ -5,7 +5,7 @@ import './pdf-page-bar.css';
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Ban, BookOpen, Bookmark, Calculator, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, ClipboardCheck,
   Copy, Crosshair, Download, ExternalLink, FileText, Globe, Highlighter, Image, Landmark, Link2, Loader2, LockKeyhole,
-  History, MessageSquare, MousePointer2, Pen, Pencil, Plus, Printer, Redo2, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Signature, Sparkles, Square,
+  History, MessageSquare, MousePointer2, Pen, Pencil, Plus, Redo2, RotateCcw, RotateCw, Save, ScanText, Search, ShieldCheck, Signature, Sparkles, Square,
   Strikethrough, TextCursorInput, Trash2, Underline, Undo2, X, ZoomIn, ZoomOut, Check, ArrowUpRight, PencilLine, MessageSquareText,
 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
@@ -45,7 +45,6 @@ import { PdfSignatureDialog } from '@/components/pdf/PdfSignatureDialog';
 import { ResizableSignatureStamp } from '@/components/pdf/PdfSignatureStamp';
 import { buildSignatureAnnotationFields, formatSignatureCaption, formatSignatureListTitle, type SignatureDraft } from '@/lib/pdfSignature';
 import { drawSignatureStampToPdf } from '@/lib/pdfSignatureExport';
-import { createPdfPrinter, isMacPlatform, printGeneratedPdf } from '@/lib/pdfPrint';
 import { applyUndoSnapshot, captureUndoSnapshot, emptyUndoStack, popRedo, popUndo, pushUndo, type PdfUndoSnapshot, type UndoStack } from '@/lib/pdfUndo';
 import { currentMentionUser, initialsOf } from '@/data/mentionUsers';
 import { toast } from 'sonner';
@@ -61,8 +60,6 @@ import {
   type PdfAnnotationStyleDefaults,
 } from '@/lib/pdfAnnotationDefaults';
 import { PdfEditSplitButton } from '@/components/pdf/PdfEditSplitButton';
-import { PdfPreviewControls } from '@/components/pdf/PdfPreviewControls';
-import { fitPreviewZoom, pdfViewShortcut, rotatePreview, type PdfFitMode } from '@/lib/pdfPreviewView';
 import { engagementLinkTooltip, engagementTargetPath, inferPdfLinkType, type PdfEngagementLink, type PdfLinkType } from '@/lib/pdfEngagementLinks';
 import { useTrialBalanceAccounts } from '@/lib/trialBalanceSource';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -863,10 +860,6 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const [page, setPage] = useState(() => Math.max(1, Number(new URLSearchParams(window.location.search).get('page')) || 1));
   const [zoom, setZoom] = useState(1);
   const [editing, setEditing] = useState(popout);
-  const [viewRotation, setViewRotation] = useState(0);
-  const [fitMode, setFitMode] = useState<PdfFitMode>(null);
-  const [viewerHeight, setViewerHeight] = useState(0);
-  const [nativePageHeight, setNativePageHeight] = useState(990);
   const [activePanel, setActivePanel] = useState<ToolId>('annotations');
   const [toolsCollapsed, setToolsCollapsed] = useState(false);
   const [simulateProtected, setSimulateProtected] = useState(() => new URLSearchParams(window.location.search).get('protected') === '1');
@@ -936,7 +929,6 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   const [historyOpen, setHistoryOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [printing, setPrinting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.3);
@@ -1012,7 +1004,6 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
   useEffect(() => {
     let currentUrl: string | null = null;
     let cancelled = false;
-    setViewRotation(0); setFitMode(null); setZoom(1);
     const load = async (attempt: number): Promise<void> => {
       setLoading(true);
       setError('');
@@ -1120,7 +1111,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
 
   useEffect(() => {
     if (loading || !viewerRef.current) return;
-    const observer = new ResizeObserver(([entry]) => { setViewerWidth(entry.contentRect.width); setViewerHeight(entry.contentRect.height); });
+    const observer = new ResizeObserver(([entry]) => setViewerWidth(entry.contentRect.width));
     observer.observe(viewerRef.current);
     return () => observer.disconnect();
   }, [loading]);
@@ -1129,39 +1120,11 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     if (!pdf) return;
     let cancelled = false;
     void pdf.getPage(currentSourcePage).then((target) => {
-      if (!cancelled) {
-        const viewport = target.getViewport({ scale: 1.25, rotation: (target.rotate + (editState.rotations[String(currentSourcePage)] ?? 0)) % 360 });
-        setNativePageWidth(viewport.width);
-        setNativePageHeight(viewport.height);
-      }
+      if (!cancelled) setNativePageWidth(target.getViewport({ scale: 1.25, rotation: (target.rotate + (editState.rotations[String(currentSourcePage)] ?? 0)) % 360 }).width);
     });
     return () => { cancelled = true; };
   }, [pdf, currentSourcePage, editState.rotations]);
-  const effectiveZoom = !fitMode && toolsCollapsed && viewerWidth ? Math.min(zoom, Math.max(0.1, (viewerWidth - 48) / (viewRotation % 180 ? nativePageHeight : nativePageWidth))) : zoom;
-
-  useEffect(() => {
-    if (fitMode) setZoom(fitPreviewZoom({ width: nativePageWidth, height: nativePageHeight }, { width: viewerWidth, height: viewerHeight }, viewRotation, fitMode));
-  }, [fitMode, nativePageWidth, nativePageHeight, viewerWidth, viewerHeight, viewRotation]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target;
-      const inText = target instanceof HTMLElement && !!target.closest('input, textarea, select, [contenteditable], [role="textbox"]');
-      const action = pdfViewShortcut(event, inText || !!editingTextId);
-      if (!action) return;
-      event.preventDefault();
-      if (action === 'fit') setFitMode('page');
-      else setViewRotation((value) => rotatePreview(value, action === 'right' ? 1 : -1));
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [editingTextId]);
-
-  const canEditPage = viewRotation === 0;
-  useEffect(() => {
-    if (!viewRotation) return;
-    setActiveKind(null); setEditingTextId(null); setSelectedAnnotationId(null); setCalcPlacement(false); setCalcPick(null);
-  }, [viewRotation]);
+  const effectiveZoom = toolsCollapsed && viewerWidth ? Math.min(zoom, Math.max(0.1, (viewerWidth - 48) / nativePageWidth)) : zoom;
 
   const finishEditing = async () => {
     if (!manualSave && JSON.stringify(editState) !== lastPersisted.current) {
@@ -1986,21 +1949,6 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
     }
   };
 
-  const printPdf = async () => {
-    if (printing) return;
-    setPrinting(true);
-    try {
-      await printGeneratedPdf(createSavedBytes, createPdfPrinter((openPdf) => toast.info(`Use ${isMacPlatform() ? '⌘P' : 'Ctrl+P'} to print`, openPdf ? {
-        action: { label: 'Open PDF', onClick: openPdf },
-        duration: 600000,
-      } : undefined)));
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : 'Unable to print this PDF.');
-    } finally {
-      setPrinting(false);
-    }
-  };
-
   const targetPositions = () => (selectedPages.length ? [...selectedPages].sort((a, b) => a - b) : [page - 1]);
 
   const togglePageSelection = (index: number) =>
@@ -2685,19 +2633,17 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
         <div className="flex items-center gap-2">
           {editing ? <>
             {manualSave ? <Button size="sm" disabled={saving} onClick={() => void handleSave()}>{saving ? <Loader2 className="animate-spin" /> : <Save />}Save</Button> : saveStatus !== 'idle' && <span role="status" data-status={saveStatus} className="pdf-save-status flex items-center gap-1.5">{saveStatus === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saveStatus === 'saved' ? <Check className="h-3.5 w-3.5" /> : null}{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'All changes saved' : 'Changes not saved'}</span>}
-            <Button variant="secondary" size="sm" disabled={printing} onClick={() => void printPdf()}>{printing ? <Loader2 className="animate-spin" /> : <Printer />}Print</Button>
             {!popout && <Button variant="secondary" size="sm" onClick={() => void finishEditing()}>Done</Button>}
             {!popout && <Button variant="secondary" size="sm" onClick={openEditorWindow}><ExternalLink />Edit in window</Button>}
           </> : <>
             <PdfEditSplitButton showWindowItem={!popout} onEdit={() => setEditing(true)} onEditInWindow={openEditorWindow} />
-            <Button variant="secondary" size="sm" disabled={printing} onClick={() => void printPdf()}>{printing ? <Loader2 className="animate-spin" /> : <Printer />}Print</Button>
             <Button variant="secondary" size="sm" onClick={() => void downloadPdf()}><Download />Download</Button>
             <Button variant="destructive" size="sm" disabled={deleting} onClick={() => setConfirmDelete(true)}><Trash2 />Delete</Button>
           </>}
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-36 shrink-0 border-r border-border bg-muted/30 lg:block"><ScrollArea className="h-full p-2">{visiblePages.map((sourcePage, index) => <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} label={index + 1} rotation={((editState.rotations[String(sourcePage)] ?? 0) + viewRotation) % 360} active={page === index + 1} onClick={() => setPage(index + 1)} />)}</ScrollArea></aside>
+        <aside className="hidden w-36 shrink-0 border-r border-border bg-muted/30 lg:block"><ScrollArea className="h-full p-2">{visiblePages.map((sourcePage, index) => <Thumbnail key={`${sourcePage}-${index}`} pdf={pdf} pageNumber={sourcePage} label={index + 1} rotation={editState.rotations[String(sourcePage)] ?? 0} active={page === index + 1} onClick={() => setPage(index + 1)} />)}</ScrollArea></aside>
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="pdf-page-bar-container shrink-0">
           <div className={cn('pdf-page-bar flex items-center justify-between border-b border-border px-4', editing && 'pdf-page-bar-editing')}>
@@ -2705,16 +2651,14 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
               <Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft /></Button><span className="text-xs text-foreground">Page {page} of {visiblePages.length}</span><Button variant="ghost" size="icon-sm" disabled={page >= visiblePages.length} onClick={() => setPage((value) => value + 1)}><ChevronRight /></Button>
             </div>
             {editing && <div className="pdf-page-bar-history flex items-center gap-2" role="group" aria-label="Undo and redo">
-              <Tooltip><TooltipTrigger asChild><Button variant="secondary" size="sm" disabled={!undoStack.past.length} onClick={handleUndo} aria-label="Undo"><Undo2 /><span className="pdf-history-label">Undo</span></Button></TooltipTrigger><TooltipContent>Undo ({isMacPlatform() ? '⌘Z' : 'Ctrl+Z'})</TooltipContent></Tooltip>
-              <Tooltip><TooltipTrigger asChild><Button variant="secondary" size="sm" disabled={!undoStack.future.length} onClick={handleRedo} aria-label="Redo"><Redo2 /><span className="pdf-history-label">Redo</span></Button></TooltipTrigger><TooltipContent>Redo ({isMacPlatform() ? '⌘⇧Z' : 'Ctrl+Shift+Z'})</TooltipContent></Tooltip>
+              <Tooltip><TooltipTrigger asChild><Button variant="secondary" size="sm" disabled={!undoStack.past.length} onClick={handleUndo} aria-label="Undo"><Undo2 /><span className="pdf-history-label">Undo</span></Button></TooltipTrigger><TooltipContent>Undo ({typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘Z' : 'Ctrl+Z'})</TooltipContent></Tooltip>
+              <Tooltip><TooltipTrigger asChild><Button variant="secondary" size="sm" disabled={!undoStack.future.length} onClick={handleRedo} aria-label="Redo"><Redo2 /><span className="pdf-history-label">Redo</span></Button></TooltipTrigger><TooltipContent>Redo ({typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘⇧Z' : 'Ctrl+Shift+Z'})</TooltipContent></Tooltip>
             </div>}
-            <div className="pdf-page-bar-right flex items-center gap-2"><PdfPreviewControls fit={fitMode} onFit={setFitMode} onRotate={(direction) => setViewRotation((value) => rotatePreview(value, direction))} />
-            <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label="Zoom out" onClick={() => { setFitMode(null); setZoom((value) => Math.max(0.1, value - 0.1)); }}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(effectiveZoom * 100)}%</span><Button variant="ghost" size="icon-sm" aria-label="Zoom in" onClick={() => { setFitMode(null); setZoom((value) => value + 0.1); }}><ZoomIn /></Button></div></div>
+            <div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}><ZoomOut /></Button><span className="w-12 text-center text-xs text-foreground">{Math.round(effectiveZoom * 100)}%</span><Button variant="ghost" size="icon-sm" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}><ZoomIn /></Button></div>
           </div>
           </div>
-          {editing && canEditPage && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'link' ? 'To place a link, click on the page.' : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
-          {editing && !canEditPage && <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-1 text-xs text-foreground"><span>Reset view rotation to edit</span><Button variant="secondary" size="sm" onClick={() => setViewRotation(0)}>Reset rotation</Button></div>}
-          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><div className="relative flex shrink-0 items-center justify-center" style={{ width: (viewRotation % 180 ? nativePageHeight : nativePageWidth) * effectiveZoom, height: (viewRotation % 180 ? nativePageWidth : nativePageHeight) * effectiveZoom }}><div data-view-rotation={viewRotation} className={cn("pdf-view-page shrink-0", !canEditPage && "pointer-events-none")}><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing && canEditPage ? activeKind : null} color={activeColor} fillColor={activeFillColor} textColor={activeTextColor} editing={editing && canEditPage} watermarks={activeWatermarks} editingTextId={editing && canEditPage ? editingTextId : null} onEditText={setEditingTextId} onEditSignature={(sig) => setSignatureDialog({ annotation: sig, isEdit: true })} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={canEditPage ? updateAnnotation : undefined} onDelete={canEditPage ? deleteAnnotation : undefined} placingCalc={editing && canEditPage && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && canEditPage && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div></div></div>
+          {editing && (calcPlacement || calcPick || (activeKind && (PLACE_NOUN[activeKind] || activeKind === 'redaction'))) && <div className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-primary/10 px-4"><span className="text-[13px] font-medium text-primary">{calcPlacement ? 'To place a calculation, click on the page.' : calcPick ? (calcPick.target === 'compare' ? 'Compare by: click a figure on the page' : 'Pick from page: click a number on the page') : activeKind === 'link' ? 'To place a link, click on the page.' : activeKind === 'comment' ? 'To place a comment, click on the respective line item.' : activeKind === 'redaction' ? 'To add a redaction, drag over the area to redact.' : `To place a ${activeKind ? PLACE_NOUN[activeKind] : ''}, click on the respective line item.`}</span><Button variant="ghost" size="sm" className="h-7" onClick={() => { setActiveKind(null); setCalcPick(null); setCalcPlacement(false); }}>Cancel</Button></div>}
+          <div ref={viewerRef} className={cn("min-h-0 flex-1 overflow-auto bg-muted/30", toolsCollapsed && "overflow-x-hidden")}><div className="flex min-h-full w-max min-w-full items-start justify-center p-6"><CanvasPage onTrialBalanceLink={openTrialBalanceLink} trialBalanceAccounts={trialBalanceAccounts} pdf={pdf} pageNumber={currentSourcePage} zoom={effectiveZoom} rotation={editState.rotations[String(currentSourcePage)] ?? 0} annotations={pageAnnotations} activeKind={editing ? activeKind : null} color={activeColor} fillColor={activeFillColor} textColor={activeTextColor} editing={editing} watermarks={activeWatermarks} editingTextId={editing ? editingTextId : null} onEditText={setEditingTextId} onEditSignature={(sig) => setSignatureDialog({ annotation: sig, isEdit: true })} onAdd={addAnnotation} onSelect={setSelectedAnnotationId} selectedId={selectedAnnotationId} highlight={searchHighlight} onUpdate={updateAnnotation} onDelete={deleteAnnotation} placingCalc={editing && calcPlacement} onPlaceCalc={placeCalculation} pickingValue={editing && !!calcPick} onPickValue={handlePickValue} sourceHighlight={editing && activePanel === 'calculations' ? calcHover : null} calculations={editState.calculations} hoveredCalcId={hoveredCalcId} onHoverCalc={setHoveredCalcId} pulseCalc={pulseCalc} placeNoun={editing && activeKind ? PLACE_NOUN[activeKind] ?? null : null} /></div></div>
         </section>
         {editing && <aside style={{ width: toolsCollapsed ? 48 : editPanelWidth }} className={cn("relative flex min-h-0 shrink-0 border-l border-border bg-card", !toolsCollapsed && "pdf-edit-panel min-w-[360px] max-w-[calc(100vw-64px)]")}>
           {toolsCollapsed ? <div className="flex w-12 justify-center pt-2"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="Expand Tools Panel" onClick={() => setToolsCollapsed(false)}><ToolsPanelIcon /></Button></TooltipTrigger><TooltipContent side="left">Expand Tools Panel</TooltipContent></Tooltip></div> : <>
@@ -2723,7 +2667,7 @@ export function PdfWorkspace({ documentId, popout = false }: { documentId: strin
             <div className="flex justify-center pt-2"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="Collapse Tools Panel" onClick={() => setToolsCollapsed(true)}><ToolsPanelIcon /></Button></TooltipTrigger><TooltipContent side="left">Collapse Tools Panel</TooltipContent></Tooltip></div>
             <ScrollArea className="min-h-0 flex-1"><div className="flex flex-col items-center gap-1 py-2">{TOOLS.map(({ id, label, icon: Icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button variant={activePanel === id ? 'default' : 'ghost'} size="icon" className={activePanel === id ? undefined : 'hover:bg-muted'} onClick={() => { setActivePanel(id); setActiveKind(null); }} aria-label={label}>{id === 'luka' ? <LukaIcon size={22} bare glow /> : <Icon />}</Button></TooltipTrigger><TooltipContent side="left">{label}</TooltipContent></Tooltip>)}</div></ScrollArea>
           </div>
-          <div {...(!canEditPage ? { inert: "" } : {})} className={cn("flex min-w-0 flex-1 flex-col", !canEditPage && "pointer-events-none opacity-50")}>
+          <div className="flex min-w-0 flex-1 flex-col">
           {activePanel === 'luka' ? <div className="pdf-edit-panel-content min-w-0 flex-1">{panelContent}</div> : <ScrollArea className="pdf-edit-panel-scroll min-h-0 flex-1 min-w-0 flex-1"><div className={cn("pdf-edit-panel-content min-w-0", activePanel === 'calculations' ? "p-4" : "p-3")}>
             {panelContent}</div></ScrollArea>}
           </div></>}
